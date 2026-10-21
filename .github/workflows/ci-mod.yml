@@ -1,0 +1,35 @@
+name: CI · Mod
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & test
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: packages/honey-factory
+    steps:
+      - uses: actions/checkout@v7
+      - uses: gradle/actions/wrapper-validation@v6
+      - uses: actions/setup-java@v6
+        with:
+          java-version: "25"
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v6
+      - run: ./gradlew build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: honey-factory
+          path: packages/honey-factory/build/libs/
