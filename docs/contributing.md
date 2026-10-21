@@ -13,6 +13,13 @@ just setup
 `just setup` installs the Python workspace and Git hooks for lint, formatting, lockfile
 and commit-message checks. It configures Git to use `.github/commit-template.txt`.
 
+Hook definitions live in [`.github/pre-commit-config.yaml`](../.github/pre-commit-config.yaml).
+Run `just setup` to refresh installed hooks after moving the config file. To check all files:
+
+```sh
+pre-commit run --all-files --config .github/pre-commit-config.yaml
+```
+
 ## Workflow
 
 1. Open or pick an issue. Record design decisions in [docs/adr/](adr/).

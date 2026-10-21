@@ -11,7 +11,7 @@ default:
 # One-time setup: install the workspace, git hooks and commit template
 setup:
     uv sync --all-packages
-    pre-commit install --install-hooks
+    pre-commit install --install-hooks --config .github/pre-commit-config.yaml
     git config commit.template .github/commit-template.txt
 
 # --- Python ---------------------------------------------------------------
