@@ -25,7 +25,7 @@ jobs:
         with:
           ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
       - if: ${{ steps.release.outputs.prs_created == 'true' }}
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.3.0
       - if: ${{ steps.release.outputs.prs_created == 'true' }}
         run: |
           uv lock
