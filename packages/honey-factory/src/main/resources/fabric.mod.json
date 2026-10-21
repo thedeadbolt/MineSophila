@@ -1,0 +1,32 @@
+{
+	"schemaVersion": 1,
+	"id": "honey_factory",
+	"version": "${version}",
+	"name": "Honey Factory",
+	"description": "Generates labelled Minecraft datasets of hidden honey blocks for MineSophila.",
+	"authors": [
+		"João Moutinho"
+	],
+	"contact": {
+		"homepage": "https://github.com/thedeadbolt/MineSophila",
+		"sources": "https://github.com/thedeadbolt/MineSophila",
+		"issues": "https://github.com/thedeadbolt/MineSophila/issues"
+	},
+	"license": "MIT",
+	"icon": "assets/honey_factory/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"io.github.thedeadbolt.honeyfactory.HoneyFactory"
+		],
+		"client": [
+			"io.github.thedeadbolt.honeyfactory.client.HoneyFactoryClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
