@@ -4,6 +4,13 @@ plugins {
 
 version = file('version.txt').text.trim()
 
+sourceSets {
+	test {
+		java.setSrcDirs(['../../tests/honey-factory/java'])
+		resources.setSrcDirs(['../../tests/honey-factory/resources'])
+	}
+}
+
 loom {
 	splitEnvironmentSourceSets()
 
@@ -16,7 +23,7 @@ loom {
 }
 
 dependencies {
-	// To change the versions see the gradle.properties file
+	// Set dependency versions in gradle.properties.
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"

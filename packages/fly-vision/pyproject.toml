@@ -17,10 +17,3 @@ dev = [
 [build-system]
 requires = ["uv_build>=0.13.4,<0.14"]
 build-backend = "uv_build"
-
-# Package-local pytest config: these tests run in an environment containing only
-# fly-vision and its declared dependencies (see `just test fly-vision`).
-[tool.pytest]
-testpaths = ["tests"]
-addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib"]
-xfail_strict = true

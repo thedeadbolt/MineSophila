@@ -1,6 +1,7 @@
 # Architecture
 
-> Status: planned design. The package modules exist as documented stubs.
+This document describes a proposed design. The implementation consists of `fly-vision`
+version metadata and `honey-factory` entrypoints with an identifier helper.
 
 ## Overview
 
@@ -17,37 +18,40 @@
 
 ## fly-vision
 
-The input is a **`Scene`**: an RGB image plus optional metadata (depth, per-pixel block
+The proposed `Scene` input contains an RGB image and optional metadata (depth, per-pixel block
 ids, sky mask, sun position).
 
-Plain images carry only the image. Scenes from honey-factory also carry metadata.
-Minecraft renders RGB, but fly R7 photoreceptors are UV-sensitive. Polarisation and the
-ocelli's horizon cues depend on the sky. The metadata lets those channels be derived from
-what is in the scene. Without it, they are estimated from RGB.
+For a plain image, supply RGB alone. The proposed honey-factory capture would add scene
+metadata. R7 photoreceptors respond to UV; modelling polarisation and the ocelli's horizon
+cues requires sky information. Define and validate the assumptions behind synthetic channels,
+and distinguish measured inputs from estimates and missing values. RGB frames and block
+labels do not measure UV or polarisation.
 
-| Component | Responsibility |
+| Proposed component | Responsibility |
 |---|---|
-| `Eye` | Ommatidial lattice geometry and sampling of a Scene |
+| `Eye` | Ommatidial lattice, viewing directions, interommatidial and acceptance angles, and sampling of a Scene |
 | `Receptor` subclasses | One per receptor type (R1–R6, R7/R8 pale and yellow, DRA, ocelli), each with a spectral sensitivity |
 | `VisionMode` subclasses + registry | `human`, `compound`, `photoreceptor`, `ocelli` |
 | `FlyVision` facade | `render(scene, mode)`, `compare(scene, a, b)`, `pairs(scene)` |
 
-`pairs()` yields every combination of two registered modes (4 choose 2 = 6 today). A new
-mode is a new `VisionMode` subclass and is picked up automatically.
+The four proposed modes are `human` (RGB baseline), `compound` (ommatidial sampling),
+`photoreceptor` (sampling with spectral channels), and `ocelli` (the three simple eyes).
+`pairs()` would yield the six combinations of those modes. The class hierarchy and registry
+remain open choices. Revisit them while implementing the first modes.
+
+Add source modules with working code and tests. Keep future design notes here.
 
 ## honey-factory
 
-A Fabric mod. Planned responsibilities:
+The proposed Fabric mod would:
 
-- **Scenario generation** (common code): place honey blocks in varied, partially hidden
-  situations.
-- **Capture** (client code): export colour frames plus depth, block-id and sky buffers,
-  together with ground-truth annotations of where each honey block is.
+- Generate scenes containing honey blocks with varying amounts of occlusion, using common code.
+- Capture colour frames, depth, block IDs and sky buffers on the client, with ground-truth
+  annotations for honey-block locations.
 
-The dataset format and its storage are open questions, tracked in
-[#1](https://github.com/thedeadbolt/MineSophila/issues/1).
+Define the dataset format and storage in [#1](https://github.com/thedeadbolt/MineSophila/issues/1).
 
 ## Adapter (future)
 
-The adapter turns honey-factory output into `Scene` objects for fly-vision, along with labels
-for training and evaluation. It will most likely be a third Python workspace package.
+The proposed adapter would convert honey-factory output into `Scene` objects and labels
+for training and evaluation. A third Python workspace package is one option.

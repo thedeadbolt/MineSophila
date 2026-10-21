@@ -15,7 +15,7 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-    # Minecraft, Fabric Loader, Loom and Fabric API must move together, by hand.
+    # Review Minecraft, Fabric Loader, Loom and Fabric API upgrades together.
     ignore:
       - dependency-name: "com.mojang*"
       - dependency-name: "net.fabricmc*"

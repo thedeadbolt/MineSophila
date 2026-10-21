@@ -1,11 +1,4 @@
-"""fly-vision: convert images and Minecraft scenes into Drosophila vision.
-
-Planned public interface (see docs/architecture.md):
-
-- ``Scene``: an input image plus optional metadata (depth, block ids, sky mask, sun).
-- ``FlyVision``: facade that renders a scene in one vision mode, compares a pair of
-  modes, or yields all pairwise combinations (4 choose 2).
-"""
+"""Expose the installed fly-vision version."""
 
 from importlib.metadata import version
 

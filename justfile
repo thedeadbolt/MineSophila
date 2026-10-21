@@ -12,7 +12,7 @@ default:
 setup:
     uv sync --all-packages
     pre-commit install --install-hooks
-    git config commit.template .gitmessage
+    git config commit.template .github/commit-template.txt
 
 # --- Python ---------------------------------------------------------------
 
@@ -21,37 +21,38 @@ lint:
     uv run ruff check .
     uv run ruff format --check .
 
-# Auto-fix lint issues and format
+# Fix lint issues and format files
 fmt:
     uv run ruff check --fix .
     uv run ruff format .
 
-# Static type checking
+# Check Python types
 typecheck:
     uv run pyright
 
-# Unit tests for one package, in an isolated env with only its declared deps
+# Test one Python package in a fresh environment with its development dependencies
 test package *args:
-    uv run --isolated --package {{package}} --directory packages/{{package}} pytest {{args}}
+    uv run --locked --isolated --package {{package}} pytest tests/{{package}} {{args}}
 
-# Unit tests for every Python package, each isolated
+# Test Python packages in separate fresh environments
 test-packages:
     for p in {{py_packages}}; do just test "$p"; done
 
-# Cross-package integration tests
+# Run workspace and cross-package checks
 test-integration *args:
-    uv run pytest tests/integration {{args}}
+    uv run --locked pytest tests/integration {{args}}
 
-# End-to-end tests (excluding ones that need Minecraft)
+# Run end-to-end tests that do not need Minecraft
 test-e2e *args:
-    uv run pytest tests/e2e {{args}}
+    uv run --locked pytest tests/e2e {{args}}
 
-# Tests that need a running Minecraft instance
+# Run tests against a running Minecraft instance
 test-minecraft *args:
-    uv run pytest tests -m minecraft {{args}}
+    uv run --locked pytest tests -m minecraft {{args}}
 
-# Every Python test layer
-test-all: test-packages test-integration
+# Run Python package suites, then integration and e2e tests
+test-all: test-packages
+    uv run --locked pytest tests/integration tests/e2e
 
 # --- Mod (Gradle) ---------------------------------------------------------
 
@@ -67,7 +68,7 @@ mod-test:
 mod-client:
     cd {{mod_dir}} && ./gradlew runClient
 
-# --- Everything -----------------------------------------------------------
+# --- Combined checks ------------------------------------------------------
 
-# What CI runs
+# Run Python checks and tests, then build and test the mod
 check: lint typecheck test-all mod-build

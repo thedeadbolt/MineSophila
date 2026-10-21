@@ -1,34 +1,32 @@
 # MineSophila
 
-*Where's Waldo, but you're a fruit fly in Minecraft.*
+MineSophila is a project to model *Drosophila melanogaster* vision and use it to find
+and mine honey blocks in Minecraft.
 
-MineSophila models *Drosophila melanogaster* vision and uses it to find and interact with
-blocks in Minecraft. The first target is to spot honey blocks and mine them.
-
-> **Status: scaffold.** The structure, tooling and docs are in place. Nothing is implemented yet.
+The repository contains package scaffolds and development tooling. Vision processing
+and dataset capture remain unimplemented.
 
 ## Packages
 
-| Package | Language | What it does |
+| Package | Language | Planned purpose |
 |---|---|---|
-| [`fly-vision`](packages/fly-vision) | Python | Converts images and Minecraft scenes into fly vision: human, compound, R1–R8 photoreceptor and ocelli modes, plus any pair of them |
-| [`honey-factory`](packages/honey-factory) | Java (Fabric mod) | Generates labelled datasets of honey blocks hidden in varied situations |
-
-An adapter will connect the two later. See the [roadmap](docs/roadmap.md).
+| [`fly-vision`](packages/fly-vision) | Python | Model fly vision from images and scene metadata; compare vision modes |
+| [`honey-factory`](packages/honey-factory) | Java (Fabric mod) | Generate labelled Minecraft scenes containing hidden honey blocks |
 
 ## Quick start
 
-Requirements: [uv](https://docs.astral.sh/uv/), [just](https://just.systems/),
-[pre-commit](https://pre-commit.com/) and Java 17+ to run Gradle (the Java 25 toolchain the
-mod needs is downloaded automatically).
+Requirements: Python 3.13+, [uv](https://docs.astral.sh/uv/), [just](https://just.systems/),
+[pre-commit](https://pre-commit.com/) and Java 17+ to start the Gradle wrapper.
+Gradle downloads Java 25 to build the mod.
 
 ```sh
-uv tool install rust-just pre-commit   # if you don't have them yet
+uv tool install rust-just              # if you don't have it yet
+uv tool install pre-commit
 just setup                             # install workspace, git hooks, commit template
 just check                             # lint, typecheck, all tests, mod build
 ```
 
-Run `just` to see every recipe.
+Run `just` to list commands.
 
 ## Repository layout
 
@@ -37,20 +35,27 @@ packages/
 ├── fly-vision/       # uv workspace member (Python)
 └── honey-factory/    # Gradle project (Fabric mod), not a uv member
 tests/
-├── integration/      # cross-package tests
-└── e2e/              # full product runs
+├── fly-vision/       # Python package tests
+├── honey-factory/    # Java / JUnit package tests
+├── integration/     # workspace and cross-package checks
+└── e2e/             # reserved for full product runs
 docs/
+├── contributing.md   # development workflow
 ├── architecture.md
-├── roadmap.md
 ├── science/          # the biology behind fly-vision
 └── adr/              # architecture decision records
 ```
 
+See the [package overview](packages/README.md), [test guide](tests/README.md), and
+[proposed architecture](docs/architecture.md).
+
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Commits and PR titles follow
-[Conventional Commits](https://www.conventionalcommits.org/); changelogs and versions are
-generated per package by release-please.
+See the [contributing guide](docs/contributing.md). Commits and PR titles follow
+[Conventional Commits](https://www.conventionalcommits.org/). release-please updates
+package versions and changelogs. See the changelogs for
+[fly-vision](packages/fly-vision/CHANGELOG.md) and
+[honey-factory](packages/honey-factory/CHANGELOG.md).
 
 ## License
 

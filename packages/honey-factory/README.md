@@ -1,30 +1,34 @@
 # honey-factory
 
-A [Fabric](https://fabricmc.net/) mod that generates labelled datasets of honey blocks
-placed in varied, partially hidden situations, recording where each one is.
+Fabric mod for a planned dataset of honey blocks with varying amounts of occlusion.
 
-> Status: scaffold. The mod loads and does nothing else yet.
+The common entrypoint logs startup; the client entrypoint has no behaviour yet.
+See the proposed scenario generation and frame capture in the
+[architecture](../../docs/architecture.md).
 
-- Minecraft **26.3**, Fabric Loader 0.19.5, Fabric API (see `gradle.properties`)
-- Java **25**. You don't need it installed: Gradle downloads the toolchain.
-  Gradle itself runs on Java 17 or newer.
-- Mod id `honey_factory`, package `io.github.thedeadbolt.honeyfactory`
+This is a Gradle project, separate from the uv workspace. It targets Minecraft 26.3 and
+Java 25; dependency versions live in `gradle.properties`. Java 17+ can start the wrapper;
+`gradle/gradle-daemon-jvm.properties` selects Java 25 for the Gradle daemon, downloading
+it when necessary. Compilation also targets Java 25.
 
-This is a Gradle project, not a uv workspace member. See
-[ADR 0001](../../docs/adr/0001-mixed-language-monorepo.md).
+The mod id is `honey_factory`; Java packages use `io.github.thedeadbolt.honeyfactory`.
 
 ## Layout
 
-```
-src/main/      # common code (runs on client and server)
-src/client/    # client-only code: rendering, frame capture
-src/test/      # JUnit tests
-version.txt    # mod version, managed by release-please
-```
+- `src/main/`: common code and mod resources.
+- `src/client/`: client entrypoint and future rendering/capture code.
+- [`tests/honey-factory/`](../../tests/honey-factory/): repository-level JUnit sources,
+  configured by this project's `build.gradle`.
+- `version.txt`: mod version, managed by release-please.
 
 ## Development
 
+Run from the repository root:
+
 ```sh
-just mod-build     # ./gradlew build (compiles + JUnit tests)
-just mod-client    # launch a dev Minecraft client with the mod
+just mod-test      # JUnit tests
+just mod-build     # compile, test and package the mod
+just mod-client    # launch a development Minecraft client
 ```
+
+See the [test guide](../../tests/README.md) and [Fabric decision](../../docs/adr/0002-fabric-mod-loader.md).

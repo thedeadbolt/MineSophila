@@ -1,5 +1,5 @@
-# PRs are squash-merged, so the PR title becomes the commit on main that
-# release-please reads. Enforce Conventional Commits on it.
+# Check the PR title before using it as the squash commit message on main.
+# release-please reads these Conventional Commit messages.
 name: PR title
 
 on:

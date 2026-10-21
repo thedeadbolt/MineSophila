@@ -1,36 +1,21 @@
 # fly-vision
 
-Convert images and Minecraft scenes into *Drosophila* vision.
+Python package for modelling *Drosophila* vision from images and Minecraft scenes.
 
-> Status: scaffold. The modules describe their planned responsibilities; nothing is implemented yet.
+The package exposes version metadata. See the [architecture](../../docs/architecture.md)
+for the proposed `Scene`, `Eye`, receptors, vision modes and `FlyVision` interface, and
+the [science notes](../../docs/science/fly-vision.md) for assumptions and references.
 
-## Vision modes
-
-| Mode | What it shows |
-|---|---|
-| `human` | Normal RGB vision (baseline) |
-| `compound` | Ommatidial sampling only (~750–800 ommatidia per eye) |
-| `photoreceptor` | Compound vision split into R1–R6, R7 and R8 channels |
-| `ocelli` | The three ocelli added on top |
-
-Any two modes can be compared, and the facade can yield all 6 pairwise combinations.
-See [docs/architecture.md](../../docs/architecture.md) and the
-[science notes](../../docs/science/fly-vision.md).
-
-## Layout
-
-```
-src/fly_vision/
-├── scene.py        # Scene: image + optional metadata
-├── eye.py          # ommatidial lattice and sampling
-├── vision.py       # FlyVision facade
-├── modes/          # one module per vision mode
-└── receptors/      # R1–R6, R7, R8, ocelli
-tests/              # unit tests: may only import fly_vision
-```
+Add code in `src/fly_vision/` with tests for its behaviour. Keep API proposals in the
+architecture document.
 
 ## Development
 
+Run from the repository root:
+
 ```sh
-just test fly-vision   # runs this package's tests in an isolated environment
+just test fly-vision
 ```
+
+Tests live in [`tests/fly-vision/`](../../tests/fly-vision/) and use the root pytest
+configuration. See the [test guide](../../tests/README.md) for fixture and dependency rules.

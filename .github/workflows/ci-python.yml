@@ -39,10 +39,9 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.0
         with:
           enable-cache: true
-      # Installs only this package and its declared deps, so undeclared imports fail.
+      # Select the package and its declared runtime and development dependencies.
       - run: uv sync --locked --package ${{ matrix.package }}
-      - run: uv run --no-sync pytest --cov=src --cov-report=term-missing
-        working-directory: packages/${{ matrix.package }}
+      - run: uv run --no-sync pytest tests/${{ matrix.package }} --cov=packages/${{ matrix.package }}/src --cov-report=term-missing
 
   integration:
     name: Integration & e2e
@@ -53,4 +52,4 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked
-      - run: uv run --no-sync pytest
+      - run: uv run --no-sync pytest tests/integration tests/e2e

@@ -5,12 +5,12 @@
 
 ## Context
 
-What problem or force makes this decision necessary?
+Describe the problem and constraints that require a decision.
 
 ## Decision
 
-What we chose.
+State the choice and its scope.
 
 ## Consequences
 
-What becomes easier, what becomes harder, and what we'll need to revisit.
+Describe the benefits, costs and unresolved questions.

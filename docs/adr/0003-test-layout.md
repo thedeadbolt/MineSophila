@@ -1,24 +1,23 @@
 # 0003: Isolated package tests + root integration/e2e tests
 
-- **Status:** Accepted
+- **Status:** Superseded by [0004](0004-centralized-tests.md)
 - **Date:** 2026-10-21
 
 ## Context
 
-Package tests should be isolated: a package must not pass its tests by accident because
-another workspace package, or a dev tool, happens to be installed in the shared
-environment. We also need full-product integration and end-to-end tests.
+We wanted package tests to reveal undeclared imports without relying on other packages
+or tools in a shared environment. Integration and end-to-end tests needed the whole workspace.
 
 ## Decision
 
 - **Unit tests** live in `packages/<pkg>/tests/`. Each package has its own pytest config.
-  They run with `uv run --isolated --package <pkg>` locally, and with
+  Run them with `uv run --isolated --package <pkg>` during development, and with
   `uv sync --package <pkg>` in CI, so the environment contains only that package and
   its declared dependencies.
 - **Integration and e2e tests** live in root `tests/integration/` and `tests/e2e/` and run
   against the whole workspace.
-- There is **no root `conftest.py`**. Shared fixtures live in `tests/conftest.py`, which
-  only integration and e2e tests can see.
+- Keep shared fixtures in `tests/conftest.py` and omit a repository-root `conftest.py`.
+  Under this layout, package tests do not inherit the shared fixtures.
 - pytest uses `--import-mode=importlib`, so no `__init__.py` files are needed in test
   directories and module names can repeat.
 - Strict markers: `integration`, `e2e`, `minecraft`. Tests that need a live Minecraft
@@ -27,6 +26,6 @@ environment. We also need full-product integration and end-to-end tests.
 
 ## Consequences
 
-- Undeclared dependencies surface as test failures.
-- A package's tests can't reach for another package's fixtures. Shared test helpers, if
-  ever needed, become a declared dev dependency.
+- We expected undeclared dependencies to cause test failures. See the limits of this
+  assumption in [0004](0004-centralized-tests.md).
+- Keep fixtures within each package. Declare any shared test helpers as a development dependency.

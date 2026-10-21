@@ -15,8 +15,8 @@ jobs:
       - uses: googleapis/release-please-action@v5
         id: release
         with:
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
+          config-file: .github/release-please-config.json
+          manifest-file: .github/.release-please-manifest.json
 
       # release-please bumps versions in pyproject.toml but not uv.lock, which would
       # make `uv sync --locked` fail. Refresh the lockfile on the release PR branch.

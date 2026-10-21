@@ -4,15 +4,15 @@ PR title = squash commit = changelog entry. Use Conventional Commits:
 Scopes: fly-vision, honey-factory, docs, repo, deps, ci, tests
 -->
 
-## What
+## Change
 
-<!-- What does this change, in one or two sentences? -->
+<!-- Describe the change and resulting behaviour. -->
 
-## Why
+## Reason
 
 <!-- The problem or goal. Link the issue: Closes #123 -->
 
-## How to verify
+## Verification
 
 <!-- Commands, screenshots, or renders a reviewer can use to check it. -->
 
@@ -24,7 +24,7 @@ Scopes: fly-vision, honey-factory, docs, repo, deps, ci, tests
 
 ## Checklist
 
-- [ ] `just check` passes locally
-- [ ] Tests added or updated in the right layer (unit / integration / e2e)
-- [ ] Docs updated (README, `docs/`, or a new ADR for a design decision)
-- [ ] Breaking changes are called out with `!` in the title and a `BREAKING CHANGE:` note
+- [ ] Run `just check`
+- [ ] Add or update tests in the appropriate suite (package / integration / e2e)
+- [ ] Update documentation and record design decisions in an ADR
+- [ ] Mark breaking changes with `!` in the title and a `BREAKING CHANGE:` note

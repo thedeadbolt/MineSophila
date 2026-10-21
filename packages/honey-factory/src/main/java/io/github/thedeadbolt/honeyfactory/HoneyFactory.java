@@ -8,10 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Common (client + server) entrypoint for the Honey Factory dataset generator.
- *
- * <p>Planned: scenario generation that places honey blocks in varied, partially hidden
- * situations and records ground-truth annotations for each captured frame.
+ * Log mod startup on the client and server and provide namespaced identifiers.
  */
 public class HoneyFactory implements ModInitializer {
 	public static final String MOD_ID = "honey_factory";

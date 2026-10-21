@@ -1,22 +1,26 @@
 # MineSophila: notes for Claude
 
-Mixed-language monorepo: a uv workspace (Python) plus a Gradle Fabric mod.
+Python workspace and Fabric mod in one repository.
 
-- `packages/fly-vision`: Python, uv workspace member, `src/` layout, built with `uv_build`.
-- `packages/honey-factory`: Java 25 Fabric mod for Minecraft 26.3. Not a uv member. Gradle
-  runs on Java 25 via `gradle/gradle-daemon-jvm.properties` (auto-downloaded).
-- `tests/`: integration and e2e tests only. Package unit tests live in `packages/<pkg>/tests`.
+- `packages/fly-vision`: Python uv workspace member, `src/` layout, `uv_build` backend.
+- `packages/honey-factory`: Java 25 Fabric mod for Minecraft 26.3, outside the uv workspace.
+  Gradle downloads Java 25 as specified in `gradle/gradle-daemon-jvm.properties`.
+- `tests/<package>/`: package tests, including Java under `tests/honey-factory/java/`.
+  Integration and e2e suites share the `tests/` parent directory. See `tests/README.md`.
 
 ## Commands
 
-Use `just` (run `just` to list recipes). Key ones: `just check`, `just test <pkg>`,
-`just test-integration`, `just lint`, `just typecheck`, `just mod-build`.
+Run `just` to list commands. Use `just check` for the full check suite or
+`just test <pkg>` for a Python package. Other commands include `just test-integration`,
+`just lint`, `just typecheck`, and `just mod-build`.
 
 ## Rules
 
-- Package tests run in isolation (`uv run --isolated --package <pkg>`). Never add a root
-  `conftest.py`, and never import another package from a package's tests.
+- Python package tests use a fresh environment (`just test <pkg>`), which also contains
+  development tooling. Keep fixtures in each test suite; do not add a repo-root or
+  shared `tests/conftest.py`. Import only the package under test and its declared dependencies.
+- Keep planned APIs in `docs/architecture.md`; add source modules when implementing them.
 - Commits and PR titles use Conventional Commits, scoped to a package where relevant.
-- Never edit `CHANGELOG.md` files or package versions by hand (release-please owns them).
+- Let release-please update `CHANGELOG.md` files and package versions; do not edit them by hand.
 - Record design decisions as ADRs in `docs/adr/`.
-- Data is out of scope until issue #1 is resolved. `data/` is gitignored.
+- Resolve issue #1 before adding dataset storage. Git ignores `data/`.

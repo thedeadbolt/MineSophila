@@ -1,5 +1,5 @@
 name: Bug report
-description: Something doesn't work as expected
+description: Report a bug
 labels: [bug]
 body:
   - type: dropdown
@@ -15,8 +15,8 @@ body:
   - type: textarea
     id: what-happened
     attributes:
-      label: What happened?
-      description: What you did, what you expected, and what happened instead.
+      label: Observed and expected behaviour
+      description: Describe the action, its result and the result you expected.
     validations:
       required: true
   - type: textarea

@@ -1,28 +1,28 @@
 name: Research question
-description: An open question about fly biology, modelling, or approach
+description: Investigate fly biology or modelling assumptions
 labels: [research]
 body:
   - type: textarea
     id: question
     attributes:
       label: Question
-      description: What do we need to find out?
+      description: State the question to investigate.
     validations:
       required: true
   - type: textarea
     id: context
     attributes:
-      label: Why it matters
-      description: What decision or implementation depends on the answer?
+      label: Context
+      description: Name the decision or implementation that needs this answer.
     validations:
       required: true
   - type: textarea
     id: sources
     attributes:
       label: Known sources
-      description: Papers, datasets (e.g. FlyWire), prior art.
+      description: Link papers, datasets such as FlyWire, or related work.
   - type: textarea
     id: outcome
     attributes:
       label: Expected outcome
-      description: e.g. a section in docs/science/, an ADR, or a parameter table.
+      description: Specify the deliverable, such as science notes, an ADR or a parameter table.
