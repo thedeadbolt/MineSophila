@@ -1,0 +1,63 @@
+# Workspace root. Not a package itself: it holds the workspace definition,
+# shared dev tooling, and configuration for the cross-package tests in tests/.
+[project]
+name = "minesophila"
+version = "0.0.0"
+description = "Drosophila vision for Minecraft: find honey blocks through a fly's eyes."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+# Every Python workspace member, so `uv sync` at the root installs the whole product.
+dependencies = ["fly-vision"]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+# honey-factory is a Gradle project and is deliberately not a member.
+members = ["packages/fly-vision"]
+
+[tool.uv.sources]
+fly-vision = { workspace = true }
+
+# --- pytest: root tests only (integration + e2e). Packages carry their own config. ---
+[tool.pytest]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib", "-m", "not minecraft"]
+markers = [
+    "integration: exercises two or more packages together",
+    "e2e: full product run",
+    "minecraft: needs a running Minecraft instance (deselected by default; run with -m minecraft)",
+]
+xfail_strict = true
+
+# --- ruff: applies to every Python file in the repo ---
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["packages/honey-factory"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "PT", "N", "C4", "PTH"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["fly_vision"]
+
+# --- pyright ---
+[tool.pyright]
+include = ["packages/fly-vision/src", "packages/fly-vision/tests", "tests"]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+
+[tool.coverage.run]
+branch = true

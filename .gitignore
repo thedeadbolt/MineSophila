@@ -218,3 +218,19 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Gradle / Java / Minecraft (packages/honey-factory) ---
+.gradle/
+packages/honey-factory/run/
+packages/honey-factory/bin/
+out/
+*.hprof
+*.jfr
+hs_err_*.log
+replay_*.log
+
+# --- Editors ---
+.idea/
+
+# --- Data: out of scope for now, see https://github.com/thedeadbolt/MineSophila/issues/1 ---
+data/
