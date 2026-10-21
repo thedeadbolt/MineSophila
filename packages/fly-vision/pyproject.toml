@@ -1,0 +1,26 @@
+[project]
+name = "fly-vision"
+version = "0.0.1"
+description = "Convert images and Minecraft scenes into Drosophila vision."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+authors = [{ name = "João Moutinho" }]
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.4,<0.14"]
+build-backend = "uv_build"
+
+# Package-local pytest config: these tests run in an environment containing only
+# fly-vision and its declared dependencies (see `just test fly-vision`).
+[tool.pytest]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib"]
+xfail_strict = true
