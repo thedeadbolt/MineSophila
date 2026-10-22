@@ -46,7 +46,7 @@ docs/
 └── adr/              # architecture decision records
 ```
 
-See the [package overview](packages/README.md), [test guide](tests/README.md), and
+See the [project roadmap](docs/roadmap.md), [package overview](packages/README.md), [test guide](tests/README.md), and
 [proposed architecture](docs/architecture.md).
 
 ## Contributing
