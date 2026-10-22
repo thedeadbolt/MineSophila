@@ -31,7 +31,9 @@ Generate separate difficulty datasets using the same format:
 1. Visible honey at varied distances and viewpoints.
 2. Honey among distractors, including similar-looking blocks.
 3. Partially occluded honey.
-4. Later, search/navigation episodes with honey outside the initial view or obstacles.
+4. Constructed environments with irregular geometry.
+5. Natural Minecraft terrain copied into the isolated arena.
+6. Optionally, active-search episodes with honey initially hidden or outside view.
 
 Include target-absent examples and distinguish absence from occlusion or being
 outside the view. Split training and evaluation by scene/episode.
@@ -71,25 +73,25 @@ project. Learning to choose movement actions is optional.
 
 If action learning requires interaction, build this connection during phase 3.
 
-## Decisions needed for the mod specification
+## Mod decisions and remaining checkpoints
 
 | Topic | Current position / open question |
 |---|---|
-| Masks | Required. Compare ray casting and an annotation render pass; define occlusion and honey translucency. |
-| Capture format | RGB + target mask + metadata. Decide whether depth, instance IDs and extra views are required. Resolve [issue #1](https://github.com/thedeadbolt/MineSophila/issues/1) before storage implementation. |
-| Arena and capture settings | Choose initial dimensions, block palette, resolution and difficulty parameters. |
-| Movement | Prefer forward movement with automatic jumping over supported obstacles. Define limits; pathfinding is separate. |
+| Masks | Target-only GPU annotation pass with scene depth; ray casting is validation-only. The M0 prototype must verify the exact 26.3 hooks. |
+| Capture format | RGB + visible-target mask + metadata; no exported depth initially. Perspective and panoramic resolutions are configurable. |
+| Arena and capture settings | Configurable with initial defaults in the package spec. Prototype measurements still need to set level 3–5 visibility ranges and level-5 region defaults. |
+| Movement | Synchronous tick-based actions with vanilla auto-jump initially enabled; no custom navigation/pathfinding. |
 | Block labels | Preserve useful world metadata. Classifying every block type is not required for honey localisation. |
 | Ocelli | Defer the adapter. Determine directional brightness/sky observations with the collaborator; pose and ray hits are not light measurements. RGB does not measure UV or polarisation. |
-| Storage | Plan dataset output on the 2 TB NVMe at `/mnt/fastvault`; choose the project directory and storage layout. |
-| Rust | Available for measured processing bottlenecks. Keep Fabric integration in Java. |
+| Storage | Portable PNG + JSONL datasets under a configurable root; local proposed root is `/mnt/fastvault/minesophila/datasets`. |
+| Rust | Use only for a measured bottleneck after the Java/Fabric implementation is benchmarked. |
 
 ## Next milestone
 
-Write a short `honey-factory` specification covering arena generation, capture
-outputs, environment controls and acceptance checks. Keep unresolved choices marked.
-Then build one scene with one honey block and verify RGB/mask alignment from several
-viewpoints, including partial and full occlusion, before generating a large dataset.
+Follow the [`honey-factory` implementation roadmap](../packages/honey-factory/docs/roadmap.md),
+starting with its M0 Minecraft 26.3 rendering-feasibility gate. Prove target-only
+annotation masks for open, partially occluded and fully hidden honey before building
+generic scene generation or panoramic capture.
 
 ## References
 

@@ -29,11 +29,12 @@ task. Level 6 adds optional active search through sequences of observations and 
 - Level 6 records observation/action sequences. Targets must be discoverable without
   breaking blocks; honey sealed inside stone is excluded while mining is unsupported.
 - Record distance, target pixel area and visible fraction alongside the level.
-  The visibility measurement method and thresholds remain to be defined.
+  The mask-derived measurement method is defined below; exact configurable
+  visibility-ratio ranges for levels 3–5 remain to be selected from prototype data.
 - Vary viewpoint and target position from level 1. Record seeds and generation
   settings, and keep views of the same scene/episode in the same dataset split.
-- For level 5, hold out world seeds or regions for evaluation. The exact split
-  policy remains to be defined.
+- For level 5, hold out world seeds by default or use explicitly disjoint region
+  groups as defined in the split policy below.
 
 ## Arena and world-region dimensions
 
@@ -53,6 +54,81 @@ both have configurable width, length and height, measured in blocks.
   clipping boundary. Surrounding terrain may remain visible; render distance and
   the extent of exported world metadata are separate choices.
 
+## Scene reset and reproducibility
+
+Agreed 2026-10-22: automated generation runs only in dataset-owned worlds. The mod
+must not clear or modify an ordinary personal save. Levels 1–4 use a reusable owned
+volume in a dedicated void dimension, with a safe staging platform outside it.
+
+Before clearing, verify a persistent ownership record containing the dataset world,
+dimension, arena origin and bounds. Refuse the operation if the requested clear
+volume falls outside those bounds or the ownership record does not match.
+
+### Template then block-by-block construction
+
+Reset and construct a level 1–4 scene in this order:
+
+1. Move the player to the staging platform, release inputs and zero velocity.
+2. Remove entities/items created by the previous scene and clear the owned arena
+   volume plus its configured margin.
+3. Restore a versioned base arena template, including the floor and other common
+   static geometry for the selected difficulty/configuration.
+4. Apply deterministic scene-specific changes block by block: target, distractors,
+   obstacles, hiding geometry and other generated details.
+5. Set explicit world/player state, validate the layout, place the player at the
+   first viewpoint, and wait for chunks, lighting and rendering to become ready.
+
+Templates are immutable inputs identified by ID, version and content checksum.
+Scene-specific placement order must be deterministic. The exact template storage
+format and low-level block-update flags remain implementation choices. Template
+loading handles repeated bulk geometry; block-by-block placement handles the smaller
+per-scene delta and keeps its contents easy to record and validate.
+
+Use explicit baseline state for levels 1–4: disabled daylight and weather cycles,
+disabled mob spawning and random block ticks, configured time/weather, zero player
+velocity, fixed relevant status, empty held item, and fixed visual settings. Snapshot
+any user settings/state changed for a run and restore them when it ends; dataset-owned
+worlds remain required because a crash can interrupt restoration.
+
+### Deterministic seeds and validation
+
+Derive layout, target and viewpoint seeds independently from the dataset seed, scene
+index and generation-attempt index using a documented, versioned algorithm. Do not
+consume one shared random stream whose later results change when an earlier scene is
+rejected.
+
+Record the derived seeds, generator/template versions, resolved dimensions, target
+state and a checksum of the resulting block layout. Rebuilding the same descriptor
+with the same pinned Minecraft/mod/generator inputs must reproduce that checksum.
+
+### Level 5 natural patches
+
+Agreed 2026-10-22: keep level-5 capture in the isolated void arena. Add a separate
+dataset-owned source dimension using normal Overworld terrain generation. Select a
+source patch, then copy it into the void arena as that scene's base snapshot before
+applying target and other scene-specific changes block by block.
+
+- Configure a core sample region for camera/target placement and additional context
+  padding in every horizontal direction. Copy enough context that the void boundary
+  is beyond the effective render/fog distance, including for panoramic capture.
+  Do not surround the camera with a visible artificial box.
+- Copy block states, biome data and required block-entity data; recalculate lighting
+  in the destination. Exclude mobs and other dynamic entities initially. Scheduled
+  and random ticks are not part of the initial static copy.
+- Keep the natural source unchanged. Honey is inserted only into the destination.
+  Recopy the base patch or restore recorded deltas before the next scene.
+- Give each source patch a stable ID containing the world seed, source dimension,
+  chunk/region bounds and generator version. All scenes derived from one patch stay
+  in the same dataset split.
+- Reuse a copied patch for several scenes where useful, because copying a padded
+  terrain volume can touch millions of blocks. Target placement and scene IDs remain
+  distinct and reproducible.
+
+All dimensions in one save use its world seed. Multiple level-5 world seeds therefore
+require multiple dataset-owned saves or later launch orchestration. Source-region
+defaults, copy height, padding and patch reuse count remain configurable and must be
+benchmarked before production generation.
+
 ## Initial capture outputs
 
 Agreed 2026-10-22: the initial export contains RGB images, aligned visible-target
@@ -62,7 +138,7 @@ Depth can be reconsidered later if an experiment needs it.
 
 The RGB image is the sensory input. Masks and target/world metadata are labels
 for training and evaluation, not additional sensory channels for the converter.
-Final metadata fields and file encodings remain to be agreed.
+The metadata contract below defines the initial fields and lossless PNG encodings.
 
 This excludes exported depth images, not internal depth testing or render buffers
 needed to produce correct visibility and masks.
@@ -137,7 +213,114 @@ mask. Labels come from visibility and geometry, not a colour threshold.
 Honey remains the initial target. If the capture prototype cannot produce reliable
 labels for it, substituting another block is an acceptable fallback to discuss.
 Record the target block type in scene metadata so any change remains explicit.
-The mask algorithm and raster-edge sampling rules remain open.
+
+### Target-mask rendering
+
+Agreed 2026-10-22: generate masks with a target-only GPU annotation render. Do not
+use colour thresholding, projected bounding boxes or a CPU ray per output pixel.
+Ray casting is a validation and optional metadata tool, not the source of the
+canonical pixel labels.
+
+For each perspective view or cube-map face:
+
+1. Render the normal Minecraft scene for RGB.
+2. Retain or copy scene depth after opaque and cutout geometry has rendered.
+3. Re-render only the known target block's baked model at its world position into
+   an off-screen annotation target, using the same camera matrices and viewport.
+4. Depth-test target fragments against the retained scene depth. Write a categorical
+   positive value for each surviving target fragment, with colour blending disabled.
+5. Render the target once more against a fresh depth buffer to obtain an internal
+   unoccluded projected-target mask.
+
+The annotation shader uses the target model and texture coverage to decide whether
+a fragment exists, but does not multiply the label by the target's translucency.
+A visible honey surface is therefore positive even when its RGB appearance includes
+the background. Opaque and cutout geometry in front rejects target fragments through
+the depth test. Intervening translucent geometry such as glass or water remains
+deferred; initial scene configurations must not rely on it for occlusion.
+
+The internal unoccluded mask need not be exported initially. Use it to measure:
+
+```text
+visibility_ratio = visible_target_pixels / unoccluded_target_pixels
+```
+
+This ratio is defined in the selected projection from the selected viewpoint. It
+can enforce difficulty visibility constraints without confusing distance or viewing
+angle with occlusion. Store the resulting counts and ratio in sample metadata. A
+zero unoccluded pixel count means that the target is outside the captured view or
+too small to occupy a pixel and must be handled explicitly rather than divided by.
+
+### Target-state metadata
+
+Agreed 2026-10-22: store the underlying target evidence and derive one unambiguous
+status instead of recording only a `visible` boolean. Each sample records at least
+`target_present`, `target_in_projection`, `visible_pixels`, `unoccluded_pixels`,
+`visibility_ratio` and `target_status`.
+
+Derive `target_status` in this order:
+
+| Status | Exact condition |
+|---|---|
+| `absent` | The scene intentionally contains no target. |
+| `out_of_view` | A target exists, but its geometry is outside the selected projection. |
+| `subpixel` | Target geometry intersects the projection, but the unoccluded mask contains zero pixels. |
+| `fully_occluded` | `unoccluded_pixels > 0` and `visible_pixels == 0`. |
+| `fully_visible` | `visible_pixels == unoccluded_pixels > 0`. |
+| `partially_visible` | `0 < visible_pixels < unoccluded_pixels`. |
+
+Set `visibility_ratio` to `null` when `unoccluded_pixels` is zero; otherwise it is
+`visible_pixels / unoccluded_pixels`. Reject a sample if either count is negative,
+if visible pixels exceed unoccluded pixels, or if its stored status and ratio do not
+match these rules. Exact equality defines `fully_visible` initially. If prototype
+tests reveal legitimate one-pixel instability, introduce an explicit, recorded
+tolerance later rather than silently changing the meaning.
+
+Use Minecraft/Fabric render-target and render-pipeline abstractions rather than raw
+OpenGL so the implementation remains compatible with the supported rendering
+backends. The first implementation should reuse Minecraft's block-model renderer
+for the one known target position instead of adding object IDs to every chunk
+vertex. Lock and record relevant graphics and transparency settings for a dataset.
+
+Mask rasterization is deterministic:
+
+- RGB and mask use identical camera transforms, viewport and source-face dimensions.
+- Render annotation masks without multisample anti-aliasing.
+- A pixel is positive when its centre produces a surviving target fragment.
+- Exported masks contain only `0` and `255`.
+- Reproject cube-face masks with nearest-neighbour categorical sampling; RGB may use
+  its configured image filter.
+
+For panoramic capture, produce visible and unoccluded masks for every frozen cube
+face, then reproject them through exactly the same cube-map directions as RGB. Do
+not create the panorama mask from the final composited RGB image.
+
+### Mask prototype success criteria
+
+The mask design is accepted only when one pinned Minecraft/mod/configuration build
+passes the following automated gate in both capture modes at their proposed default
+resolutions. Fixtures use fixed seeds, camera poses and block positions. Keep their
+expected counts/hashes or approved golden masks under version control where useful.
+
+| Criterion | Passing result |
+|---|---|
+| Output validity | RGB, visible mask and internal unoccluded mask have the configured dimensions; every exported mask pixel is exactly `0` or `255`. |
+| Open target | With no intervening geometry, the visible and unoccluded masks are pixel-identical and contain at least one positive pixel. |
+| Full opaque occlusion | The visible mask contains zero positive pixels while the unoccluded mask remains non-empty. |
+| Known half occlusion | A full-cube occluder covering a fixture-defined half of the projected target produces the approved golden visible mask exactly; its visible-pixel count differs from the golden count by at most one pixel. |
+| Irregular occluders | Fixed slab, stair, fence and cutout-foliage fixtures match their approved golden masks exactly on the pinned reference setup, with no positive pixels in manually identified definitely-occluded regions. |
+| Near, far and image-edge cases | Every target intended to occupy at least one output pixel produces a non-empty unoccluded mask; visible pixels stay inside that mask. Targets deliberately outside the projection produce an empty unoccluded mask and an explicit `out_of_view` status. |
+| RGB/mask alignment | A saved overlay for every fixture receives explicit human approval before its golden data is accepted; later runs must match that golden mask exactly. |
+| Panorama seams | A target crossing each tested cube-face boundary forms one connected panorama component where the target geometry itself is connected, with no duplicated component and no unlabeled gap wider than one output pixel. |
+| Frozen-scene determinism | Ten consecutive captures without advancing the world produce identical mask bytes, metadata and RGB bytes on the pinned reference setup. |
+| Cross-run reproducibility | Rebuilding each fixture in a fresh dataset-owned world on the same pinned setup reproduces its layout checksum and golden masks. |
+| Failure handling | Missing depth, incomplete cube faces, invalid dimensions, zero-area in-view targets and render/readback failures reject the sample with a recorded reason; no partial RGB/mask pair is accepted. |
+
+Sparse ray tests and known synthetic layouts may help diagnose failures, but rendered
+geometry remains authoritative when gameplay collision/outline shapes disagree.
+Record capture time and peak GPU memory for each fixture and mode. Performance is a
+required benchmark output, not yet a pass/fail threshold; set a production throughput
+gate only after the prototype establishes a measured baseline on this machine.
 
 ## Camera and selectable capture modes
 
@@ -303,6 +486,215 @@ portable dataset format and must not be hard-coded in readers.
 - Store paths in indexes relative to the dataset directory so datasets can move.
   JSONL records permit streaming without loading a single large JSON document.
 
+### Metadata contract
+
+Agreed 2026-10-22: use the package's PNG + JSONL layout as the canonical format.
+COCO, Croissant, Parquet or training-framework formats may be derived later; the
+generator does not depend on them. `dataset.json` is one JSON object. JSONL files
+use UTF-8 without a byte-order mark, contain one complete object per line and end
+every record with `\n`.
+
+All three record types carry a semantic `schema_version`. Readers reject an
+unsupported major version and tolerate unknown fields from compatible minor
+versions. Field names use `snake_case`. JSON numbers must be finite: do not emit
+`NaN` or infinity. Omit fields that do not apply; use `null` only where this spec
+defines it as meaningful.
+
+#### `dataset.json`
+
+The manifest stores resolved values, including defaults, rather than only the
+options explicitly supplied by the operator.
+
+| Field | Required content |
+|---|---|
+| `schema_version` | Metadata contract version. |
+| `dataset_id` | Unique immutable dataset identifier. |
+| `content_version` | Version assigned to these generated contents, independent of the schema version. |
+| `lifecycle` | `generating`, `complete` or `failed`. |
+| `created_at_utc`, `completed_at_utc` | RFC 3339 UTC timestamps; completion is `null` until terminal. |
+| `difficulty` | The one difficulty level represented by this dataset. |
+| `target` | Target block ID, allowed block states and target-present/absent quotas. |
+| `generator` | Complete resolved scene, arena, quota, seed and retry configuration plus algorithm versions. |
+| `capture` | Capture mode, output/source dimensions, projection parameters, mask convention, viewpoints and augmentations. |
+| `splits` | Requested ratios, grouping rule, split algorithm/version and final scene/sample counts. |
+| `software` | Minecraft, Fabric Loader, Fabric API, mod and Java versions; generator Git commit and dirty-worktree flag. |
+| `render_environment` | Graphics backend, GPU/driver, graphics/transparency settings, render distance, gamma, shaders and ordered resource/mod-pack identities with checksums where applicable. |
+| `storage` | Relative index/image roots, image encodings, sharding rule and exported channels. Do not store the machine-specific output root. |
+| `counts` | Requested, attempted, accepted, rejected and failed scene/sample totals with rejection reasons. |
+| `provenance` | Creation tool and any source/parent dataset IDs or derivations. Empty when this is an original capture. |
+| `integrity` | Hash algorithm (`sha256` initially), index byte counts/hashes and final validation result. Populated at completion. |
+
+The manifest may record machine and performance information needed to reproduce or
+benchmark capture, but it must not include usernames, absolute home paths or other
+unnecessary host-specific data. Dataset licence and intended-use fields are required
+before external publication, but may remain explicitly `unassigned` for local pilots.
+
+#### `scenes.jsonl`
+
+One scene record describes one world arrangement shared by all of its viewpoints.
+
+| Field | Required content |
+|---|---|
+| `schema_version`, `scene_id` | Schema version and ID unique within the dataset. |
+| `split`, `difficulty` | Scene-level split and difficulty; all related samples inherit them. |
+| `generation` | Scene index, accepted attempt index, independent layout/target/viewpoint seeds and their derivation algorithm version. |
+| `template` | Immutable template ID, version and SHA-256 checksum. |
+| `arena` | Dimension ID, integer origin/bounds, configured core size and context margin. |
+| `source_patch` | Level-5 source world seed, dimension, bounds, generator version and patch ID; omitted otherwise. |
+| `target` | Presence, namespaced block ID, canonical block state and integer block position `[x,y,z]`; position/state are omitted when absent. |
+| `environment` | Resolved time, weather, gamerules and other scene-varying world settings. |
+| `layout_sha256` | Hash of the canonical reconstructed block layout representation. |
+| `accepted_sample_count` | Number of base samples belonging to the scene after validation. |
+
+Do not list every arena block in the ordinary scene record. Template identity,
+versioned generation parameters and seeds reproduce the layout; `layout_sha256`
+verifies it. A full block snapshot may be stored as an optional diagnostic artifact.
+The canonical layout serialization used for hashing must be versioned before the
+first reproducibility test.
+
+#### `samples.jsonl`
+
+One sample record describes one accepted RGB/mask pair. Failed attempts never appear
+here; record them in the generation log and aggregate their reasons in the manifest.
+
+| Field | Required content |
+|---|---|
+| `schema_version`, `sample_id`, `scene_id` | Schema version, sample ID and owning scene ID. |
+| `split`, `viewpoint_index` | Inherited scene split and zero-based viewpoint index. |
+| `files` | `rgb` and `mask` descriptors containing relative path, media type, width, height, byte length and SHA-256 of finalized PNG bytes. |
+| `camera` | Player and eye positions, eye height, yaw/pitch and world-space forward/right/up unit vectors. |
+| `projection` | Capture mode plus the manifest projection reference and all per-sample overrides, if any. |
+| `capture` | Operation ID, world tick, render interpolation value and readiness/settling result. |
+| `target` | Presence/projection evidence, target status, mask counts, ratio and mask-derived spatial statistics. |
+| `conditions` | Scene time/weather plus camera-local biome, sky/block light and RGB mean luminance where available. |
+| `augmentation` | Source sample ID, transform and parameters for derived images; omitted for base captures. |
+
+The `target` object contains:
+
+- `target_present`, `target_in_projection`, `visible_pixels`,
+  `unoccluded_pixels`, `visibility_ratio` and `target_status` as defined above.
+- `visible_bbox_xywh` as the smallest integer half-open rectangle containing all
+  positive saved-mask pixels, or `null` for an empty mask.
+- `visible_centroid_xy` as the arithmetic mean of positive pixel centres, or `null`
+  for an empty mask.
+
+Bounding boxes and centroids are calculated from the finalized saved mask, not from
+an independent geometric projection. The generator validates them by reading or
+equivalently hashing/counting the finalized pixel buffer before accepting the record.
+
+Future level-6 observation records add `episode_id`, zero-based
+`observation_index`, and `action_before_observation`. The action object records the
+requested action and parameters, completed amount/ticks and termination reason.
+Levels 1–5 omit these fields.
+
+#### Coordinates and units
+
+- World and block arrays use `[x,y,z]`: positive X is east, positive Y is up and
+  positive Z is south, matching Minecraft.
+- Positions are in blocks, distances in blocks, durations in game ticks and angles
+  in degrees. Field names include a unit suffix where ambiguity is likely.
+- Minecraft yaw `0` faces south (`+Z`); yaw increases toward west (`-X`). Pitch `0`
+  is horizontal, positive pitch looks down and negative pitch looks up.
+- Image origin is the upper-left. X increases right, Y increases down, and integer
+  pixel `(x,y)` represents centre `(x+0.5,y+0.5)`.
+- `[x,y,width,height]` boxes cover half-open ranges `[x,x+width)` and
+  `[y,y+height)`.
+- Any exported matrix states its semantic direction, row/column ordering and clip
+  depth convention. Analytic projection parameters and camera basis vectors remain
+  canonical across graphics backends.
+- Paths are dataset-root-relative, use `/`, and cannot be absolute or contain `..`.
+- Timestamps are RFC 3339 UTC strings.
+
+Perspective projection metadata supplies width/height, horizontal and vertical FOV,
+pixel principal point, and focal lengths in pixels. Panorama metadata supplies the
+projection/version, longitude and elevation bounds, blind-sector definition,
+cube-face size/orientations and pixel-centre/reprojection convention. Fixed values
+live in the manifest; a sample refers to that configuration rather than duplicating
+it, while its camera pose and any actual override remain in its record.
+
+#### File integrity and commit order
+
+SHA-256 is mandatory for every exported RGB and mask PNG. Keep the internal
+unoccluded mask only for validation by default; store its pixel count, not its image
+file. Distinguish the file hashes, layout hash and resolved-configuration hash.
+
+Write each image to a temporary file, finish and validate it, atomically move it to
+its final relative path, then append the sample record. A record must never point to
+a partial file. Before marking the manifest `complete`, validate JSONL syntax,
+unique IDs, scene references, split consistency, file dimensions/hashes, target
+invariants, quotas and split leakage; then store final index hashes in the manifest.
+
+### Dataset inspection and scene replay
+
+Agreed 2026-10-22: the package is not complete without a practical way to inspect
+generated data. Provide both an offline visual inspector and deterministic in-game
+scene replay. Neither tool modifies canonical images, indexes or a completed
+manifest.
+
+#### Local visual inspector
+
+The inspector opens a dataset directory locally and presents samples in a browser
+or equivalent desktop view without uploading data or requiring an external service.
+It reads the manifest and streams/indexes JSONL records instead of loading every
+full-resolution image into memory.
+
+For each sample it displays:
+
+- RGB alone, mask alone and an RGB/mask overlay with adjustable opacity.
+- Native-resolution and zoomed views; mask zoom uses nearest-neighbour sampling so
+  inspection does not invent grey or shifted label pixels.
+- Target status, visible/unoccluded pixel counts, visibility ratio, mask bounding
+  box and centroid.
+- Camera pose, projection, split, scene/sample IDs, target position and relevant
+  lighting/world metadata.
+- Every viewpoint from the same scene in one grid, with direct previous/next scene
+  and sample navigation.
+
+It supports filtering by split, target status, visibility-ratio range, scene/sample
+ID and other indexed scalar fields. It also supports seeded random and stratified
+review selection so a reviewer can deliberately inspect absent, fully visible,
+partially visible, fully occluded, edge/seam and low-pixel-count cases rather than
+only the first records.
+
+Mask overlays are generated on demand and are not stored as additional canonical
+images. The inspector clearly reports missing files, hash/dimension mismatches,
+invalid masks and inconsistent metadata instead of displaying them as valid samples.
+
+#### Review records
+
+The inspector can mark a sample or scene `pass`, `fail` or `uncertain` with a reason
+code and optional note. Save these decisions to a configurable sidecar review root,
+keyed by dataset ID, manifest hash, scene/sample ID and inspector version. Do not
+write them into the immutable dataset directory. Reviews are audit evidence, not
+label replacements; fixing a failed sample requires a new dataset or explicitly
+versioned derived dataset.
+
+#### In-game replay
+
+Add a debug command/API operation that loads a scene descriptor into a dataset-owned
+world, rebuilds it using its recorded template, seeds and parameters, checks the
+layout checksum, and places the player at any recorded viewpoint. It must refuse to
+replay in a personal/non-owned save and must report unavailable template/generator
+versions instead of approximating the scene.
+
+The replay controls allow cycling through a scene's viewpoints and requesting a
+fresh RGB/mask capture for comparison. A replay is considered exact only when the
+layout checksum matches and, on the pinned render setup, regenerated masks match the
+stored masks. Different graphics hardware may be inspected visually but cannot be
+claimed as byte-identical without passing the same reproducibility check.
+
+#### Inspector success criteria
+
+| Criterion | Passing result |
+|---|---|
+| Pair inspection | Any valid sample can show RGB, binary mask and aligned overlay at native resolution. |
+| Scene inspection | Opening a scene exposes all and only its indexed viewpoints with their metadata. |
+| Search and sampling | Exact ID lookup, status/split/range filters, seeded random selection and stratified selection return reproducible results. |
+| Integrity reporting | Missing, corrupt, dimension-mismatched or hash-mismatched files are visibly rejected, not silently skipped. |
+| Review safety | Saving a review changes no byte under a completed dataset directory and the sidecar identifies the exact manifest reviewed. |
+| Replay safety | Scene replay runs only in a verified dataset-owned world. |
+| Replay fidelity | The reference fixtures reproduce their layout checksums and stored masks on the pinned setup. |
+
 The manifest lifecycle is `generating`, `complete` or `failed`. Create it as
 `generating`; mark it `complete` only after validating indexes and every required
 RGB/mask pair. Training tools accept only `complete` datasets by default. A completed
@@ -370,6 +762,171 @@ smoke run may override it with only a few scenes.
   and mark it `failed`; never report a smaller dataset as successful without an
   explicit configuration change.
 
+## Environment control
+
+Agreed 2026-10-22: build a synchronous environment API inside the mod and keep it
+independent from any particular controller. Bulk dataset generation calls this Java
+API directly. In-game commands provide manual/debug access. A local external adapter
+for a future Python agent can be added after the internal API works.
+
+The conceptual interface is:
+
+```text
+reset(scene configuration) -> scene state
+setViewpoint(camera pose)   -> resolved camera pose
+observe()                   -> captured observation
+step(action)                -> resulting state and observation
+status()                    -> current operation and last error
+```
+
+Exact Java types and method names remain implementation details. Scene generation
+must not depend on chat commands or an external transport.
+
+### Synchronization and operation state
+
+- Accept one state-changing operation at a time. Each request completes only after
+  its world changes/actions, readiness checks and requested capture have completed.
+- Express action duration in game ticks rather than wall-clock milliseconds. Record
+  requested and completed ticks and associate results with an operation/request ID.
+- Release movement inputs after each step. Between steps the controller commands no
+  movement; whether the wider world is paused between requests remains to be tested
+  and configured rather than assumed.
+- Wait for required chunks, lighting and client rendering to become ready after a
+  reset or teleport. Use readiness conditions with a timeout; do not rely only on a
+  fixed sleep. A configurable settling-tick minimum may supplement those conditions.
+- Treat the six renders of one panorama and their masks as one atomic capture with
+  a fixed camera origin, game state and interpolation time.
+
+The initial operation states are:
+
+```text
+IDLE -> PREPARING_SCENE -> READY -> ACTING -> SETTLING -> CAPTURING -> READY
+                              \______________________________________-> FAILED
+```
+
+Cancellation and recovery semantics remain to be designed. Invalid operations for
+the current state return an error instead of overlapping or being silently queued.
+
+### Dataset viewpoints and environment episodes
+
+- For levels 1–5, place the player/camera directly at each validated viewpoint.
+  These independent samples do not claim the player walked between positions.
+- For level 6, use normal player movement, collision and physics. Preserve the
+  ordered `observation -> action -> observation` sequence and resulting player pose.
+- The mod owns world mutation on the logical server side and capture on the client
+  side. A coordinator must confirm both refer to the same scene/tick before export.
+
+### Initial action model
+
+| Action | Configurable parameter | Meaning |
+|---|---|---|
+| `TURN` | yaw degrees | Turn in place. Positive/negative convention must be documented. |
+| `LOOK` | pitch degrees | Change look pitch within Minecraft limits. |
+| `MOVE_FORWARD` | game ticks | Apply forward player movement for the requested duration. |
+| `WAIT` | game ticks | Advance without commanded movement. |
+| `STOP` | none | Release all movement inputs. |
+| `MINE` | game ticks | Deferred until mining is in scope. |
+
+Action ranges and optional discrete presets remain configurable. Degree/tick actions
+are the environment contract; keyboard press duration is not the public abstraction.
+
+Use Minecraft Java Edition's existing auto-jump setting as the first movement helper.
+Make it configurable per environment run, initially enabled for assisted movement,
+and record its resolved value in episode metadata. Test that programmatic forward
+movement invokes the same vanilla behaviour in Minecraft 26.3. If the mod temporarily
+changes a user's option, restore the previous value when the run ends.
+
+Vanilla auto-jump is movement assistance, not navigation: it does not choose turns,
+targets or routes. Do not add custom jump/pathfinding logic unless tests show vanilla
+auto-jump cannot meet the environment requirement; any replacement would require a
+new recorded controller version.
+
+### Control surfaces
+
+- Add `/honeyfactory` commands for starting/status/cancelling dataset generation,
+  resetting a scene and requesting a capture. Exact command syntax comes with the
+  package roadmap and implementation.
+- Run bulk generation in the mod to avoid a Python round trip for every scene/view.
+- Design for a future loopback-only external control adapter. Newline-delimited JSON
+  over local TCP is the current proposal, but its port, messages, authentication and
+  lifecycle are deferred. It must call the same environment API as other controls.
+- The first implementation does not require the external adapter or a live model.
+
+## Package-wide definition of done
+
+Agreed 2026-10-22: `honey-factory` is ready for phase-1 dataset production only when
+all mandatory gates below pass. A successful build or one convincing screenshot is
+not package completion. Levels 1–5, both capture modes, the internal environment API
+and inspection tooling are mandatory. Level 6 and the external controller adapter
+are separate extension gates.
+
+### Mandatory functional gates
+
+| Area | Passing result |
+|---|---|
+| Build and launch | A clean checkout builds, runs its automated tests and launches the pinned Minecraft 26.3 development client with the documented Java/Fabric versions. |
+| Configuration | Every agreed generator, world, viewpoint, lighting, capture, resolution, quota, split and output-root setting is configurable, validated before generation and written back as a resolved manifest value. Invalid settings fail before world mutation or file creation beyond a diagnostic manifest. |
+| World safety | Generation and replay refuse non-dataset-owned worlds. Sentinel blocks/entities immediately outside configured owned bounds remain unchanged through reset, failure and cancellation tests. Temporarily changed player/client settings are restored after normal completion and handled explicitly after failure. |
+| Scene generation | Levels 1–4 rebuild their template and deterministic block delta; level 5 copies a recorded natural patch into the isolated arena. Accepted scenes satisfy their difficulty and target-presence rules. |
+| Reproducibility | Rebuilding every fixed acceptance fixture from a fresh dataset-owned world reproduces its layout checksum. On the pinned render setup it also reproduces stored masks. |
+| Perspective capture | `PERSPECTIVE_90` produces aligned RGB/mask pairs at its default and at one non-default valid resolution. |
+| Panorama capture | `PANORAMA_310` atomically captures and reprojects all cube faces, excludes the rear blind sector and produces aligned RGB/mask pairs at its default and at one non-default valid face/output resolution. |
+| Mask correctness | Every mask-prototype success criterion above passes, including translucency, full/partial occlusion, irregular geometry, image edges and panorama seams. |
+| Target metadata | Status, counts, ratio, bounding box and centroid validate against the finalized mask for every accepted sample; all six target statuses have explicit fixtures. |
+| Dataset integrity | The writer produces the specified portable tree and metadata contract. The final validator reports zero schema, hash, dimension, reference, quota, target-invariant or split-leakage errors before lifecycle becomes `complete`. |
+| Environment API | `reset`, `setViewpoint`, `observe`, `step` and `status` obey the synchronous operation model. TURN, LOOK, MOVE_FORWARD, WAIT and STOP fixtures report requested/completed ticks or degrees; inputs are released afterward and vanilla auto-jump is verified. |
+| Inspection | The local inspector and in-game replay pass every inspection/replay success criterion above, including immutable sidecar reviews. |
+| Documentation | A new operator can build the mod, create the dataset-owned world, run the acceptance smoke command, generate a pilot, validate it, inspect it and replay a scene using repository documentation alone. |
+
+### Acceptance runs
+
+Use three increasingly expensive gates; later gates do not replace earlier fixture
+coverage.
+
+1. **Automated fixtures:** run unit/integration tests and every fixed mask, projection,
+   reset, metadata, environment and safety fixture. This is the normal development
+   gate.
+2. **Configuration matrix smoke:** generate 10 accepted scenes for every combination
+   of levels 1–5 and both capture modes using 8 base viewpoints. Each run uses exactly
+   8 target-present and 2 target-absent scenes, producing 800 base RGB/mask pairs in
+   total if no configured optional hidden views are added. Validate every dataset.
+3. **Production-scale pilot:** generate one uninterrupted dataset with level 5,
+   `PANORAMA_310`, the proposed default resolutions, 1,000 accepted scenes, 8
+   viewpoints and the default 80/20 target-present/absent balance. The expected base
+   output is 8,000 accepted RGB/mask pairs. The run passes only if it reaches the
+   exact quotas, completes validation and lifecycle transition, stays within the
+   preflight disk reserve, and encounters no out-of-memory or unrecovered rendering
+   failure.
+
+The production pilot is an acceptance workload, not a claim that 1,000 scenes are
+enough for final model training. Changing this workload requires an explicit spec
+revision rather than silently reducing it after a slow run.
+
+### Human audit and measured capacity
+
+After automated validation, inspect all fixed visual fixtures and a seeded,
+stratified set of 200 production-pilot samples. The selection must cover every split
+and target status present, visibility-ratio bins, low target-pixel counts, panorama
+seams and multiple source patches. Every reviewed item must be `pass`; investigate
+and resolve `fail` or `uncertain` results before accepting the package. Save the
+sidecar review record and selection seed with the acceptance report.
+
+The matrix smoke and production pilot report total duration, accepted scenes and
+samples per hour, mean and percentile capture times, rejection counts/reasons, PNG
+size distribution, final disk use and peak process RAM/GPU memory where measurable.
+There is no invented throughput threshold before the first reference benchmark.
+After that run, adopting a minimum throughput or maximum latency requires a recorded
+spec decision and must not weaken correctness, safety or integrity gates.
+
+### Separate extension gates
+
+Level 6 is complete only after episode length, discovery/success rules and episode
+quotas are specified, and deterministic fixtures show that targets initially marked
+`out_of_view` or `fully_occluded` can become visible through the allowed actions
+without mining. The future loopback adapter additionally requires its own protocol,
+authentication, lifecycle and equivalence tests against the internal API. Neither is
+required to declare the phase-1 levels 1–5 dataset generator complete.
+
 ### Research references
 
 - [Eye structure shapes neuron function in Drosophila motion vision](https://www.nature.com/articles/s41586-025-09276-5):
@@ -383,6 +940,15 @@ smoke run may override it with only a few scenes.
   phases and backend abstractions. The reviewed pages target 26.2; our mod targets
   26.3, so check the pinned game's APIs and use its rendering abstraction rather than
   assuming raw OpenGL access.
+- [Minecraft 26.3 Snapshot 2](https://feedback.minecraft.net/hc/en-us/articles/47030118645389-Minecraft-Java-Edition-26-3-Snapshot-2):
+  documents the new order-independent transparency path and its shader changes. The
+  annotation pass must not infer target labels from the final translucent composite.
+- [Minecraft Raytrace dataset](https://huggingface.co/datasets/shinohararin/minecraft-raytrace):
+  demonstrates ray-derived spatial labels, but its coarse sampling also supports
+  keeping per-pixel canonical masks on the render path instead.
+- [Minecraft Java Edition auto-jump option](https://minecraft.wiki/w/Options.txt_%28Java_Edition%29):
+  records the `autoJump` client option. Behaviour must still be verified in our
+  programmatic control path and pinned Minecraft version.
 
-Mask generation, the full metadata schema, world-region defaults, controls, split
-ratios and dataset sizes remain open.
+Exact 26.3 rendering hooks, world-region defaults, external protocol, level-6 episode
+limits and final model-training dataset sizes remain open.
