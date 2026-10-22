@@ -2,6 +2,9 @@
 
 Fabric mod for a planned dataset of honey blocks with varying amounts of occlusion.
 
+The [package specification](docs/spec.md) records the agreed dataset difficulty levels
+and will expand as the remaining design choices are settled.
+
 The common entrypoint logs startup; the client entrypoint has no behaviour yet.
 See the proposed scenario generation and frame capture in the
 [architecture](../../docs/architecture.md).

@@ -41,13 +41,38 @@ remain open choices. Revisit them while implementing the first modes.
 
 Add source modules with working code and tests. Keep future design notes here.
 
+### Eye-model sampling
+
+Agreed 2026-10-22: expose an eye-model sampling-density setting in `fly-vision`,
+independent of the Minecraft capture resolution. The collaborator will define its
+parameterisation, defaults and supported biological or experimental presets.
+
+Capture resolution controls source-image detail. Eye sampling controls the spatial
+sampling layout used to produce receptor signals; it is also separate from temporal
+sampling rate and the choice of receptor channels. Record the eye configuration and
+model version with derived data so cached inputs remain traceable to their sources.
+
+Higher-resolution images can feed the same fixed eye layout. With unchanged receptor
+signal count, update rate and network, the extra work occurs in capture/preprocessing,
+not the network's per-step computation. Increasing eye sampling density may change
+input dimensions and cost; a connectome with fixed sensory neurons requires an
+explicit mapping rather than assuming arbitrary sample counts fit its inputs.
+
+Cache derived inputs for offline training where useful. Regenerate them when source
+data or the eye configuration changes. This setting belongs to `fly-vision`; the mod
+exports images and projection metadata without choosing the receptor layout.
+
 ## honey-factory
 
 The proposed Fabric mod would:
 
 - Generate scenes containing honey blocks with varying amounts of occlusion, using common code.
-- Capture colour frames, depth, block IDs and sky buffers on the client, with ground-truth
-  annotations for honey-block locations.
+- Capture RGB frames, visible-target masks and scene/camera metadata on the client.
+  The initial dataset excludes depth images. Additional channels such as block IDs
+  and sky buffers remain future options, subject to the collaborator's input needs.
+
+See the [package specification](../packages/honey-factory/docs/spec.md) for agreed
+capture requirements.
 
 Define the dataset format and storage in [#1](https://github.com/thedeadbolt/MineSophila/issues/1).
 
