@@ -64,6 +64,10 @@ mod-build:
 mod-test:
     cd {{mod_dir}} && ./gradlew test
 
+# Run client game tests (opens a Minecraft window in an isolated run directory)
+mod-gametest:
+    cd {{mod_dir}} && ./gradlew runClientGameTest
+
 # Launch a dev Minecraft client with the mod loaded
 mod-client:
     cd {{mod_dir}} && ./gradlew runClient

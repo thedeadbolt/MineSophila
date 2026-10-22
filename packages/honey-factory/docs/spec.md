@@ -950,5 +950,7 @@ required to declare the phase-1 levels 1–5 dataset generator complete.
   records the `autoJump` client option. Behaviour must still be verified in our
   programmatic control path and pinned Minecraft version.
 
-Exact 26.3 rendering hooks, world-region defaults, external protocol, level-6 episode
+The 26.3 rendering hooks found by M0 are recorded in the
+[M0 findings](m0-rendering-feasibility.md) and accepted in ADR 0005, which requires
+improved transparency for capture. World-region defaults, external protocol, level-6 episode
 limits and final model-training dataset sizes remain open.

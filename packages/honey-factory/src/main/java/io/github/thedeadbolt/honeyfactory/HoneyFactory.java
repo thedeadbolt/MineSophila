@@ -1,6 +1,8 @@
 package io.github.thedeadbolt.honeyfactory;
 
+import io.github.thedeadbolt.honeyfactory.m0.M0Fixture;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 
 import net.minecraft.resources.Identifier;
 
@@ -18,6 +20,7 @@ public class HoneyFactory implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		LOGGER.info("Honey Factory loaded");
+		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> M0Fixture.register(dispatcher));
 	}
 
 	public static Identifier id(String path) {

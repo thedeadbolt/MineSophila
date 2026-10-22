@@ -6,9 +6,9 @@ The [package specification](docs/spec.md) records the agreed behaviour and accep
 criteria. The [implementation roadmap](docs/roadmap.md) orders the work into gated,
 reviewable milestones.
 
-The common entrypoint logs startup; the client entrypoint has no behaviour yet.
-See the proposed scenario generation and frame capture in the
-[architecture](../../docs/architecture.md).
+The common entrypoint logs startup. The only feature is the temporary
+[M0 rendering-feasibility fixture](docs/m0-rendering-feasibility.md); see the proposed
+scenario generation and frame capture in the [architecture](../../docs/architecture.md).
 
 This is a Gradle project, separate from the uv workspace. It targets Minecraft 26.3 and
 Java 25; dependency versions live in `gradle.properties`. Java 17+ can start the wrapper;
@@ -33,6 +33,16 @@ Run from the repository root:
 just mod-test      # JUnit tests
 just mod-build     # compile, test and package the mod
 just mod-client    # launch a development Minecraft client
+just mod-gametest  # run client game tests, including the M0 fixtures
 ```
+
+`mod-gametest` opens a Minecraft window, creates a fresh world under
+`build/run/clientGameTest/` and writes M0 captures and `report.json` to its
+`honey-factory-m0/` directory. To run the fixture by hand, enable *Improved Transparency* in the video settings (capture
+refuses classic transparency; see ADR 0005), create a world named `honey-factory-m0` in
+the development client, then run
+`/honeyfactory m0 fixture <open|partial|full> @s` followed by
+`/honeyfactory_capture <label> <width> <height> <repeats>`. The fixture command refuses
+any other world.
 
 See the [test guide](../../tests/README.md) and [Fabric decision](../../docs/adr/0002-fabric-mod-loader.md).

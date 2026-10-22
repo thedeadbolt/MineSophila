@@ -6,6 +6,7 @@ Find package tests and workspace checks here.
 |---|---|---|
 | Python package | `tests/fly-vision/` | `just test fly-vision` |
 | Java package | `tests/honey-factory/java/` | `just mod-test` |
+| Minecraft client game tests | `tests/honey-factory/gametest/` | `just mod-gametest` |
 | Workspace / integration | `tests/integration/` | `just test-integration` |
 | End-to-end (planned) | `tests/e2e/` | `just test-e2e` |
 | All Python suites | `tests/` | `just test-all` |
@@ -21,7 +22,9 @@ The Python package test checks version metadata; the workspace smoke test import
 `fly_vision` after installation. The Java test checks the identifier helper's mod namespace.
 Add tests for vision processing, dataset generation and package interactions as you implement them.
 
-There are no end-to-end or live Minecraft tests yet. Running `just test-e2e` or
+The Minecraft client game test runs the M0 rendering fixtures in a fresh world. It needs
+a display and GPU, and `just mod-build` does not run it. There are no Python end-to-end
+or live Minecraft tests yet. Running `just test-e2e` or
 `just test-minecraft` exits with pytest's “no tests collected” status (5).
 The full Python suite includes the e2e directory and will discover tests added there.
 

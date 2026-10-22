@@ -1,0 +1,17 @@
+{
+	"schemaVersion": 1,
+	"id": "honey_factory_gametest",
+	"version": "0.0.0",
+	"name": "Honey Factory client game tests",
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"fabric-client-gametest": [
+			"io.github.thedeadbolt.honeyfactory.gametest.M0RenderingFeasibilityTest"
+		]
+	},
+	"depends": {
+		"honey_factory": "*",
+		"fabric-api": "*"
+	}
+}

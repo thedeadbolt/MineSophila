@@ -22,6 +22,23 @@ loom {
 	}
 }
 
+// Client game tests launch Minecraft, so `build` does not run them; use runClientGameTest.
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "honey_factory_gametest"
+		enableGameTests = false
+		enableClientGameTests = true
+	}
+}
+
+sourceSets {
+	gametest {
+		java.setSrcDirs(['../../tests/honey-factory/gametest/java'])
+		resources.setSrcDirs(['../../tests/honey-factory/gametest/resources'])
+	}
+}
+
 dependencies {
 	// Set dependency versions in gradle.properties.
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
