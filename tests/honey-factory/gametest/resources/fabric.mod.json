@@ -10,7 +10,8 @@
 			"io.github.thedeadbolt.honeyfactory.gametest.M2EnvironmentTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M3MaskGateTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M3DatasetTest",
-			"io.github.thedeadbolt.honeyfactory.gametest.M4DatasetTest"
+			"io.github.thedeadbolt.honeyfactory.gametest.M4DatasetTest",
+			"io.github.thedeadbolt.honeyfactory.gametest.M5PanoramaGateTest"
 		]
 	},
 	"depends": {

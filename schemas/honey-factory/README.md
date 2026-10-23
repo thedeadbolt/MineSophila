@@ -105,3 +105,43 @@ Bounds are inclusive; for scenes they are the arena's reset volume, recorded as 
 record's `arena.bounds`. Each non-air block inside them appears once, ordered by y, then z,
 then x. Block states are `namespace:path` with properties sorted by name, for example
 `minecraft:oak_stairs[facing=north,half=bottom]`.
+
+### `equirectangular-310x160-v1` and `cube-faces-v1`: panoramic capture
+
+A `PANORAMA_310` image of width `W` and height `H` is level. Its frame is the camera's
+horizontal right and forward, from the yaw alone, and world up; the camera's pitch does
+not tilt it. Output pixel `(px, py)`, with pixel centres at `+ 0.5`, looks along:
+
+```text
+longitude = -155 + 310 px / W     degrees, positive to the right
+elevation =   90 - 160 py / H     degrees, positive up
+direction = cos(elevation) (sin(longitude) right + cos(longitude) forward) + sin(elevation) up
+```
+
+The 50-degree sector behind the camera and everything below −70 degrees are not
+captured. The left and right image edges border the blind sector and do not wrap.
+
+The six square cube faces (`cube-faces-v1`) are 90-degree renders in this order, given as
+Minecraft yaw relative to the camera and absolute pitch:
+
+| Face | Yaw offset | Pitch | Forward | Right | Up |
+|---|---:|---:|---|---|---|
+| front | 0 | 0 | forward | right | up |
+| right | 90 | 0 | right | −forward | up |
+| back | 180 | 0 | −forward | −right | up |
+| left | 270 | 0 | −right | forward | up |
+| up | 0 | −90 | up | right | −forward |
+| down | 0 | 90 | −up | right | forward |
+
+Each output pixel samples the face whose forward axis is closest to its direction; ties go
+to the earlier face. Its face coordinates `f = S/2 (1 + a)` horizontally and `S/2 (1 − b)`
+vertically, where `a` and `b` are the direction's right and up components over its forward
+component, are quantized to `q = round(256 f)`:
+
+- **Masks (`nearest-v1`):** the face pixel `q >> 8`, clamped to the face, so labels stay 0
+  or 255 and the visible mask stays inside the unoccluded mask.
+- **RGB (`bilinear-face-clamped-v1`):** with `s = q − 128`, the face pixels `s >> 8` and
+  the next one along each axis are weighted by `w = s & 255` out of 256. At the face border
+  the weight drops to 0 rather than reading the neighbouring face. Each channel is
+  `(Σ value · weight + 32768) >> 16`.
+

@@ -344,13 +344,13 @@ the renderer is not implemented yet.
   Visibility labels refer to the selected mode: a target outside the 90-degree
   view may be visible in the 310-degree view.
 
-| Mode | Required horizontal coverage | Proposed projection | Capture approach |
+| Mode | Required horizontal coverage | Projection | Capture approach |
 |---|---|---|---|
 | `PERSPECTIVE_90` | 90 degrees centred on the camera's forward direction | Rectilinear perspective | One forward render |
 | `PANORAMA_310` | 310 degrees centred on the camera's forward direction, leaving a 50-degree rear blind sector | Equirectangular (longitude/latitude) | Six square 90-by-90-degree renders from one position, reprojected into one panorama |
 
-The mode names, horizontal-FOV convention and implementation design below are
-proposals. Do not interpret 90 as an unverified Minecraft FOV-slider setting.
+Both modes are implemented (M3, M5). Do not interpret 90 as a Minecraft FOV-slider
+setting.
 For perspective output with aspect ratio W/H, a 90-degree horizontal field implies
 vertical FOV = 2 atan(tan(45 degrees) × H/W).
 
@@ -408,7 +408,13 @@ Changing the mode should be sufficient to select valid defaults for that mode;
 explicit resolution overrides can remain available. It must not require editing
 the scene generator or downstream file-writing logic.
 
-### Proposed 310-degree capture
+### 310-degree capture
+
+Implemented in M5 ([findings](m5-panoramic-capture.md), ADR 0010). The panorama is level,
+like vanilla's panorama screenshot: longitude is measured around world up from the
+camera's yaw, and the camera's pitch does not tilt it. The exact projection, face order
+and sampling are `equirectangular-310x160-v1` and `cube-faces-v1` in the
+[data contract](../../../schemas/honey-factory/README.md).
 
 1. Render forward, backward, left, right, up and down into six square off-screen
    targets. Each face has a 90-degree horizontal and vertical projection.
@@ -424,9 +430,8 @@ the scene generator or downstream file-writing logic.
    never bilinearly blend block IDs or binary labels. Define edge sampling alongside
    RGB filtering so tiny targets and cube-face seams remain correctly labelled.
 
-Proposed vertical coverage is elevation -70 through +90 degrees, based on the
-research below. This is pending discussion, along with resolution presets and RGB
-file encoding (lossless RGB PNG is the current recommendation). With that vertical
+Vertical coverage is elevation -70 through +90 degrees, based on the research below.
+RGB files are lossless PNG. With that vertical
 range, equal horizontal/vertical angular increments imply an aspect ratio of 310:160.
 Panorama pixels do not represent equal solid angles, so raw pixel area must not be
 treated as angular target area or compared directly across projections.
@@ -437,8 +442,8 @@ modes use a single origin at player eye height. The collaborator's eye model han
 receptor sampling; stereo capture and biologically exact eye boundaries are separate
 future choices. A panorama also cannot recover UV or polarisation from RGB.
 
-Six scene renders plus reprojection cost more than a single render; benchmark capture
-time and memory. Raw cubemap export is optional and remains undecided. Rendering all
+Six scene renders plus reprojection cost more than a single render; the M5 findings
+record the measured capture time and memory. Raw cube faces are a debug output only. Rendering all
 faces must load/render geometry behind and above the player rather than reusing only
 the forward view's culling results. Verify the hooks and off-screen targets against
 Minecraft 26.3 before committing to an implementation.

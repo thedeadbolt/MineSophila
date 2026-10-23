@@ -12,22 +12,29 @@ import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Synchronous capture of RGB, the visible-target mask and the internal unoccluded-target
- * mask from the current camera, all from one frozen frame.
+ * mask from the current camera position, all from one frozen world state.
  *
  * <p>Follows vanilla's panorama screenshot sequence: resize the main render target, use
- * panoramic camera mode (no hand, no FOV effects), then update, extract and render the
- * level between client frames. View bobbing, the block outline and section fade-in are
- * switched off for the capture and restored afterwards. The projection's vertical field of view replaces
- * panoramic mode's fixed 90 degrees through {@code CameraMixin}, so non-square
- * perspective outputs keep their exact 90-degree horizontal field of view.
+ * panoramic camera mode (no hand, no FOV effects), then for each of the projection's views
+ * turn the player to the view's yaw and pitch and update, extract and render the level
+ * between client frames. Every view renders with the same tick and interpolation, so
+ * nothing moves between them. The player's rotation is restored afterwards, as are view
+ * bobbing, the block outline and section fade-in, which are switched off for the capture.
+ * The view's vertical field of view replaces panoramic mode's fixed 90 degrees through
+ * {@code CameraMixin}, so non-square perspective outputs keep their exact 90-degree
+ * horizontal field of view. The projection then assembles the views into the output.
+ *
+ * <p>A capture is atomic: if any view fails, no images are returned.
  *
  * <p>Call {@link #capture} on the client thread at the end of a client tick.
  */
@@ -37,9 +44,32 @@ public final class CaptureService {
 	public static final double PARTIAL_TICK = 1.0;
 
 	private static @Nullable String injectedFailure;
+	private static int injectedFailureView;
 
-	/** One capture; times are CPU wall time for render submission and for readback. */
-	public record Capture(CapturedImages images, long worldTick, double partialTick, long renderNanos, long readbackNanos) {
+	/**
+	 * One capture: the output images and the rendered views they were assembled from. Times
+	 * are CPU wall time for render submission and readback, summed over views, and for
+	 * assembly.
+	 */
+	public record Capture(CapturedImages images, List<CapturedImages> views, long worldTick, double partialTick, long renderNanos, long readbackNanos, long assembleNanos) {
+	}
+
+	/** The player's rotation, saved before the views turn it. */
+	private record Rotation(float yaw, float pitch, float yawO, float pitchO) {
+		static Rotation of(LocalPlayer player) {
+			return new Rotation(player.getYRot(), player.getXRot(), player.yRotO, player.xRotO);
+		}
+
+		static void turn(LocalPlayer player, float yaw, float pitch) {
+			new Rotation(yaw, pitch, yaw, pitch).restore(player);
+		}
+
+		void restore(LocalPlayer player) {
+			player.setYRot(this.yaw);
+			player.setXRot(this.pitch);
+			player.yRotO = this.yawO;
+			player.xRotO = this.pitchO;
+		}
 	}
 
 	private CaptureService() {
@@ -56,7 +86,13 @@ public final class CaptureService {
 
 	/** Makes the next capture fail with {@code reason}, for failure-handling tests. */
 	public static void failNextCapture(String reason) {
+		failNextCapture(reason, 0);
+	}
+
+	/** Makes the next capture fail with {@code reason} just before rendering view {@code viewIndex}. */
+	public static void failNextCapture(String reason, int viewIndex) {
 		injectedFailure = reason;
+		injectedFailureView = viewIndex;
 	}
 
 	/**
@@ -67,23 +103,48 @@ public final class CaptureService {
 	 *     render or readback step fails; no partial images are returned
 	 */
 	public static Capture capture(Minecraft minecraft, CaptureProjection projection, @Nullable BlockPos target) {
-		CaptureProjection.View view = supportedView(minecraft, projection);
+		checkCanCapture(minecraft);
+		LocalPlayer player = minecraft.player;
+		List<CaptureProjection.View> views = projection.views(player.getYRot(), player.getXRot());
+		CaptureProjection.View first = views.getFirst();
+		for (CaptureProjection.View view : views) {
+			if (view.width() != first.width() || view.height() != first.height() || view.verticalFovDegrees() != first.verticalFovDegrees()) {
+				throw new UnsupportedOperationException("All views of one capture must share their size and field of view");
+			}
+		}
+
 		long worldTick = minecraft.level.getGameTime();
-		try (CaptureSetup ignored = CaptureSetup.apply(minecraft, view)) {
-			long start = System.nanoTime();
-			renderFrame(minecraft, target);
-			long rendered = System.nanoTime();
-			CapturedImages images = readImages(minecraft.gameRenderer.mainRenderTarget(), view, target != null);
-			return new Capture(images, worldTick, PARTIAL_TICK, rendered - start, System.nanoTime() - rendered);
+		Rotation original = Rotation.of(player);
+		try (CaptureSetup ignored = CaptureSetup.apply(minecraft, first)) {
+			List<CapturedImages> rendered = new ArrayList<>(views.size());
+			long renderNanos = 0;
+			long readbackNanos = 0;
+			for (int i = 0; i < views.size(); i++) {
+				failIfInjected(i);
+				CaptureProjection.View view = views.get(i);
+				Rotation.turn(player, view.yawDegrees(), view.pitchDegrees());
+				long start = System.nanoTime();
+				renderFrame(minecraft, target);
+				long renderedAt = System.nanoTime();
+				rendered.add(readImages(minecraft.gameRenderer.mainRenderTarget(), view, target != null));
+				renderNanos += renderedAt - start;
+				readbackNanos += System.nanoTime() - renderedAt;
+			}
+
+			long assembleStart = System.nanoTime();
+			CapturedImages images = projection.assemble(rendered);
+			return new Capture(images, List.copyOf(rendered), worldTick, PARTIAL_TICK, renderNanos, readbackNanos, System.nanoTime() - assembleStart);
 		} catch (EnvironmentException | UnsupportedOperationException e) {
 			throw e;
 		} catch (RuntimeException e) {
 			throw failure(e.toString());
+		} finally {
+			original.restore(player);
 		}
 	}
 
-	/** The single unrotated view a capture can render, after checking the client can capture at all. */
-	private static CaptureProjection.View supportedView(Minecraft minecraft, CaptureProjection projection) {
+	/** Checks the client can capture at all: a level, a player and improved transparency. */
+	private static void checkCanCapture(Minecraft minecraft) {
 		if (minecraft.level == null || minecraft.player == null) {
 			throw failure("no client level");
 		}
@@ -92,19 +153,14 @@ public final class CaptureService {
 			// Classic transparency writes translucent depth, including the target's (ADR 0005).
 			throw failure(IMPROVED_TRANSPARENCY_REQUIRED);
 		}
+	}
 
-		if (injectedFailure != null) {
+	private static void failIfInjected(int viewIndex) {
+		if (injectedFailure != null && injectedFailureView == viewIndex) {
 			String reason = injectedFailure;
 			injectedFailure = null;
-			throw failure("injected: " + reason);
+			throw failure("injected at view " + viewIndex + ": " + reason);
 		}
-
-		List<CaptureProjection.View> views = projection.views();
-		if (views.size() != 1 || views.getFirst().yawOffsetDegrees() != 0.0 || views.getFirst().pitchOffsetDegrees() != 0.0) {
-			throw new UnsupportedOperationException("Multi-view and rotated captures arrive with PANORAMA_310 in M5");
-		}
-
-		return views.getFirst();
 	}
 
 	/** Renders one level frame, with the target masks when there is a target. */

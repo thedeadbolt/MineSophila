@@ -44,8 +44,18 @@ public record PerspectiveProjection(int width, int height) implements CapturePro
 	}
 
 	@Override
-	public List<View> views() {
-		return List.of(new View(0.0, 0.0, verticalFovDegrees(), this.width, this.height));
+	public List<View> views(float yawDegrees, float pitchDegrees) {
+		return List.of(new View(yawDegrees, pitchDegrees, verticalFovDegrees(), this.width, this.height));
+	}
+
+	/** The single render is the output. */
+	@Override
+	public CapturedImages assemble(List<CapturedImages> views) {
+		if (views.size() != 1 || views.getFirst().width() != this.width || views.getFirst().height() != this.height) {
+			throw new IllegalArgumentException("A perspective capture is one " + this.width + "x" + this.height + " render");
+		}
+
+		return views.getFirst();
 	}
 
 	/** Continuous pixel coordinates of a world point, or null when it is not in front of the near plane. */

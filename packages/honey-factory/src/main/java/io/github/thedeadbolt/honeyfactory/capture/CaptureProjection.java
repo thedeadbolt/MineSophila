@@ -11,15 +11,16 @@ import org.jspecify.annotations.Nullable;
  * which geometry it can see and the metadata a manifest records for it. The capture
  * service and scene generators never branch on the mode; they ask the projection.
  */
-public sealed interface CaptureProjection permits PerspectiveProjection {
+public sealed interface CaptureProjection permits PerspectiveProjection, PanoramicProjection {
 	/** Minecraft's camera near plane, in blocks. */
 	double NEAR_PLANE_BLOCKS = 0.05;
 
 	/**
-	 * One square-pixel perspective render, rotated from the camera by the given offsets.
-	 * {@code verticalFovDegrees} is the full vertical field of view.
+	 * One square-pixel perspective render with the camera at Minecraft yaw and pitch
+	 * {@code yawDegrees} and {@code pitchDegrees}. {@code verticalFovDegrees} is the full
+	 * vertical field of view.
 	 */
-	record View(double yawOffsetDegrees, double pitchOffsetDegrees, double verticalFovDegrees, int width, int height) {
+	record View(float yawDegrees, float pitchDegrees, double verticalFovDegrees, int width, int height) {
 	}
 
 	CaptureMode mode();
@@ -28,8 +29,14 @@ public sealed interface CaptureProjection permits PerspectiveProjection {
 
 	int height();
 
-	/** The renders one capture needs, in order. */
-	List<View> views();
+	/** The renders one capture needs from a camera at the given yaw and pitch, in order. */
+	List<View> views(float yawDegrees, float pitchDegrees);
+
+	/**
+	 * The output images from one capture per view, given in {@link #views} order. All views
+	 * come from one frozen world state and camera position.
+	 */
+	CapturedImages assemble(List<CapturedImages> views);
 
 	/** World-space unit direction through output pixel coordinates {@code (px, py)}; pixel centres are at {@code + 0.5}. */
 	double[] direction(CameraFrame camera, double px, double py);
@@ -45,11 +52,21 @@ public sealed interface CaptureProjection permits PerspectiveProjection {
 	/** The manifest's {@code capture.projection} members for this projection. */
 	JsonObject metadata();
 
-	/** The projection for a resolved capture mode; panoramic capture arrives in M5. */
+	/**
+	 * The projection for a resolved capture mode.
+	 *
+	 * @param cubeFaceSize the cube-face size, required for {@link CaptureMode#PANORAMA_310} only
+	 */
 	static CaptureProjection of(CaptureMode mode, int width, int height, @Nullable Integer cubeFaceSize) {
 		return switch (mode) {
 			case PERSPECTIVE_90 -> new PerspectiveProjection(width, height);
-			case PANORAMA_310 -> throw new UnsupportedOperationException("PANORAMA_310 capture is implemented in M5");
+			case PANORAMA_310 -> {
+				if (cubeFaceSize == null) {
+					throw new IllegalArgumentException("PANORAMA_310 needs a cube-face size");
+				}
+
+				yield new PanoramicProjection(width, height, cubeFaceSize);
+			}
 		};
 	}
 }

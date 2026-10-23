@@ -22,7 +22,7 @@ class PerspectiveProjectionTest {
 		PerspectiveProjection projection = new PerspectiveProjection(1280, 1280);
 		assertEquals(640.0, projection.focalLengthPx());
 		assertEquals(90.0, projection.verticalFovDegrees(), EPSILON);
-		assertEquals(List.of(new CaptureProjection.View(0.0, 0.0, projection.verticalFovDegrees(), 1280, 1280)), projection.views());
+		assertEquals(List.of(new CaptureProjection.View(12.5F, -3.0F, projection.verticalFovDegrees(), 1280, 1280)), projection.views(12.5F, -3.0F));
 		JsonObject metadata = projection.metadata();
 		assertEquals(90.0, metadata.get("horizontal_fov_degrees").getAsDouble());
 		assertEquals(640.0, metadata.getAsJsonArray("principal_point_px").get(1).getAsDouble());
@@ -70,6 +70,6 @@ class PerspectiveProjectionTest {
 	void rejectsUnsupportedSizesAndModes() {
 		assertThrows(IllegalArgumentException.class, () -> new PerspectiveProjection(15, 64));
 		assertThrows(IllegalArgumentException.class, () -> new PerspectiveProjection(64, 16_385));
-		assertThrows(UnsupportedOperationException.class, () -> CaptureProjection.of(io.github.thedeadbolt.honeyfactory.contract.CaptureMode.PANORAMA_310, 2480, 1280, 1024));
+		assertThrows(IllegalArgumentException.class, () -> CaptureProjection.of(io.github.thedeadbolt.honeyfactory.contract.CaptureMode.PANORAMA_310, 2480, 1280, null));
 	}
 }

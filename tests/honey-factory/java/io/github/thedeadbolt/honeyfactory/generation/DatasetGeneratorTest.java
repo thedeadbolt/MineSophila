@@ -44,7 +44,11 @@ class DatasetGeneratorTest {
 	}
 
 	private ResolvedConfig config(Path root, int scenes, int level, int width, int height) {
-		return ConfigResolver.resolve("""
+		return ConfigResolver.resolve(configJson(root, scenes, level, width, height));
+	}
+
+	private String configJson(Path root, int scenes, int level, int width, int height) {
+		return ("""
 			{
 			  "dataset": {"name": "m3-unit", "seed": 7, "difficulty": %d},
 			  "viewpoints": {"count": 3},
@@ -53,7 +57,7 @@ class DatasetGeneratorTest {
 			  "target": {"present_fraction": 0.75},
 			  "output": {"root": "%s", "free_space_reserve_bytes": 1000000}
 			}
-			""".formatted(level, width, height, scenes, root.toString().replace("\\", "\\\\")));
+			""").formatted(level, width, height, scenes, root.toString().replace("\\", "\\\\"));
 	}
 
 	private static DatasetGenerator.Result run(DatasetGenerator generator, ScriptedEnvironment environment) throws IOException {
@@ -256,6 +260,36 @@ class DatasetGeneratorTest {
 			if (scene.target().present()) {
 				assertArrayEquals(scene.target().position(), parameters.aimBlock());
 			}
+		}
+	}
+
+	/** Switching the capture mode keeps every scene layout and camera pose. */
+	@Test
+	void panoramaCapturesTheSameScenesFromTheSamePoses() throws IOException {
+		ResolvedConfig perspective = config(this.temp.resolve("perspective"), 3);
+		ResolvedConfig panorama = ConfigResolver.resolve(configJson(this.temp.resolve("panorama"), 3, 1, 48, 32)
+			.replace("\"capture\": {\"width\": 48, \"height\": 32}", "\"capture\": {\"mode\": \"PANORAMA_310\", \"width\": 310, \"height\": 160, \"cube_face_size\": 64}"));
+		ScriptedEnvironment first = new ScriptedEnvironment();
+		DatasetGenerator.Result flat = run(new DatasetGenerator(perspective, first, CLOCK, DISK), first);
+		ScriptedEnvironment second = new ScriptedEnvironment();
+		DatasetGenerator.Result round = run(new DatasetGenerator(panorama, second, CLOCK, DISK), second);
+		assertNull(round.failure(), () -> round.failure() + " " + round.validationErrors());
+		assertEquals(DatasetManifest.Lifecycle.COMPLETE, round.manifest().lifecycle());
+
+		DatasetValidator.Report a = DatasetValidator.validate(flat.directory());
+		DatasetValidator.Report b = DatasetValidator.validate(round.directory());
+		assertEquals(java.util.List.of(), b.errors());
+		assertArrayEquals(Files.readAllBytes(flat.directory().resolve(DatasetWriter.SCENES)), Files.readAllBytes(round.directory().resolve(DatasetWriter.SCENES)),
+			"scenes, layouts and accepted draws do not depend on the capture mode");
+		for (int i = 0; i < a.samples().size(); i++) {
+			SampleRecord one = a.samples().get(i);
+			SampleRecord other = b.samples().get(i);
+			assertEquals(one.sampleId(), other.sampleId());
+			assertArrayEquals(one.camera().playerPosition(), other.camera().playerPosition());
+			assertEquals(one.camera().yawDegrees(), other.camera().yawDegrees());
+			assertEquals(one.camera().pitchDegrees(), other.camera().pitchDegrees());
+			assertEquals(310, other.rgb().width());
+			assertEquals(io.github.thedeadbolt.honeyfactory.contract.CaptureMode.PANORAMA_310, other.mode());
 		}
 	}
 }
