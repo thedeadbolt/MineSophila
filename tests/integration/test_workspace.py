@@ -2,7 +2,7 @@ import importlib
 
 import pytest
 
-WORKSPACE_PACKAGES = ["fly_vision"]
+WORKSPACE_PACKAGES = ["fly_vision", "honey_factory_tools"]
 
 
 @pytest.mark.integration

@@ -12,6 +12,7 @@ and dataset capture remain unimplemented.
 |---|---|---|
 | [`fly-vision`](packages/fly-vision) | Python | Model fly vision from images and scene metadata; compare vision modes |
 | [`honey-factory`](packages/honey-factory) | Java (Fabric mod) | Generate labelled Minecraft scenes containing hidden honey blocks |
+| [`honey-factory-tools`](packages/honey-factory-tools) | Python | Validate and inspect honey-factory datasets without Minecraft |
 
 ## Quick start
 
@@ -32,12 +33,16 @@ Run `just` to list commands.
 
 ```
 packages/
-├── fly-vision/       # uv workspace member (Python)
-└── honey-factory/    # Gradle project (Fabric mod), not a uv member
+├── fly-vision/           # uv workspace member (Python)
+├── honey-factory/        # Gradle project (Fabric mod), not a uv member
+└── honey-factory-tools/  # uv workspace member (Python)
+schemas/
+└── honey-factory/        # language-neutral dataset contract (JSON Schema)
 tests/
 ├── fly-vision/       # Python package tests
-├── honey-factory/    # Java / JUnit package tests
-├── integration/     # workspace and cross-package checks
+├── honey-factory/    # Java / JUnit package tests and client game tests
+├── honey-factory-tools/  # Python package tests
+├── integration/     # workspace checks and shared contract fixtures
 └── e2e/             # reserved for full product runs
 docs/
 ├── contributing.md   # development workflow
@@ -55,7 +60,8 @@ See the [contributing guide](docs/contributing.md). Commits and PR titles follow
 [Conventional Commits](https://www.conventionalcommits.org/). release-please updates
 package versions and changelogs. See the changelogs for
 [fly-vision](packages/fly-vision/CHANGELOG.md) and
-[honey-factory](packages/honey-factory/CHANGELOG.md).
+[honey-factory](packages/honey-factory/CHANGELOG.md); release-please creates one for
+honey-factory-tools on its first release.
 
 ## License
 

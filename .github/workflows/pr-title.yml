@@ -20,6 +20,7 @@ jobs:
           scopes: |
             fly-vision
             honey-factory
+            honey-factory-tools
             docs
             repo
             deps

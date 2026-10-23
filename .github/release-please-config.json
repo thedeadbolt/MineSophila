@@ -9,6 +9,11 @@
       "component": "fly-vision",
       "package-name": "fly-vision"
     },
+    "packages/honey-factory-tools": {
+      "release-type": "python",
+      "component": "honey-factory-tools",
+      "package-name": "honey-factory-tools"
+    },
     "packages/honey-factory": {
       "release-type": "simple",
       "component": "honey-factory",

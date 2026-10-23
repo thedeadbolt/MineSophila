@@ -1,0 +1,22 @@
+[project]
+name = "honey-factory-tools"
+version = "0.0.0"
+description = "Validate and inspect honey-factory datasets outside Minecraft."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+authors = [{ name = "João Moutinho" }]
+dependencies = ["jsonschema>=4.23"]
+
+[project.scripts]
+honey-factory-tools = "honey_factory_tools.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.4,<0.14"]
+build-backend = "uv_build"

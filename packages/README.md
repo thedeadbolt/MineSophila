@@ -1,11 +1,12 @@
 # Packages
 
-Build and release the two packages with their own configurations and versions.
+Build and release each package with its own configuration and version.
 
 | Package | Toolchain | Planned purpose | Current state |
 |---|---|---|---|
 | [fly-vision](fly-vision/) | Python / uv | Model fruit-fly vision from images and scene metadata | Package version metadata only |
-| [honey-factory](honey-factory/) | Java / Gradle / Fabric | Generate and capture labelled Minecraft scenes | Mod entrypoints and an identifier helper |
+| [honey-factory](honey-factory/) | Java / Gradle / Fabric | Generate and capture labelled Minecraft scenes | M0 rendering fixture; M1 configuration, data contract and ID/seed/split rules |
+| [honey-factory-tools](honey-factory-tools/) | Python / uv | Validate and inspect datasets outside Minecraft | Schema validation CLI and independent contract algorithms |
 
 The root `pyproject.toml` and `uv.lock` manage the Python workspace. The mod uses its own
 Gradle wrapper and build files under `honey-factory/`.
@@ -16,6 +17,7 @@ Run these commands from the repository root:
 
 ```sh
 just test fly-vision   # Python package tests
+just test honey-factory-tools
 just mod-test         # Java package tests
 just mod-build        # build and test the mod
 just check            # Python checks and tests, then the mod build
