@@ -19,7 +19,7 @@ public record Template(String id, int version, int width, int length, int height
 	}
 
 	/** A flat floor covering the whole footprint at relative y = 0. */
-	public static Template platform(int width, int length, int height, String floorState) {
+	public static Template platform(String id, int version, int width, int length, int height, String floorState) {
 		List<Placement> floor = new ArrayList<>(width * length);
 		for (int z = 0; z < length; z++) {
 			for (int x = 0; x < width; x++) {
@@ -27,7 +27,7 @@ public record Template(String id, int version, int width, int length, int height
 			}
 		}
 
-		return new Template("platform", 1, width, length, height, floor);
+		return new Template(id, version, width, length, height, floor);
 	}
 
 	public String sha256() {

@@ -1,8 +1,10 @@
 package io.github.thedeadbolt.honeyfactory.gametest;
 
-import com.google.gson.JsonObject;
+import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
+import io.github.thedeadbolt.honeyfactory.capture.PerspectiveProjection;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
 import io.github.thedeadbolt.honeyfactory.contract.BlockBox;
+import io.github.thedeadbolt.honeyfactory.contract.MaskStatistics;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import io.github.thedeadbolt.honeyfactory.environment.OperationState;
@@ -15,14 +17,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.function.Function;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
-import net.minecraft.client.gui.screens.worldselection.WorldCreationUiState;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -37,7 +36,7 @@ import net.minecraft.world.phys.AABB;
 
 /**
  * Roadmap M2 exit gate: ownership refusal, invalid transitions, reproducible fixture
- * rebuilds, reset bounds proven by sentinels, observe through the M0 capture and
+ * rebuilds, reset bounds proven by sentinels, observe through the capture service and
  * restoration of the world and player baseline.
  */
 public class M2EnvironmentTest implements FabricClientGameTest {
@@ -61,12 +60,7 @@ public class M2EnvironmentTest implements FabricClientGameTest {
 	}
 
 	private static void datasetWorld(ClientGameTestContext context, List<String> failures) {
-		try (TestSingleplayerContext world = context.worldBuilder().adjustSettings(settings -> {
-			settings.setName(WORLD_NAME);
-			settings.setWorldType(new WorldCreationUiState.WorldTypeEntry(
-				settings.getSettings().worldgenLoadContext().lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(ArenaDimension.PRESET)
-			));
-		}).create()) {
+		try (TestSingleplayerContext world = GameTestSupport.datasetWorld(context, WORLD_NAME)) {
 			context.runOnClient(minecraft -> minecraft.options.improvedTransparency().set(true));
 			Map<String, String> rulesBefore = world.getServer().computeOnServer(M2EnvironmentTest::controlledRules);
 			GameType modeBefore = world.getServer().computeOnServer(server -> server.getPlayerList().getPlayers().getFirst().gameMode());
@@ -140,10 +134,9 @@ public class M2EnvironmentTest implements FabricClientGameTest {
 	}
 
 	private static void observe(ClientGameTestContext context, String label, List<String> failures, boolean visible) {
-		EnvironmentRuntime.Observation observation = await(context, runtime -> runtime.observe(label, 64));
-		JsonObject capture = observation.capture().summary().getAsJsonArray("captures").get(0).getAsJsonObject();
-		int visiblePixels = capture.get("visible_pixels").getAsInt();
-		int unoccluded = capture.get("unoccluded_pixels").getAsInt();
+		CapturedImages images = await(context, runtime -> runtime.observe(new PerspectiveProjection(64, 64))).capture().images();
+		int visiblePixels = MaskStatistics.of(images.visibleMask(), 64, 64).positivePixels();
+		int unoccluded = images.unoccludedPixels();
 		boolean passed = unoccluded > 0 && (visible ? visiblePixels == unoccluded : visiblePixels == 0);
 		if (!passed) {
 			failures.add(label + ": visible=" + visiblePixels + " unoccluded=" + unoccluded);
@@ -229,22 +222,11 @@ public class M2EnvironmentTest implements FabricClientGameTest {
 	}
 
 	private static <T> T await(ClientGameTestContext context, Function<EnvironmentRuntime, CompletableFuture<T>> request) {
-		CompletableFuture<T> future = context.computeOnClient(minecraft -> request.apply(EnvironmentRuntime.get()));
-		context.waitFor(minecraft -> future.isDone(), 1200);
-		return future.join();
+		return GameTestSupport.await(context, request);
 	}
 
 	private static <T> EnvironmentException.Reason rejection(ClientGameTestContext context, Function<EnvironmentRuntime, CompletableFuture<T>> request) {
-		try {
-			await(context, request);
-			return null;
-		} catch (CompletionException e) {
-			if (e.getCause() instanceof EnvironmentException environment) {
-				return environment.reason();
-			}
-
-			throw e;
-		}
+		return GameTestSupport.rejection(context, request);
 	}
 
 	private static void expect(List<String> failures, String what, EnvironmentException.Reason expected, EnvironmentException.Reason actual) {

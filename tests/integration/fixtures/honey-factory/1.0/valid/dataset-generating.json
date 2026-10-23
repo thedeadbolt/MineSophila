@@ -1,11 +1,11 @@
 {
   "schema_version": "1.0",
-  "dataset_id": "honey-l1-fixture-ddabe58fb3f7",
+  "dataset_id": "honey-l1-fixture-386306ae5189",
   "content_version": "1",
   "lifecycle": "generating",
   "created_at_utc": "2026-10-23T09:00:00Z",
   "completed_at_utc": null,
-  "resolved_config_sha256": "ddabe58fb3f774be41144b181bff8231b3cc57fd10eeea3b48dee605a275ae7e",
+  "resolved_config_sha256": "386306ae5189836bc5bd567ea9452b27bcd4fc70f05df0ed3c5bf05ff7e1a6a9",
   "difficulty": 1,
   "target": {
     "block_id": "minecraft:honey_block",
@@ -41,7 +41,8 @@
       "seeds": "seed-v1",
       "ids": "ids-v1",
       "scene_slots": "scene-slots-v1",
-      "layout": "layout-v1"
+      "layout": "layout-v1",
+      "scene_generator": "level1-open-platform-v1"
     }
   },
   "capture": {

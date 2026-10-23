@@ -138,6 +138,34 @@ public record DatasetManifest(
 		);
 	}
 
+	/** This manifest in a terminal or updated state; identity, configuration and environment are unchanged. */
+	public DatasetManifest withState(
+		Lifecycle lifecycle,
+		@Nullable Instant completedAt,
+		@Nullable Map<Split, SplitCount> splitCounts,
+		Counts counts,
+		@Nullable Integrity integrity
+	) {
+		return new DatasetManifest(
+			this.schemaVersion,
+			this.datasetId,
+			this.contentVersion,
+			lifecycle,
+			this.createdAtUtc,
+			completedAt,
+			this.resolvedConfigSha256,
+			this.configuration,
+			splitCounts,
+			this.software,
+			this.renderEnvironment,
+			counts,
+			this.provenance,
+			integrity,
+			this.licence,
+			this.intendedUse
+		);
+	}
+
 	public int difficulty() {
 		return this.configuration.get("difficulty").getAsInt();
 	}

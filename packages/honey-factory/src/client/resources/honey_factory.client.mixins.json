@@ -1,0 +1,12 @@
+{
+	"required": true,
+	"package": "io.github.thedeadbolt.honeyfactory.client.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"CameraMixin",
+		"LevelRendererMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

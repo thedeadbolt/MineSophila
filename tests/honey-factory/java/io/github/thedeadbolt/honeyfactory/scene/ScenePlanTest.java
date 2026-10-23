@@ -26,7 +26,7 @@ class ScenePlanTest {
 
 	@Test
 	void deltasOverrideTheTemplateInOrderAndAirRemovesBlocks() {
-		Template template = Template.platform(2, 2, 2, "minecraft:stone");
+		Template template = Template.platform("platform", 1, 2, 2, 2, "minecraft:stone");
 		ScenePlan plan = new ScenePlan(template, List.of(
 			new Placement(0, 0, 0, "minecraft:dirt"),
 			new Placement(1, 0, 1, Placement.AIR),
@@ -73,7 +73,7 @@ class ScenePlanTest {
 
 	@Test
 	void plansRejectPlacementsOutsideTheCore() {
-		Template template = Template.platform(2, 2, 2, "minecraft:stone");
+		Template template = Template.platform("platform", 1, 2, 2, 2, "minecraft:stone");
 		assertThrows(IllegalArgumentException.class, () -> new ScenePlan(template, List.of(new Placement(2, 0, 0, "minecraft:stone")), null, 0, Weather.CLEAR));
 		Placement target = new Placement(1, 1, 1, "minecraft:honey_block");
 		assertThrows(IllegalArgumentException.class, () -> new ScenePlan(template, List.of(), target, 0, Weather.CLEAR));

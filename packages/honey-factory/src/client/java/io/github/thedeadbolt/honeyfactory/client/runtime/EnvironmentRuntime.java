@@ -1,7 +1,9 @@
 package io.github.thedeadbolt.honeyfactory.client.runtime;
 
-import io.github.thedeadbolt.honeyfactory.client.m0.M0Capture;
+import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
+import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
 import io.github.thedeadbolt.honeyfactory.config.ConfigResolver;
+import io.github.thedeadbolt.honeyfactory.contract.BlockBox;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import io.github.thedeadbolt.honeyfactory.environment.Operation;
@@ -15,7 +17,6 @@ import io.github.thedeadbolt.honeyfactory.scene.ViewpointPlan;
 import io.github.thedeadbolt.honeyfactory.world.ArenaDimension;
 import io.github.thedeadbolt.honeyfactory.world.ArenaExecutor;
 import io.github.thedeadbolt.honeyfactory.world.BlockStates;
-import java.nio.file.Path;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -28,7 +29,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.LightLayer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -53,10 +56,15 @@ public final class EnvironmentRuntime {
 	public record ViewpointState(String operationId, CameraPose pose, long settledTicks) {
 	}
 
-	public record Observation(String operationId, M0Capture.Result capture) {
-		public Path directory() {
-			return this.capture.directory();
-		}
+	/** One capture and the camera it was taken from; light levels and biome are at the eye. */
+	public record Observation(
+		String operationId,
+		CaptureService.Capture capture,
+		CameraPose pose,
+		@Nullable String biome,
+		@Nullable Integer skyLight,
+		@Nullable Integer blockLight
+	) {
 	}
 
 	private static final EnvironmentRuntime INSTANCE = new EnvironmentRuntime(Timing.DEFAULT);
@@ -76,6 +84,7 @@ public final class EnvironmentRuntime {
 	private @Nullable ArenaLayout arena;
 	private @Nullable ScenePlan scene;
 	private @Nullable String layoutSha256;
+	private @Nullable Runnable deferredCapture;
 
 	private EnvironmentRuntime(Timing timing) {
 		this.timing = timing;
@@ -106,6 +115,7 @@ public final class EnvironmentRuntime {
 		}
 
 		this.coordinator = new OperationCoordinator();
+		this.deferredCapture = null;
 		this.arena = null;
 		this.scene = null;
 		this.layoutSha256 = null;
@@ -118,6 +128,11 @@ public final class EnvironmentRuntime {
 	/** The scene of the last successful reset, or null. */
 	public @Nullable ScenePlan scene() {
 		return this.scene;
+	}
+
+	/** The arena of the last reset, or null. */
+	public @Nullable ArenaLayout arena() {
+		return this.arena;
 	}
 
 	/** The verified layout hash of the current scene, or null. */
@@ -141,10 +156,20 @@ public final class EnvironmentRuntime {
 				return result;
 			});
 			RenderStability stability = new RenderStability();
+			boolean[] refreshed = {false};
 			return new Pending<>(operation, work, this.timing.resetSettleTicks(), this.timing.resetTimeoutTicks(), result -> {
 				Minecraft minecraft = Minecraft.getInstance();
-				return stability.holds(inArena(minecraft) && atPose(minecraft, firstViewpoint) && sectionsCompiled(minecraft)
-					&& expected.equals(BlockStates.layoutSha256(minecraft.level, layout.resetVolume())));
+				boolean shown = inArena(minecraft) && atPose(minecraft, firstViewpoint)
+					&& expected.equals(BlockStates.layoutSha256(minecraft.level, layout.resetVolume()));
+				if (shown && !refreshed[0]) {
+					// Change marks for the arena can be dropped while the camera waits on the
+					// distant staging platform; rebuild every arena section from the client's blocks.
+					refreshed[0] = true;
+					markSectionsDirty(minecraft, layout.resetVolume());
+					return stability.holds(false);
+				}
+
+				return stability.holds(shown && refreshed[0] && sectionsCompiled(minecraft));
 			}, (result, settled) -> {
 				this.scene = plan;
 				this.layoutSha256 = result.layoutSha256();
@@ -170,24 +195,33 @@ public final class EnvironmentRuntime {
 	}
 
 	/**
-	 * Captures RGB and target masks from the current viewpoint at {@code size} square pixels.
-	 * Delegates to the M0 capture fixture until the M3 capture service replaces it.
+	 * Captures RGB and target masks from the current viewpoint through {@code projection}.
+	 * The capture runs at the end of the next client tick, between frames.
 	 */
-	public CompletableFuture<Observation> observe(String label, int size) {
+	public CompletableFuture<Observation> observe(CaptureProjection projection) {
 		return start(OperationKind.OBSERVE, (server, operation) -> {
 			int[] target = this.scene.targetPosition(this.arena);
-			// A target-absent scene renders air, which produces empty masks.
-			BlockPos targetPos = target == null
-				? new BlockPos(this.arena.core().minX(), this.arena.core().maxY(), this.arena.core().minZ())
-				: new BlockPos(target[0], target[1], target[2]);
-			CompletableFuture<M0Capture.Result> work = M0Capture.submit(new M0Capture.Request(label, size, size, 1, targetPos));
-			return new Pending<>(operation, work, 0, 0, capture -> true, (capture, settled) -> {
-				if (capture.failure() != null) {
-					throw new EnvironmentException(EnvironmentException.Reason.CAPTURE_FAILED, capture.failure());
+			BlockPos targetPos = target == null ? null : new BlockPos(target[0], target[1], target[2]);
+			CompletableFuture<Observation> work = new CompletableFuture<>();
+			this.deferredCapture = () -> {
+				Minecraft minecraft = Minecraft.getInstance();
+				try {
+					CaptureService.Capture capture = CaptureService.capture(minecraft, projection, targetPos);
+					LocalPlayer player = minecraft.player;
+					BlockPos eye = BlockPos.containing(player.getEyePosition());
+					work.complete(new Observation(
+						operation.id(),
+						capture,
+						clientPose(minecraft),
+						minecraft.level.getBiome(eye).unwrapKey().map(key -> key.identifier().toString()).orElse(null),
+						minecraft.level.getBrightness(LightLayer.SKY, eye),
+						minecraft.level.getBrightness(LightLayer.BLOCK, eye)
+					));
+				} catch (RuntimeException e) {
+					work.completeExceptionally(e);
 				}
-
-				return new Observation(operation.id(), capture);
-			});
+			};
+			return new Pending<>(operation, work, 0, 0, observation -> true, (observation, settled) -> observation);
 		});
 	}
 
@@ -222,7 +256,15 @@ public final class EnvironmentRuntime {
 
 	private void tick() {
 		this.tick++;
-		if (this.pending != null && this.pending.poll(this.tick)) {
+		Runnable capture = this.deferredCapture;
+		this.deferredCapture = null;
+		if (capture != null) {
+			capture.run();
+		}
+
+		Pending<?, ?> running = this.pending;
+		// Completing an operation may start the caller's next one; keep that one pending.
+		if (running != null && running.poll(this.tick) && this.pending == running) {
 			this.pending = null;
 		}
 	}
@@ -246,6 +288,13 @@ public final class EnvironmentRuntime {
 
 	private static boolean inArena(Minecraft minecraft) {
 		return minecraft.level != null && minecraft.level.dimension().equals(ArenaDimension.LEVEL);
+	}
+
+	private static void markSectionsDirty(Minecraft minecraft, BlockBox box) {
+		minecraft.level.setSectionRangeDirty(
+			SectionPos.blockToSectionCoord(box.minX()), SectionPos.blockToSectionCoord(box.minY()), SectionPos.blockToSectionCoord(box.minZ()),
+			SectionPos.blockToSectionCoord(box.maxX()), SectionPos.blockToSectionCoord(box.maxY()), SectionPos.blockToSectionCoord(box.maxZ())
+		);
 	}
 
 	private static boolean sectionsCompiled(Minecraft minecraft) {

@@ -1,7 +1,9 @@
 # Architecture
 
-This document describes a proposed design. The implementation consists of `fly-vision`
-version metadata and `honey-factory` entrypoints with an identifier helper.
+This document describes the overall design. `fly-vision` is still version metadata only;
+`honey-factory` implements its roadmap through M3, a level-1 perspective dataset generator
+(see its [roadmap](../packages/honey-factory/docs/roadmap.md)). Everything else here is
+proposed.
 
 ## Overview
 
@@ -64,10 +66,11 @@ exports images and projection metadata without choosing the receptor layout.
 
 ## honey-factory
 
-The proposed Fabric mod would:
+The Fabric mod:
 
-- Generate scenes containing honey blocks with varying amounts of occlusion, using common code.
-- Capture RGB frames, visible-target masks and scene/camera metadata on the client.
+- Generates scenes containing honey blocks with varying amounts of occlusion, using common
+  code. Level 1 (an open platform) is implemented; levels 2–5 are planned.
+- Captures RGB frames, visible-target masks and scene/camera metadata on the client.
   The initial dataset excludes depth images. Additional channels such as block IDs
   and sky buffers remain future options, subject to the collaborator's input needs.
 

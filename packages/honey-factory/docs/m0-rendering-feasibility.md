@@ -5,8 +5,10 @@ Recorded 2026-10-22 against Minecraft 26.3, Fabric Loader 0.19.5, Fabric API
 AMD Radeon RX 7600 (8 GiB), Linux. The resulting decision is the accepted
 [ADR 0005](../../../docs/adr/0005-shared-depth-target-annotation.md).
 
-The M0 code is a temporary, isolated spike: `m0` packages in `src/main` and
-`src/client`, two mod shaders and one client game test. It is not the M3 capture API.
+The M0 code was a temporary, isolated spike: `m0` packages in `src/main` and
+`src/client`, two mod shaders and one client game test. M3 replaced it with the
+production capture service ([ADR 0008](../../../docs/adr/0008-capture-service-and-level1-generation.md));
+the shaders and mask renderer carry over, and the M3 mask gate re-checks this geometry.
 
 ## Result
 

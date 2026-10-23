@@ -29,8 +29,9 @@ task. Level 6 adds optional active search through sequences of observations and 
 - Level 6 records observation/action sequences. Targets must be discoverable without
   breaking blocks; honey sealed inside stone is excluded while mining is unsupported.
 - Record distance, target pixel area and visible fraction alongside the level.
-  The mask-derived measurement method is defined below; exact configurable
-  visibility-ratio ranges for levels 3–5 remain to be selected from prototype data.
+  The mask-derived measurement method is defined below. The configurable
+  visibility-ratio ranges default to 0.2–0.8 for level 3 and a 0.1 minimum for levels
+  4–5, set from the M3 mask-gate evidence ([M3 findings](m3-level1-vertical-slice.md)).
 - Vary viewpoint and target position from level 1. Record seeds and generation
   settings, and keep views of the same scene/episode in the same dataset split.
 - For level 5, hold out world seeds by default or use explicitly disjoint region
@@ -394,8 +395,9 @@ compression and leave space for derived data. Raw cube-face retention remains op
 ### Small OOP boundary
 
 Use one `CaptureMode` setting to select a `CaptureProjection` implementation:
-`PerspectiveProjection` or `PanoramicProjection`. These names describe a proposed
-interface, not existing Java classes. No hierarchy beyond this is needed initially.
+`PerspectiveProjection` or `PanoramicProjection`. M3 implements the interface and
+`PerspectiveProjection`; `PanoramicProjection` follows in M5. No hierarchy beyond this
+is needed initially.
 
 The projection supplies the required camera views, maps output pixels to viewing
 directions and describes its metadata. A shared capture service handles world-state
@@ -583,6 +585,8 @@ The `target` object contains:
   positive saved-mask pixels, or `null` for an empty mask.
 - `visible_centroid_xy` as the arithmetic mean of positive pixel centres, or `null`
   for an empty mask.
+- `distance_blocks`, for a present target, as the Euclidean distance from the camera eye
+  to the centre of the target's block cell.
 
 Bounding boxes and centroids are calculated from the finalized saved mask, not from
 an independent geometric projection. The generator validates them by reading or

@@ -1,4 +1,4 @@
-package io.github.thedeadbolt.honeyfactory.client.m0;
+package io.github.thedeadbolt.honeyfactory.client.capture;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;

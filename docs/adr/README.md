@@ -13,3 +13,4 @@ Preserve accepted decisions. To change one, write a new ADR that supersedes it.
 | [0005](0005-shared-depth-target-annotation.md) | Shared-depth target annotation for honey-factory masks | Accepted |
 | [0006](0006-dataset-contract-and-algorithms.md) | honey-factory dataset contract and deterministic algorithms | Accepted |
 | [0007](0007-dataset-world-and-environment-coordinator.md) | Dataset world ownership, arena reset and environment coordinator | Accepted |
+| [0008](0008-capture-service-and-level1-generation.md) | Capture service, level-1 generation and dataset commit | Accepted |

@@ -13,6 +13,9 @@ import io.github.thedeadbolt.honeyfactory.contract.BlockBox;
  * platform lies outside it.
  */
 public record ArenaLayout(BlockBox core, BlockBox resetVolume, int margin) {
+	/** The void arena dimension's ID. */
+	public static final String DIMENSION_ID = "honey_factory:arena";
+
 	/** World position of the core's minimum corner. */
 	public static final int[] ORIGIN = {0, 64, 0};
 

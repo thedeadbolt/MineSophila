@@ -32,7 +32,7 @@ import org.jspecify.annotations.Nullable;
  * viewpoints     count, distance_min_blocks, distance_max_blocks, yaw_jitter_degrees,
  *                pitch_jitter_degrees, attempts_per_viewpoint
  * lighting       time_of_day_ticks, weather
- * visibility     min_ratio, max_ratio (levels 3-5)
+ * visibility     min_ratio, max_ratio (levels 3-5; defaults 0.2-0.8 for level 3, 0.1 minimum for 4-5)
  * capture        mode, width, height, cube_face_size (PANORAMA_310 only)
  * quotas         accepted_scenes, scene_attempts_per_accepted_scene
  * splits         train, validation, test
@@ -50,6 +50,10 @@ public final class ConfigResolver {
 	private static final double SPLIT_SUM_TOLERANCE = 1e-9;
 	private static final int DAYLIGHT_END_TICKS = 12000;
 	private static final int MAX_ARENA_HEIGHT_WITH_MARGIN = 256;
+	/** Default visibility-ratio bounds; see the M3 findings for the evidence. */
+	private static final Double LEVEL3_MIN_RATIO = 0.2;
+	private static final Double LEVEL3_MAX_RATIO = 0.8;
+	private static final Double LEVEL4_5_MIN_RATIO = 0.1;
 
 	private ConfigResolver() {
 	}
@@ -193,8 +197,9 @@ public final class ConfigResolver {
 			return new ResolvedConfig.Visibility(VisibilityRule.FULLY_VISIBLE, null, null);
 		}
 
-		Double min = visibility.has("min_ratio") ? visibility.nullableDecimal("min_ratio", 0.0, 1.0) : null;
-		Double max = visibility.has("max_ratio") ? visibility.nullableDecimal("max_ratio", 0.0, 1.0) : null;
+		// Initial defaults set from the M3 mask-gate evidence; null removes a bound.
+		Double min = visibility.has("min_ratio") ? visibility.nullableDecimal("min_ratio", 0.0, 1.0) : difficulty == 3 ? LEVEL3_MIN_RATIO : LEVEL4_5_MIN_RATIO;
+		Double max = visibility.has("max_ratio") ? visibility.nullableDecimal("max_ratio", 0.0, 1.0) : difficulty == 3 ? LEVEL3_MAX_RATIO : null;
 		if (difficulty == 3) {
 			// Partial visibility: both bounds are exclusive of 0 and 1.
 			if (min != null && (min <= 0.0 || min >= 1.0)) {
