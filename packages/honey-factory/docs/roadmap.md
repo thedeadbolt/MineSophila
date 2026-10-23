@@ -195,6 +195,23 @@ Exit gate:
 - Time, RAM, VRAM and source-face retention costs are benchmarked before deciding
   whether raw cube faces remain a debug-only option.
 
+Implementation language for reprojection:
+
+- Implement cube-face-to-equirectangular reprojection in Java first. Java is accepted
+  only if, on the reference setup at the default sizes (six 1024 × 1024 faces into a
+  2480 × 1280 panorama), it meets every criterion below:
+  - RGB plus mask reprojection takes at most 50 ms per panorama, median of at least
+    100 panoramas after warm-up, single-threaded on the client thread or one worker.
+  - That time is at most 25 % of the whole per-sample capture time (six face renders
+    and readbacks, reprojection, PNG encoding and settling).
+  - It allocates no per-pixel objects. The sampling tables are reused across samples,
+    and steady-state heap growth per sample is zero.
+- If any criterion fails, implement reprojection in Rust behind the same
+  `CaptureProjection` boundary, with the same golden fixtures and an ADR recording the
+  measurements.
+- Both implementations must produce byte-identical masks on the panorama fixtures. RGB
+  may differ only by the documented filter rounding.
+
 ### M6 — Constructed and natural scenes
 
 Complete the mandatory difficulty generators after both projections work.
