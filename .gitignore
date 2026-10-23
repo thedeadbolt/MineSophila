@@ -43,3 +43,5 @@ Thumbs.db
 
 # Data is out of scope until issue #1 is resolved.
 data/
+# Minecraft data-pack resources shipped by the mod are source, not datasets.
+!packages/honey-factory/src/main/resources/data/

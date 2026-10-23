@@ -49,6 +49,7 @@ public final class ConfigResolver {
 	);
 	private static final double SPLIT_SUM_TOLERANCE = 1e-9;
 	private static final int DAYLIGHT_END_TICKS = 12000;
+	private static final int MAX_ARENA_HEIGHT_WITH_MARGIN = 256;
 
 	private ConfigResolver() {
 	}
@@ -113,12 +114,18 @@ public final class ConfigResolver {
 
 	private static ResolvedConfig.Arena arena(JsonFields arena) {
 		arena.rejectUnknown(Set.of("width", "length", "height", "margin"));
-		return new ResolvedConfig.Arena(
+		ResolvedConfig.Arena resolved = new ResolvedConfig.Arena(
 			arena.integer32("width", 1, 256, 32),
 			arena.integer32("length", 1, 256, 32),
 			arena.integer32("height", 1, 256, 16),
 			arena.integer32("margin", 0, 64, 4)
 		);
+		// The margin extends above the build height, and the owned region is 256 blocks tall.
+		if (resolved.height() + resolved.margin() > MAX_ARENA_HEIGHT_WITH_MARGIN) {
+			throw arena.error("height", "height plus margin must not exceed " + MAX_ARENA_HEIGHT_WITH_MARGIN + " blocks");
+		}
+
+		return resolved;
 	}
 
 	private static ResolvedConfig.@Nullable NaturalRegion naturalRegion(JsonFields root, int difficulty) {

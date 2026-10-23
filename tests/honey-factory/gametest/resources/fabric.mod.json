@@ -7,6 +7,7 @@
 	"environment": "client",
 	"entrypoints": {
 		"fabric-client-gametest": [
+			"io.github.thedeadbolt.honeyfactory.gametest.M2EnvironmentTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M0RenderingFeasibilityTest"
 		]
 	},

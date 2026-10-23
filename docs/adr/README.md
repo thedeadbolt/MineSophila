@@ -12,3 +12,4 @@ Preserve accepted decisions. To change one, write a new ADR that supersedes it.
 | [0004](0004-centralized-tests.md) | Centralized tests by package | Accepted |
 | [0005](0005-shared-depth-target-annotation.md) | Shared-depth target annotation for honey-factory masks | Accepted |
 | [0006](0006-dataset-contract-and-algorithms.md) | honey-factory dataset contract and deterministic algorithms | Accepted |
+| [0007](0007-dataset-world-and-environment-coordinator.md) | Dataset world ownership, arena reset and environment coordinator | Accepted |

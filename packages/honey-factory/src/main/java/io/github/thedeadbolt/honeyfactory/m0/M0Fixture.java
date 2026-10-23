@@ -27,7 +27,8 @@ import net.minecraft.world.phys.Vec3;
  * optional opaque occluders. The command mutates the world only on the logical server
  * and refuses any save not explicitly named {@link #WORLD_NAME}.
  *
- * <p>M2 replaces the name check with a persistent dataset-ownership record.
+ * <p>This temporary overworld fixture keeps its name check; the M2 arena instead requires
+ * a claimed dataset world (see {@code world.WorldGuard}).
  */
 public final class M0Fixture {
 	public static final String WORLD_NAME = "honey-factory-m0";

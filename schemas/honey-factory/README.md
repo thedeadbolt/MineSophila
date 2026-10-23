@@ -95,6 +95,7 @@ bounds <min x> <min y> <min z> <max x> <max y> <max z>
 <x> <y> <z> <block state>
 ```
 
-Bounds are inclusive. Each non-air block inside them appears once, ordered by y, then z,
+Bounds are inclusive; for scenes they are the arena's reset volume, recorded as the scene
+record's `arena.bounds`. Each non-air block inside them appears once, ordered by y, then z,
 then x. Block states are `namespace:path` with properties sorted by name, for example
 `minecraft:oak_stairs[facing=north,half=bottom]`.

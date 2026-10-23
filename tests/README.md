@@ -41,8 +41,10 @@ independently by the Java mod tests and the Python tools tests:
 - `1.0/dataset-cases.json`: cross-record edits of the mini dataset that the consistency
   check must reject.
 
-The Minecraft client game test runs the M0 rendering fixtures in a fresh world. It needs
-a display and GPU, and `just mod-build` does not run it. There are no Python end-to-end
+The Minecraft client game tests run the M2 environment exit gate (ownership refusal,
+invalid transitions, reproducible arena rebuilds, sentinel bounds, observe and baseline
+restoration) and the M0 rendering fixtures, each in fresh worlds. They need a display and
+GPU, and `just mod-build` does not run them. There are no Python end-to-end
 or live Minecraft tests yet. Running `just test-e2e` or
 `just test-minecraft` exits with pytest's “no tests collected” status (5).
 The full Python suite includes the e2e directory and will discover tests added there.

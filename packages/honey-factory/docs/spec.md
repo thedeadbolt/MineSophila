@@ -64,6 +64,11 @@ Before clearing, verify a persistent ownership record containing the dataset wor
 dimension, arena origin and bounds. Refuse the operation if the requested clear
 volume falls outside those bounds or the ownership record does not match.
 
+The configured margin surrounds the arena on its four horizontal sides and extends
+above its build height, but not below its floor, which every template restores. Dataset
+worlds are created with the Honey Factory Dataset world type and claimed by name; see
+ADR 0007.
+
 ### Template then block-by-block construction
 
 Reset and construct a level 1–4 scene in this order:

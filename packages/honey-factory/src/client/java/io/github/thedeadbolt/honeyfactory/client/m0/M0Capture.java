@@ -6,8 +6,8 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.mojang.blaze3d.platform.Window;
 import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.platform.Window;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -31,6 +31,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -38,6 +39,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 
@@ -57,9 +59,11 @@ public final class M0Capture {
 	private static final Pattern LABEL = Pattern.compile("[a-z0-9_-]{1,64}");
 
 	private static @Nullable Request pending;
+	private static @Nullable CompletableFuture<Result> pendingResult;
 	private static @Nullable Result lastResult;
 
-	public record Request(String label, int width, int height, int repeats) {
+	/** {@code target} is the block whose masks are rendered; an air block yields empty masks. */
+	public record Request(String label, int width, int height, int repeats, BlockPos target) {
 	}
 
 	/** Outcome of one request; {@code failure} is null on success. */
@@ -84,7 +88,8 @@ public final class M0Capture {
 								StringArgumentType.getString(context, "label"),
 								IntegerArgumentType.getInteger(context, "width"),
 								IntegerArgumentType.getInteger(context, "height"),
-								IntegerArgumentType.getInteger(context, "repeats")
+								IntegerArgumentType.getInteger(context, "repeats"),
+								M0Fixture.TARGET
 							);
 							submit(request);
 							context.getSource().sendFeedback(Component.literal("Queued M0 capture " + request.label()));
@@ -93,8 +98,8 @@ public final class M0Capture {
 		));
 	}
 
-	/** Queues a capture for the end of the next client tick. */
-	public static void submit(Request request) {
+	/** Queues a capture for the end of the next client tick; the future completes on the client thread. */
+	public static CompletableFuture<Result> submit(Request request) {
 		if (!LABEL.matcher(request.label()).matches()) {
 			throw new IllegalArgumentException("Capture label must match " + LABEL.pattern());
 		}
@@ -105,6 +110,8 @@ public final class M0Capture {
 
 		lastResult = null;
 		pending = request;
+		pendingResult = new CompletableFuture<>();
+		return pendingResult;
 	}
 
 	public static @Nullable Result lastResult() {
@@ -138,6 +145,9 @@ public final class M0Capture {
 		}
 
 		lastResult = new Result(request, directory, failure, summary);
+		CompletableFuture<Result> future = pendingResult;
+		pendingResult = null;
+		future.complete(lastResult);
 		if (minecraft.player != null) {
 			minecraft.player.sendSystemMessage(Component.literal(failure == null ? "M0 capture written to " + directory : "M0 capture failed: " + failure));
 		}
@@ -174,7 +184,7 @@ public final class M0Capture {
 
 			for (int i = 0; i < request.repeats() && failure == null; i++) {
 				long start = System.nanoTime();
-				TargetMaskRenderer.arm(M0Fixture.TARGET);
+				TargetMaskRenderer.arm(request.target());
 				minecraft.gameRenderer.update(DeltaTracker.ONE);
 				minecraft.gameRenderer.extract(DeltaTracker.ONE, true);
 				minecraft.gameRenderer.renderLevel();
@@ -216,7 +226,12 @@ public final class M0Capture {
 		summary.addProperty("graphics_device", device.name());
 		summary.addProperty("graphics_driver", device.driverInfo());
 		summary.addProperty("depth_zero_to_one", device.isZZeroToOne());
-		summary.addProperty("target_block", minecraft.level.getBlockState(M0Fixture.TARGET).toString());
+		summary.addProperty("target_block", minecraft.level.getBlockState(request.target()).toString());
+		JsonArray target = new JsonArray();
+		target.add(request.target().getX());
+		target.add(request.target().getY());
+		target.add(request.target().getZ());
+		summary.add("target_position", target);
 		JsonArray eye = new JsonArray();
 		eye.add(minecraft.player.getX());
 		eye.add(minecraft.player.getEyeY());

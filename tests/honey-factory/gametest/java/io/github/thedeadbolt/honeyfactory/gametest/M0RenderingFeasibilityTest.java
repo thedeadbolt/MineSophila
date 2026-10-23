@@ -45,7 +45,7 @@ public class M0RenderingFeasibilityTest implements FabricClientGameTest {
 				for (int size : SIZES) {
 					String label = name + "_" + size;
 					Long vramBefore = vramUsedBytes();
-					M0Capture.Result result = capture(context, new M0Capture.Request(label, size, size, REPEATS));
+					M0Capture.Result result = capture(context, new M0Capture.Request(label, size, size, REPEATS, M0Fixture.TARGET));
 					JsonObject run = result.summary().deepCopy();
 					run.addProperty("variant", name);
 					run.addProperty("vram_used_bytes_before", vramBefore);
@@ -58,7 +58,7 @@ public class M0RenderingFeasibilityTest implements FabricClientGameTest {
 			// ADR 0005: classic transparency writes the target's own depth, so capture must refuse it.
 			context.runOnClient(minecraft -> minecraft.options.improvedTransparency().set(false));
 			context.waitTicks(2);
-			M0Capture.Result classic = capture(context, new M0Capture.Request("classic_rejected", SIZES[0], SIZES[0], 1));
+			M0Capture.Result classic = capture(context, new M0Capture.Request("classic_rejected", SIZES[0], SIZES[0], 1, M0Fixture.TARGET));
 			if (!M0Capture.IMPROVED_TRANSPARENCY_REQUIRED.equals(classic.failure())) {
 				failures.add("classic transparency capture was not rejected: " + classic.failure());
 			}

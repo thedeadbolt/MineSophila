@@ -3,10 +3,10 @@ package io.github.thedeadbolt.honeyfactory.contract;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 

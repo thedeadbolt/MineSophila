@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+
 import io.github.thedeadbolt.honeyfactory.contract.CaptureMode;
 import io.github.thedeadbolt.honeyfactory.contract.ContractException;
 import io.github.thedeadbolt.honeyfactory.contract.SplitGrouping;
@@ -96,6 +97,7 @@ class ConfigResolverTest {
 		splits not summing to one       | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "splits": {"train": 0.7}}                         | /splits/train
 		no training split               | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "splits": {"train": 0.0, "validation": 0.5, "test": 0.5}} | /splits/train
 		fractional scene count          | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "quotas": {"accepted_scenes": 2.5}}               | /quotas/accepted_scenes
+		arena too tall with its margin  | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "arena": {"height": 256, "margin": 4}}           | /arena/height
 		region outside level 5          | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "natural_region": {}}                             | /natural_region
 		foreign block state             | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "target": {"allowed_block_states": ["minecraft:stone"]}} | /target/allowed_block_states
 		""")
