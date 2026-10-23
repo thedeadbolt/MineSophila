@@ -55,8 +55,8 @@ boxes. It counts a disagreement only where all five rays agree.
   pixel lies outside the unoccluded mask.
 - **Known half occlusion:** the partial fixture reproduces M0's 6,476 pixels exactly.
 - **Golden masks:** partial, slab, stairs, fence and leaves match their golden masks
-  exactly. The goldens are stored at `tests/honey-factory/gametest/resources/golden/m3/`;
-  their overlays await explicit human approval (see below).
+  exactly. The goldens are stored at `tests/honey-factory/gametest/resources/golden/m3/`
+  and their overlays were approved (see below).
 - **Frozen determinism:** ten captures per fixture, with server ticking frozen, give
   identical masks, RGB, world tick and pose.
 - **Cross-run reproducibility:** every run rebuilds each fixture in a fresh dataset world
@@ -73,7 +73,8 @@ boxes. It counts a disagreement only where all five rays agree.
 `runClientGameTest` writes `rgb.png`, both masks and `overlay.png` for each fixture to
 `packages/honey-factory/build/m3-review/<fixture>/`; red is visible target, blue is
 hidden target. The specification requires explicit human approval of these overlays
-before the golden masks count as accepted.
+before the golden masks count as accepted. The project owner approved the partial, slab,
+stairs, fence and leaves overlays on 2026-10-23.
 
 ## Problems found and fixed
 
