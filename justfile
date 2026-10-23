@@ -1,7 +1,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # Python workspace members (uv packages)
-py_packages := "fly-vision"
+py_packages := "fly-vision honey-factory-tools"
 mod_dir := "packages/honey-factory"
 
 # List recipes
@@ -63,6 +63,10 @@ mod-build:
 # Run the mod's JUnit tests
 mod-test:
     cd {{mod_dir}} && ./gradlew test
+
+# Run client game tests (opens a Minecraft window in an isolated run directory)
+mod-gametest:
+    cd {{mod_dir}} && ./gradlew runClientGameTest
 
 # Launch a dev Minecraft client with the mod loaded
 mod-client:

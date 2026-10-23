@@ -32,4 +32,4 @@ repos:
         stages: [commit-msg]
         args:
           - --strict
-          - "--scopes=fly-vision,honey-factory,docs,repo,deps,ci,tests"
+          - "--scopes=fly-vision,honey-factory,honey-factory-tools,docs,repo,deps,ci,tests"

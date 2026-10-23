@@ -1,0 +1,293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/thedeadbolt/MineSophila/schemas/honey-factory/1.0/dataset.schema.json",
+  "title": "honey-factory dataset.json manifest",
+  "description": "Dataset manifest. The contract validators additionally check that resolved_config_sha256 is the RFC 8785 SHA-256 of {difficulty, target, generator, capture, splits without counts}, that dataset_id derives from it, that count arithmetic holds and that completion times follow creation.",
+  "type": "object",
+  "required": [
+    "schema_version", "dataset_id", "content_version", "lifecycle", "created_at_utc", "completed_at_utc", "resolved_config_sha256",
+    "difficulty", "target", "generator", "capture", "splits", "software", "render_environment", "storage", "counts", "provenance",
+    "licence", "intended_use"
+  ],
+  "properties": {
+    "schema_version": {"$ref": "common.schema.json#/$defs/schemaVersion"},
+    "dataset_id": {"$ref": "common.schema.json#/$defs/datasetId"},
+    "content_version": {"type": "string", "minLength": 1},
+    "lifecycle": {"enum": ["generating", "complete", "failed"]},
+    "created_at_utc": {"$ref": "common.schema.json#/$defs/timestampUtc"},
+    "completed_at_utc": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestampUtc"}]},
+    "resolved_config_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "difficulty": {"$ref": "common.schema.json#/$defs/difficulty"},
+    "target": {
+      "type": "object",
+      "required": ["block_id", "allowed_block_states", "present_fraction", "target_present_scenes", "target_absent_scenes"],
+      "properties": {
+        "block_id": {"$ref": "common.schema.json#/$defs/namespacedId"},
+        "allowed_block_states": {"type": "array", "minItems": 1, "items": {"$ref": "common.schema.json#/$defs/blockState"}},
+        "present_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+        "target_present_scenes": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "target_absent_scenes": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
+      }
+    },
+    "generator": {
+      "type": "object",
+      "required": ["dataset_name", "seed", "accepted_scenes", "scene_attempt_limit", "arena", "lighting", "visibility", "algorithms"],
+      "properties": {
+        "dataset_name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"},
+        "seed": {"$ref": "common.schema.json#/$defs/seed"},
+        "accepted_scenes": {"type": "integer", "minimum": 1, "maximum": 999999},
+        "scene_attempt_limit": {"type": "integer", "minimum": 1},
+        "arena": {
+          "type": "object",
+          "required": ["width", "length", "height", "margin"],
+          "properties": {
+            "width": {"type": "integer", "minimum": 1},
+            "length": {"type": "integer", "minimum": 1},
+            "height": {"type": "integer", "minimum": 1},
+            "margin": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
+          }
+        },
+        "natural_region": {
+          "type": "object",
+          "required": ["core_width", "core_length", "height", "context_padding"],
+          "properties": {
+            "core_width": {"type": "integer", "minimum": 1},
+            "core_length": {"type": "integer", "minimum": 1},
+            "height": {"type": "integer", "minimum": 1},
+            "context_padding": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
+          }
+        },
+        "lighting": {
+          "type": "object",
+          "required": ["time_of_day_ticks", "weather"],
+          "properties": {
+            "time_of_day_ticks": {"$ref": "common.schema.json#/$defs/timeOfDayTicks"},
+            "weather": {"$ref": "common.schema.json#/$defs/weather"}
+          }
+        },
+        "visibility": {
+          "type": "object",
+          "required": ["rule", "min_ratio", "max_ratio"],
+          "properties": {
+            "rule": {"enum": ["fully_visible", "partially_visible", "at_least_partly_visible"]},
+            "min_ratio": {"oneOf": [{"type": "null"}, {"type": "number", "minimum": 0, "maximum": 1}]},
+            "max_ratio": {"oneOf": [{"type": "null"}, {"type": "number", "minimum": 0, "maximum": 1}]}
+          }
+        },
+        "algorithms": {
+          "type": "object",
+          "required": ["config_hash", "seeds", "ids", "scene_slots", "layout"],
+          "properties": {
+            "config_hash": {"const": "jcs-sha256-v1"},
+            "seeds": {"const": "seed-v1"},
+            "ids": {"const": "ids-v1"},
+            "scene_slots": {"const": "scene-slots-v1"},
+            "layout": {"const": "layout-v1"}
+          }
+        }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "required": ["mode", "width", "height", "projection", "mask", "viewpoints", "augmentations"],
+      "properties": {
+        "mode": {"$ref": "common.schema.json#/$defs/captureMode"},
+        "width": {"type": "integer", "minimum": 16, "maximum": 16384},
+        "height": {"type": "integer", "minimum": 16, "maximum": 16384},
+        "projection": {"type": "object", "required": ["pixel_centre"], "properties": {"pixel_centre": {"const": "half-pixel"}}},
+        "mask": {
+          "type": "object",
+          "required": ["encoding", "meaning", "positive_value", "negative_value"],
+          "properties": {
+            "encoding": {"const": "png-gray8"},
+            "meaning": {"const": "visible-target-geometry-v1"},
+            "positive_value": {"const": 255},
+            "negative_value": {"const": 0}
+          }
+        },
+        "viewpoints": {
+          "type": "object",
+          "required": ["count", "distance_min_blocks", "distance_max_blocks", "yaw_jitter_degrees", "pitch_jitter_degrees", "attempts_per_viewpoint", "eye_height_blocks"],
+          "properties": {
+            "count": {"type": "integer", "minimum": 1, "maximum": 99},
+            "distance_min_blocks": {"type": "number", "exclusiveMinimum": 0},
+            "distance_max_blocks": {"type": "number", "exclusiveMinimum": 0},
+            "yaw_jitter_degrees": {"type": "number", "minimum": 0, "maximum": 180},
+            "pitch_jitter_degrees": {"type": "number", "minimum": 0, "maximum": 90},
+            "attempts_per_viewpoint": {"type": "integer", "minimum": 1},
+            "eye_height_blocks": {"type": "number", "minimum": 0}
+          }
+        },
+        "augmentations": {"type": "array"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"mode": {"const": "PERSPECTIVE_90"}}},
+          "then": {"properties": {"projection": {
+            "required": ["horizontal_fov_degrees", "vertical_fov_degrees", "principal_point_px", "focal_length_px"],
+            "properties": {"horizontal_fov_degrees": {"const": 90}}
+          }}}
+        },
+        {
+          "if": {"properties": {"mode": {"const": "PANORAMA_310"}}},
+          "then": {"properties": {"projection": {
+            "required": ["projection", "longitude_min_degrees", "longitude_max_degrees", "elevation_min_degrees", "elevation_max_degrees", "blind_sector_degrees", "cube_face_size", "cube_face_orientation"],
+            "properties": {"projection": {"const": "equirectangular-310x160-v1"}, "cube_face_size": {"type": "integer", "minimum": 16}}
+          }}}
+        }
+      ]
+    },
+    "splits": {
+      "type": "object",
+      "required": ["ratios", "grouping", "algorithm"],
+      "properties": {
+        "ratios": {
+          "type": "object",
+          "required": ["train", "validation", "test"],
+          "properties": {
+            "train": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+            "validation": {"type": "number", "minimum": 0, "maximum": 1},
+            "test": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        },
+        "grouping": {"enum": ["scene", "source_world"]},
+        "algorithm": {"const": "scene-slots-v1"},
+        "counts": {
+          "type": "object",
+          "required": ["train", "validation", "test"],
+          "additionalProperties": false,
+          "patternProperties": {
+            "^(train|validation|test)$": {
+              "type": "object",
+              "required": ["scenes", "samples"],
+              "properties": {
+                "scenes": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+                "samples": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "software": {
+      "type": "object",
+      "required": ["minecraft", "fabric_loader", "fabric_api", "mod", "java", "git_commit", "git_dirty"],
+      "properties": {
+        "minecraft": {"type": "string", "minLength": 1},
+        "fabric_loader": {"type": "string", "minLength": 1},
+        "fabric_api": {"type": "string", "minLength": 1},
+        "mod": {"type": "string", "minLength": 1},
+        "java": {"type": "string", "minLength": 1},
+        "git_commit": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9a-f]{40}$"}]},
+        "git_dirty": {"type": "boolean"}
+      }
+    },
+    "render_environment": {
+      "type": "object",
+      "required": ["graphics_backend", "gpu", "driver", "improved_transparency", "render_distance_chunks", "gamma", "cloud_status", "shader_pack", "resource_packs"],
+      "properties": {
+        "graphics_backend": {"type": "string", "minLength": 1},
+        "gpu": {"type": "string"},
+        "driver": {"type": "string"},
+        "improved_transparency": {"const": true, "description": "Masks require improved transparency (ADR 0005)."},
+        "render_distance_chunks": {"type": "integer", "minimum": 2, "maximum": 64},
+        "gamma": {"type": "number", "minimum": 0, "maximum": 1},
+        "cloud_status": {"type": "string"},
+        "shader_pack": {"type": ["string", "null"]},
+        "resource_packs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "sha256"],
+            "properties": {"id": {"type": "string", "minLength": 1}, "sha256": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/sha256"}]}}
+          }
+        }
+      }
+    },
+    "storage": {
+      "const": {
+        "indexes": {"scenes": "scenes.jsonl", "samples": "samples.jsonl"},
+        "image_roots": {"rgb": "rgb", "mask": "masks"},
+        "encodings": {"rgb": "png-rgb8", "mask": "png-gray8"},
+        "sharding": "ids-v1",
+        "channels": ["rgb", "mask"]
+      }
+    },
+    "counts": {
+      "type": "object",
+      "required": ["requested_scenes", "attempted_scenes", "accepted_scenes", "rejected_scenes", "failed_scenes", "accepted_samples", "rejection_reasons"],
+      "properties": {
+        "requested_scenes": {"type": "integer", "minimum": 1},
+        "attempted_scenes": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "accepted_scenes": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "rejected_scenes": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "failed_scenes": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "accepted_samples": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "rejection_reasons": {"type": "object", "additionalProperties": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["tool", "parent_dataset_ids", "derivations"],
+      "properties": {
+        "tool": {"type": "string", "minLength": 1},
+        "parent_dataset_ids": {"type": "array", "items": {"$ref": "common.schema.json#/$defs/datasetId"}},
+        "derivations": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "required": ["hash_algorithm", "indexes", "validation"],
+      "properties": {
+        "hash_algorithm": {"const": "sha256"},
+        "indexes": {
+          "type": "object",
+          "required": ["scenes", "samples"],
+          "properties": {"scenes": {"$ref": "#/$defs/indexDigest"}, "samples": {"$ref": "#/$defs/indexDigest"}}
+        },
+        "validation": {
+          "type": "object",
+          "required": ["passed", "error_count"],
+          "properties": {"passed": {"type": "boolean"}, "error_count": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}}
+        }
+      }
+    },
+    "licence": {"type": "string", "minLength": 1},
+    "intended_use": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"lifecycle": {"const": "generating"}}},
+      "then": {
+        "properties": {"completed_at_utc": {"type": "null"}, "splits": {"not": {"required": ["counts"]}}},
+        "not": {"required": ["integrity"]}
+      }
+    },
+    {
+      "if": {"properties": {"lifecycle": {"enum": ["complete", "failed"]}}},
+      "then": {"properties": {"completed_at_utc": {"type": "string"}}}
+    },
+    {
+      "if": {"properties": {"lifecycle": {"const": "complete"}}},
+      "then": {
+        "required": ["integrity"],
+        "properties": {
+          "splits": {"required": ["counts"]},
+          "integrity": {"properties": {"validation": {"properties": {"passed": {"const": true}, "error_count": {"const": 0}}}}}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"difficulty": {"const": 5}}},
+      "then": {"properties": {"generator": {"required": ["natural_region"]}, "splits": {"properties": {"grouping": {"const": "source_world"}}}}},
+      "else": {"properties": {"generator": {"not": {"required": ["natural_region"]}}, "splits": {"properties": {"grouping": {"const": "scene"}}}}}
+    }
+  ],
+  "$defs": {
+    "indexDigest": {
+      "type": "object",
+      "required": ["bytes", "sha256"],
+      "properties": {"bytes": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}, "sha256": {"$ref": "common.schema.json#/$defs/sha256"}}
+    }
+  }
+}

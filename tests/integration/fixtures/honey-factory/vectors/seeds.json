@@ -1,0 +1,45 @@
+{
+  "algorithm": "seed-v1",
+  "cases": [
+    {
+      "dataset_seed": 0,
+      "scene_index": 0,
+      "attempt_index": 0,
+      "layout": 6190241278765066,
+      "target": 1824663144477201,
+      "viewpoint": 1217499023093030
+    },
+    {
+      "dataset_seed": 42,
+      "scene_index": 0,
+      "attempt_index": 0,
+      "layout": 1481856838616337,
+      "target": 1776438539775100,
+      "viewpoint": 5042573912500366
+    },
+    {
+      "dataset_seed": 42,
+      "scene_index": 0,
+      "attempt_index": 1,
+      "layout": 3494179530384222,
+      "target": 7335279507741646,
+      "viewpoint": 2361033068314358
+    },
+    {
+      "dataset_seed": 42,
+      "scene_index": 7,
+      "attempt_index": 3,
+      "layout": 2099788198022016,
+      "target": 877269136326648,
+      "viewpoint": 3065670082576786
+    },
+    {
+      "dataset_seed": 9007199254740991,
+      "scene_index": 999998,
+      "attempt_index": 12,
+      "layout": 4390146010052771,
+      "target": 4265795045324323,
+      "viewpoint": 4487257159390642
+    }
+  ]
+}

@@ -38,7 +38,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/):
 
 | Types | `feat` `fix` `docs` `style` `refactor` `perf` `test` `build` `ci` `chore` `revert` |
 |---|---|
-| Scopes | `fly-vision` `honey-factory` `docs` `repo` `deps` `ci` `tests` |
+| Scopes | `fly-vision` `honey-factory` `honey-factory-tools` `docs` `repo` `deps` `ci` `tests` |
 
 - `feat` bumps the minor version, `fix` bumps the patch, and `!` or `BREAKING CHANGE:` marks a breaking change.
 - release-please uses each commit's changed files to decide which package's changelog and version it updates.

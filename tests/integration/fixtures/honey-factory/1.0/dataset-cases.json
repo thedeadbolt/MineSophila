@@ -1,0 +1,240 @@
+{
+  "description": "Cross-record cases over dataset/. Each edit patches one line ('line' + 'patch'), duplicates a line ('append_copy_of') or deletes one ('remove_line'); every edited record stays individually valid. The consistency check must report an error containing 'expect_error'.",
+  "cases": [
+    {
+      "name": "sample ids are unique",
+      "edits": [
+        {
+          "file": "samples.jsonl",
+          "append_copy_of": 0
+        }
+      ],
+      "expect_error": "duplicate sample_id"
+    },
+    {
+      "name": "scene ids are unique",
+      "edits": [
+        {
+          "file": "scenes.jsonl",
+          "append_copy_of": 0
+        }
+      ],
+      "expect_error": "duplicate scene_id"
+    },
+    {
+      "name": "samples reference existing scenes",
+      "edits": [
+        {
+          "file": "samples.jsonl",
+          "line": 0,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/scene_id",
+              "value": "s000009"
+            },
+            {
+              "op": "set",
+              "path": "/sample_id",
+              "value": "s000009-v00"
+            },
+            {
+              "op": "set",
+              "path": "/files/rgb/path",
+              "value": "rgb/validation/08/s000009-v00.png"
+            },
+            {
+              "op": "set",
+              "path": "/files/mask/path",
+              "value": "masks/validation/08/s000009-v00.png"
+            }
+          ]
+        }
+      ],
+      "expect_error": "does not exist"
+    },
+    {
+      "name": "samples inherit their scene's split",
+      "edits": [
+        {
+          "file": "samples.jsonl",
+          "line": 4,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/split",
+              "value": "validation"
+            },
+            {
+              "op": "set",
+              "path": "/files/rgb/path",
+              "value": "rgb/validation/e8/s000002-v00.png"
+            },
+            {
+              "op": "set",
+              "path": "/files/mask/path",
+              "value": "masks/validation/e8/s000002-v00.png"
+            }
+          ]
+        }
+      ],
+      "expect_error": "differs from its scene"
+    },
+    {
+      "name": "scene sample count matches its samples",
+      "edits": [
+        {
+          "file": "scenes.jsonl",
+          "line": 0,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/accepted_sample_count",
+              "value": 1
+            }
+          ]
+        }
+      ],
+      "expect_error": "accepted_sample_count"
+    },
+    {
+      "name": "scene seeds derive from the dataset seed",
+      "edits": [
+        {
+          "file": "scenes.jsonl",
+          "line": 0,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/generation/seeds/layout",
+              "value": 1
+            }
+          ]
+        }
+      ],
+      "expect_error": "seeds do not derive"
+    },
+    {
+      "name": "scenes share the dataset difficulty",
+      "edits": [
+        {
+          "file": "scenes.jsonl",
+          "line": 2,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/difficulty",
+              "value": 2
+            }
+          ]
+        }
+      ],
+      "expect_error": "difficulty 2 differs"
+    },
+    {
+      "name": "a complete dataset has every viewpoint",
+      "edits": [
+        {
+          "file": "samples.jsonl",
+          "remove_line": 7
+        }
+      ],
+      "expect_error": "base samples reference it"
+    },
+    {
+      "name": "samples share their scene's target presence",
+      "edits": [
+        {
+          "file": "scenes.jsonl",
+          "line": 1,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/target/present",
+              "value": true
+            },
+            {
+              "op": "set",
+              "path": "/target/block_state",
+              "value": "minecraft:honey_block"
+            },
+            {
+              "op": "set",
+              "path": "/target/position",
+              "value": [
+                16,
+                65,
+                16
+              ]
+            }
+          ]
+        }
+      ],
+      "expect_error": "target_present differs"
+    },
+    {
+      "name": "images use the configured capture size",
+      "edits": [
+        {
+          "file": "samples.jsonl",
+          "line": 6,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/files/rgb/width",
+              "value": 32
+            },
+            {
+              "op": "set",
+              "path": "/files/rgb/height",
+              "value": 32
+            },
+            {
+              "op": "set",
+              "path": "/files/mask/width",
+              "value": 32
+            },
+            {
+              "op": "set",
+              "path": "/files/mask/height",
+              "value": 32
+            }
+          ]
+        }
+      ],
+      "expect_error": "image size differs"
+    },
+    {
+      "name": "viewpoints stay within the configured count",
+      "edits": [
+        {
+          "file": "samples.jsonl",
+          "line": 7,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/viewpoint_index",
+              "value": 5
+            },
+            {
+              "op": "set",
+              "path": "/sample_id",
+              "value": "s000003-v05"
+            },
+            {
+              "op": "set",
+              "path": "/files/rgb/path",
+              "value": "rgb/train/cb/s000003-v05.png"
+            },
+            {
+              "op": "set",
+              "path": "/files/mask/path",
+              "value": "masks/train/cb/s000003-v05.png"
+            }
+          ]
+        }
+      ],
+      "expect_error": "viewpoint_index exceeds"
+    }
+  ]
+}

@@ -5,7 +5,9 @@ Find package tests and workspace checks here.
 | Suite | Location | Command from repository root |
 |---|---|---|
 | Python package | `tests/fly-vision/` | `just test fly-vision` |
+| Python package | `tests/honey-factory-tools/` | `just test honey-factory-tools` |
 | Java package | `tests/honey-factory/java/` | `just mod-test` |
+| Minecraft client game tests | `tests/honey-factory/gametest/` | `just mod-gametest` |
 | Workspace / integration | `tests/integration/` | `just test-integration` |
 | End-to-end (planned) | `tests/e2e/` | `just test-e2e` |
 | All Python suites | `tests/` | `just test-all` |
@@ -17,11 +19,33 @@ recipes accept extra pytest arguments, for example `just test fly-vision -v`.
 
 ## Current coverage
 
-The Python package test checks version metadata; the workspace smoke test imports
-`fly_vision` after installation. The Java test checks the identifier helper's mod namespace.
-Add tests for vision processing, dataset generation and package interactions as you implement them.
+The fly-vision test checks version metadata; the workspace smoke test imports every
+workspace package after installation. The Java tests cover the honey-factory configuration
+resolver, data contract records, ID/seed/scene-slot algorithms and the M1 exit gate. The
+honey-factory-tools tests cover its schema validation, CLI and independent algorithms.
 
-There are no end-to-end or live Minecraft tests yet. Running `just test-e2e` or
+### Shared contract fixtures
+
+[`integration/fixtures/honey-factory/`](integration/fixtures/honey-factory/) is consumed
+independently by the Java mod tests and the Python tools tests:
+
+- `vectors/`: golden canonical-JSON, seed, ID and scene-slot vectors. Seed, ID and slot
+  vectors came from a separate reference implementation, not from either package.
+- `1.0/valid/` and `1.0/dataset/`: valid records and a complete mini dataset, written by
+  the Java writer. `ValidFixturesTest` fails when they are stale; regenerate them on
+  purpose with `./gradlew test -Dhoneyfactory.regenerateFixtures=true` from
+  `packages/honey-factory`.
+- `1.0/record-cases.json`: JSON Pointer patches of valid records, each expected `valid`,
+  `schema` (rejected by the JSON Schemas and Java) or `semantic` (passes the schemas,
+  rejected by Java and, from M4, the outside validator).
+- `1.0/dataset-cases.json`: cross-record edits of the mini dataset that the consistency
+  check must reject.
+
+The Minecraft client game tests run the M2 environment exit gate (ownership refusal,
+invalid transitions, reproducible arena rebuilds, sentinel bounds, observe and baseline
+restoration) and the M0 rendering fixtures, each in fresh worlds. They need a display and
+GPU, and `just mod-build` does not run them. There are no Python end-to-end
+or live Minecraft tests yet. Running `just test-e2e` or
 `just test-minecraft` exits with pytest's “no tests collected” status (5).
 The full Python suite includes the e2e directory and will discover tests added there.
 

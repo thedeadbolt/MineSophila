@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/thedeadbolt/MineSophila/schemas/honey-factory/1.0/sample.schema.json",
+  "title": "honey-factory samples.jsonl record",
+  "description": "One accepted RGB/mask pair. Rules comparing values across members (status versus counts, ratio arithmetic, paths versus IDs and shards, camera basis versus yaw/pitch, bounding box and centroid placement) are enforced by the contract validators, not this schema.",
+  "type": "object",
+  "required": ["schema_version", "sample_id", "scene_id", "split", "viewpoint_index", "files", "camera", "projection", "capture", "target", "conditions"],
+  "properties": {
+    "schema_version": {"$ref": "common.schema.json#/$defs/schemaVersion"},
+    "sample_id": {"type": "string", "pattern": "^s[0-9]{6}-v[0-9]{2}(-[a-z][a-z0-9_]{0,31})?$"},
+    "scene_id": {"$ref": "common.schema.json#/$defs/sceneId"},
+    "split": {"$ref": "common.schema.json#/$defs/split"},
+    "viewpoint_index": {"type": "integer", "minimum": 0, "maximum": 98},
+    "files": {
+      "type": "object",
+      "required": ["rgb", "mask"],
+      "properties": {"rgb": {"$ref": "#/$defs/imageFile"}, "mask": {"$ref": "#/$defs/imageFile"}}
+    },
+    "camera": {
+      "type": "object",
+      "required": ["player_position", "eye_position", "eye_height_blocks", "yaw_degrees", "pitch_degrees", "forward", "right", "up"],
+      "properties": {
+        "player_position": {"$ref": "common.schema.json#/$defs/vec3"},
+        "eye_position": {"$ref": "common.schema.json#/$defs/vec3"},
+        "eye_height_blocks": {"type": "number", "minimum": 0, "maximum": 4},
+        "yaw_degrees": {"type": "number", "minimum": -180, "maximum": 180},
+        "pitch_degrees": {"type": "number", "minimum": -90, "maximum": 90},
+        "forward": {"$ref": "common.schema.json#/$defs/vec3"},
+        "right": {"$ref": "common.schema.json#/$defs/vec3"},
+        "up": {"$ref": "common.schema.json#/$defs/vec3"}
+      }
+    },
+    "projection": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {"mode": {"$ref": "common.schema.json#/$defs/captureMode"}, "overrides": {"type": "object"}}
+    },
+    "capture": {
+      "type": "object",
+      "required": ["operation_id", "world_tick", "partial_tick", "ready", "settling_ticks"],
+      "properties": {
+        "operation_id": {"type": "string", "minLength": 1},
+        "world_tick": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "partial_tick": {"type": "number", "minimum": 0, "maximum": 1},
+        "ready": {"type": "boolean"},
+        "settling_ticks": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
+      }
+    },
+    "target": {"$ref": "#/$defs/target"},
+    "conditions": {
+      "type": "object",
+      "required": ["time_of_day_ticks", "weather", "biome", "sky_light", "block_light", "rgb_mean_luminance"],
+      "properties": {
+        "time_of_day_ticks": {"$ref": "common.schema.json#/$defs/timeOfDayTicks"},
+        "weather": {"$ref": "common.schema.json#/$defs/weather"},
+        "biome": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/namespacedId"}]},
+        "sky_light": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0, "maximum": 15}]},
+        "block_light": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0, "maximum": 15}]},
+        "rgb_mean_luminance": {"oneOf": [{"type": "null"}, {"type": "number", "minimum": 0, "maximum": 1}]}
+      }
+    },
+    "augmentation": {
+      "type": "object",
+      "required": ["source_sample_id", "transform", "parameters"],
+      "properties": {
+        "source_sample_id": {"type": "string", "pattern": "^s[0-9]{6}-v[0-9]{2}$"},
+        "transform": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"},
+        "parameters": {"type": "object"}
+      }
+    }
+  },
+  "$defs": {
+    "imageFile": {
+      "type": "object",
+      "required": ["path", "media_type", "width", "height", "bytes", "sha256"],
+      "properties": {
+        "path": {"allOf": [{"$ref": "common.schema.json#/$defs/relativePath"}, {"pattern": "^(rgb|masks)/(train|validation|test)/[0-9a-f]{2}/[^/]+\\.png$"}]},
+        "media_type": {"const": "image/png"},
+        "width": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "height": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": ["target_present", "target_in_projection", "visible_pixels", "unoccluded_pixels", "visibility_ratio", "target_status", "visible_bbox_xywh", "visible_centroid_xy"],
+      "properties": {
+        "target_present": {"type": "boolean"},
+        "target_in_projection": {"type": "boolean"},
+        "visible_pixels": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "unoccluded_pixels": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "visibility_ratio": {"oneOf": [{"type": "null"}, {"type": "number", "minimum": 0, "maximum": 1}]},
+        "target_status": {"enum": ["absent", "out_of_view", "subpixel", "fully_occluded", "fully_visible", "partially_visible"]},
+        "visible_bbox_xywh": {"oneOf": [
+          {"type": "null"},
+          {"type": "array", "minItems": 4, "maxItems": 4, "prefixItems": [
+            {"type": "integer", "minimum": 0}, {"type": "integer", "minimum": 0}, {"type": "integer", "minimum": 1}, {"type": "integer", "minimum": 1}
+          ]}
+        ]},
+        "visible_centroid_xy": {"oneOf": [{"type": "null"}, {"type": "array", "items": {"type": "number", "minimum": 0}, "minItems": 2, "maxItems": 2}]},
+        "distance_blocks": {"type": "number", "minimum": 0}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"target_present": {"const": false}}},
+          "then": {
+            "properties": {"target_in_projection": {"const": false}, "target_status": {"const": "absent"}},
+            "not": {"required": ["distance_blocks"]}
+          },
+          "else": {"required": ["distance_blocks"], "properties": {"target_status": {"not": {"const": "absent"}}}}
+        },
+        {
+          "if": {"properties": {"target_present": {"const": true}, "target_in_projection": {"const": false}}},
+          "then": {"properties": {"target_status": {"const": "out_of_view"}}}
+        },
+        {
+          "if": {"properties": {"target_status": {"enum": ["absent", "out_of_view", "subpixel"]}}},
+          "then": {"properties": {"visible_pixels": {"const": 0}, "unoccluded_pixels": {"const": 0}, "visibility_ratio": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"target_status": {"const": "subpixel"}}},
+          "then": {"properties": {"target_present": {"const": true}, "target_in_projection": {"const": true}}}
+        },
+        {
+          "if": {"properties": {"target_status": {"const": "fully_occluded"}}},
+          "then": {"properties": {"visible_pixels": {"const": 0}, "unoccluded_pixels": {"minimum": 1}, "visibility_ratio": {"const": 0}}}
+        },
+        {
+          "if": {"properties": {"target_status": {"const": "fully_visible"}}},
+          "then": {"properties": {"visible_pixels": {"minimum": 1}, "visibility_ratio": {"const": 1}}}
+        },
+        {
+          "if": {"properties": {"target_status": {"const": "partially_visible"}}},
+          "then": {"properties": {"visible_pixels": {"minimum": 1}, "unoccluded_pixels": {"minimum": 2}, "visibility_ratio": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1}}}
+        },
+        {
+          "if": {"properties": {"visible_pixels": {"const": 0}}},
+          "then": {"properties": {"visible_bbox_xywh": {"type": "null"}, "visible_centroid_xy": {"type": "null"}}},
+          "else": {"properties": {"visible_bbox_xywh": {"type": "array"}, "visible_centroid_xy": {"type": "array"}}}
+        }
+      ]
+    }
+  }
+}
