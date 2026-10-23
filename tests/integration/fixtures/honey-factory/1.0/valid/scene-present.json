@@ -11,7 +11,19 @@
       "target": 1776438539775100,
       "viewpoint": 5042573912500366
     },
-    "algorithm": "seed-v1"
+    "algorithm": "seed-v1",
+    "parameters": {
+      "aim_block": [
+        16,
+        65,
+        16
+      ],
+      "viewpoint_draws": [
+        0,
+        0
+      ],
+      "layout": {}
+    }
   },
   "template": {
     "id": "level-1-platform",

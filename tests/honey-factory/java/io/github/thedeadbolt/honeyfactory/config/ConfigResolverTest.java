@@ -39,6 +39,7 @@ class ConfigResolverTest {
 		assertEquals(VisibilityRule.FULLY_VISIBLE, config.visibility().rule());
 		assertNull(config.naturalRegion());
 		assertEquals(Path.of("/srv/datasets"), config.outputRoot());
+		assertEquals(10L << 30, config.output().freeSpaceReserveBytes());
 	}
 
 	@Test
@@ -50,9 +51,10 @@ class ConfigResolverTest {
 	@Test
 	void hashAndIdIgnoreTheOutputRootButFollowEveryOtherSetting() {
 		ResolvedConfig base = ConfigResolver.resolve(MINIMAL);
-		ResolvedConfig otherRoot = ConfigResolver.resolve(MINIMAL.replace("/srv/datasets", "/mnt/elsewhere"));
+		ResolvedConfig otherRoot = ConfigResolver.resolve(MINIMAL.replace("\"/srv/datasets\"", "\"/mnt/elsewhere\", \"free_space_reserve_bytes\": 0"));
 		ResolvedConfig otherSeed = ConfigResolver.resolve(MINIMAL.replace("\"seed\": 7", "\"seed\": 8"));
 		assertEquals(base.sha256(), otherRoot.sha256());
+		assertEquals(0, otherRoot.output().freeSpaceReserveBytes());
 		assertNotEquals(base.sha256(), otherSeed.sha256());
 		assertEquals("honey-l1-" + base.sha256().substring(0, 12), base.datasetId());
 	}
@@ -99,6 +101,8 @@ class ConfigResolverTest {
 		fractional scene count          | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "quotas": {"accepted_scenes": 2.5}}               | /quotas/accepted_scenes
 		arena too tall with its margin  | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "arena": {"height": 256, "margin": 4}}           | /arena/height
 		region outside level 5          | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "natural_region": {}}                             | /natural_region
+		arena without a target layer    | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "arena": {"height": 1}}                         | /arena/height
+		negative free-space reserve     | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x", "free_space_reserve_bytes": -1}}                 | /output/free_space_reserve_bytes
 		foreign block state             | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "target": {"allowed_block_states": ["minecraft:stone"]}} | /target/allowed_block_states
 		""")
 	void rejectsInvalidInputWithItsPath(String name, String json, String path) {

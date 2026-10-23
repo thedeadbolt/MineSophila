@@ -111,7 +111,13 @@
         "id": "vanilla",
         "sha256": null
       }
-    ]
+    ],
+    "settings": {
+      "graphics_preset": "fancy",
+      "cutout_leaves": true,
+      "mipmap_levels": 4,
+      "texture_filtering": "none"
+    }
   },
   "storage": {
     "indexes": {

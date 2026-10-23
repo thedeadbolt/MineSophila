@@ -18,7 +18,23 @@ public record SceneRecord(
 	String layoutSha256,
 	int acceptedSampleCount
 ) {
-	public record Generation(int sceneIndex, int attemptIndex, SceneSeeds seeds, String algorithm) {
+	/** {@code parameters} is null in records written before generators reported them. */
+	public record Generation(int sceneIndex, int attemptIndex, SceneSeeds seeds, String algorithm, @Nullable Parameters parameters) {
+	}
+
+	/**
+	 * What the scene generator drew: the absolute block its viewpoints aim at, the accepted
+	 * draw (attempt index) of each viewpoint in order, and generator-specific layout details.
+	 */
+	public record Parameters(int[] aimBlock, int[] viewpointDraws, JsonObject layout) {
+		public Parameters {
+			layout = layout.deepCopy();
+		}
+
+		@Override
+		public JsonObject layout() {
+			return this.layout.deepCopy();
+		}
 	}
 
 	public record Template(String id, int version, String sha256) {
@@ -54,6 +70,15 @@ public record SceneRecord(
 		seeds.addProperty("viewpoint", this.generation.seeds().viewpoint());
 		generation.add("seeds", seeds);
 		generation.addProperty("algorithm", this.generation.algorithm());
+		Parameters parameters = this.generation.parameters();
+		if (parameters != null) {
+			JsonObject drawn = new JsonObject();
+			drawn.add("aim_block", JsonWrite.array(parameters.aimBlock()));
+			drawn.add("viewpoint_draws", JsonWrite.array(parameters.viewpointDraws()));
+			drawn.add("layout", parameters.layout());
+			generation.add("parameters", drawn);
+		}
+
 		json.add("generation", generation);
 		JsonObject template = new JsonObject();
 		template.addProperty("id", this.template.id());
@@ -125,7 +150,8 @@ public record SceneRecord(
 			sceneIndex,
 			generation.integer32("attempt_index", 0, Integer.MAX_VALUE),
 			new SceneSeeds(seeds.integer("layout", 0, SceneSeeds.MAX_SEED), seeds.integer("target", 0, SceneSeeds.MAX_SEED), seeds.integer("viewpoint", 0, SceneSeeds.MAX_SEED)),
-			generation.string("algorithm")
+			generation.string("algorithm"),
+			generation.has("parameters") ? parameters(generation.object("parameters")) : null
 		);
 		if (!SceneSeeds.ALGORITHM.equals(generationRecord.algorithm())) {
 			throw generation.error("algorithm", "unsupported seed algorithm; expected " + SceneSeeds.ALGORITHM);
@@ -195,7 +221,32 @@ public record SceneRecord(
 
 		String layout = fields.sha256("layout_sha256");
 		int accepted = fields.integer32("accepted_sample_count", 0, Ids.MAX_VIEWPOINTS);
+		Parameters parameters = generationRecord.parameters();
+		if (parameters != null) {
+			JsonFields drawn = generation.object("parameters");
+			if (parameters.viewpointDraws().length != accepted) {
+				throw drawn.error("viewpoint_draws", "must list one draw per accepted sample (" + accepted + ")");
+			}
+
+			for (int i = 0; i < 3; i++) {
+				if (parameters.aimBlock()[i] < min[i] || parameters.aimBlock()[i] > max[i]) {
+					throw drawn.error("aim_block", "must lie inside the arena bounds");
+				}
+			}
+		}
+
 		return new SceneRecord(version, sceneId, split, difficulty, generationRecord, templateRecord, arenaRecord, patch, target, environmentRecord, layout, accepted);
+	}
+
+	private static Parameters parameters(JsonFields parameters) {
+		int[] draws = parameters.integers("viewpoint_draws", parameters.array("viewpoint_draws").size());
+		for (int i = 0; i < draws.length; i++) {
+			if (draws[i] < 0) {
+				throw new ContractException(parameters.path("viewpoint_draws") + "/" + i, "must not be negative");
+			}
+		}
+
+		return new Parameters(parameters.integers("aim_block", 3), draws, parameters.object("layout").raw());
 	}
 
 	private static Target target(JsonFields target, int[] min, int[] max) {

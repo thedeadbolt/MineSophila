@@ -1,10 +1,11 @@
 # honey-factory implementation roadmap
 
-Updated 2026-10-23. M0–M3 are implemented: the rendering-feasibility spike;
+Updated 2026-10-23. M0–M4 are implemented: the rendering-feasibility spike;
 configuration, data contract and deterministic ID/seed/split rules; owned dataset
-worlds with arena resets and the synchronous environment coordinator; and the level-1
-perspective vertical slice from scene generation to a validated dataset. Later features
-are not implemented. The accepted behaviour and
+worlds with arena resets and the synchronous environment coordinator; the level-1
+perspective vertical slice from scene generation to a validated dataset; and the dataset
+runner with level-2 and level-3 generators, storage and cancellation handling and an
+independent outside validator. Later features are not implemented. The accepted behaviour and
 success criteria live in the [package specification](spec.md).
 
 ## Scope
@@ -40,7 +41,7 @@ external TCP adapter. Those remain separate integrations or extensions.
 | M1 | Core configuration and data contracts | M0 findings | Exit gate passed; ADR 0006 |
 | M2 | Owned world and synchronous coordinator | M1 | Exit gate passed; ADR 0007 |
 | M3 | Level-1 perspective vertical slice | M0–M2 | Exit gate passed; [findings](m3-level1-vertical-slice.md), ADR 0008 |
-| M4 | Dataset runner and levels 1–3 | M3 | Planned |
+| M4 | Dataset runner and levels 1–3 | M3 | Exit gate passed; [findings](m4-dataset-runner.md), ADR 0009 |
 | M5 | 310-degree panoramic capture | M3–M4 | Planned |
 | M6 | Constructed and natural scenes | M4–M5 | Planned |
 | M7 | Movement actions and environment completion | M2–M6 | Planned |

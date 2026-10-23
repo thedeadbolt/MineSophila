@@ -37,7 +37,7 @@ class SceneSlotsTest {
 
 	@Test
 	void largestRemainderBreaksTiesInSplitOrder() {
-		ResolvedConfig.Splits halves = new ResolvedConfig.Splits(0.5, 0.25, 0.25, SplitGrouping.SCENE);
+		double[] halves = {0.5, 0.25, 0.25};
 		assertArrayEquals(new int[] {1, 0, 0}, SceneSlots.splitCounts(1, halves));
 		assertArrayEquals(new int[] {1, 1, 1}, SceneSlots.splitCounts(3, halves));
 		assertArrayEquals(new int[] {3, 1, 1}, SceneSlots.splitCounts(5, halves));

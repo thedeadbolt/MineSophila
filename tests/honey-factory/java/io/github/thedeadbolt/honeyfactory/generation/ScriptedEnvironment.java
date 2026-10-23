@@ -10,9 +10,11 @@ import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import io.github.thedeadbolt.honeyfactory.scene.ArenaLayout;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.IntConsumer;
 import java.util.function.IntPredicate;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -20,7 +22,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * A Minecraft-free environment for generation tests. Requests complete when {@link #pump()}
  * runs them, as the real runtime completes them on later client ticks. Masks are ray cast
- * per pixel centre against the target's block cell, with nothing occluding it.
+ * per pixel centre against the target's block cell; the scene's other blocks above the
+ * floor occlude it.
  */
 final class ScriptedEnvironment implements GenerationEnvironment {
 	static final double EYE_HEIGHT = 1.62;
@@ -29,8 +32,12 @@ final class ScriptedEnvironment implements GenerationEnvironment {
 	private int operations;
 	private int observations;
 	private @Nullable CameraPose pose;
+	private List<int[]> occluders = List.of();
 	/** Observations (counted from 1) that fail with a capture error. */
 	IntPredicate failCapture = observation -> false;
+	/** Runs as each observation (counted from 1) is captured. */
+	IntConsumer onObserve = observation -> {
+	};
 	/** Returns empty masks, as if the target were never visible. */
 	boolean hideTarget;
 
@@ -45,6 +52,10 @@ final class ScriptedEnvironment implements GenerationEnvironment {
 	public CompletableFuture<SceneReady> reset(ArenaLayout arena, ScenePlan plan, CameraPose firstViewpoint) {
 		return later(() -> {
 			this.pose = firstViewpoint;
+			this.occluders = plan.layoutBlocks(arena).stream()
+				.filter(block -> block.y() > arena.core().minY() && !Arrays.equals(new int[] {block.x(), block.y(), block.z()}, plan.targetPosition(arena)))
+				.map(block -> new int[] {block.x(), block.y(), block.z()})
+				.toList();
 			JsonObject rules = new JsonObject();
 			rules.addProperty("advance_time", false);
 			rules.addProperty("random_tick_speed", 0);
@@ -64,7 +75,8 @@ final class ScriptedEnvironment implements GenerationEnvironment {
 	public CompletableFuture<Observation> observe(CaptureProjection projection, int @Nullable [] target) {
 		return later(() -> {
 			String operation = nextOperation();
-			if (this.failCapture.test(++this.observations)) {
+			this.onObserve.accept(++this.observations);
+			if (this.failCapture.test(this.observations)) {
 				throw new EnvironmentException(EnvironmentException.Reason.CAPTURE_FAILED, "scripted readback failure");
 			}
 
@@ -77,11 +89,16 @@ final class ScriptedEnvironment implements GenerationEnvironment {
 		int height = projection.height();
 		byte[] rgb = new byte[width * height * 3];
 		byte[] mask = new byte[width * height];
+		byte[] unoccluded = new byte[width * height];
 		CameraFrame camera = CameraFrame.of(this.pose, EYE_HEIGHT);
 		for (int y = 0; y < height; y++) {
 			for (int x = 0; x < width; x++) {
 				int p = y * width + x;
-				boolean hit = target != null && !this.hideTarget && hits(camera.eye(), projection.direction(camera, x + 0.5, y + 0.5), target);
+				double[] direction = projection.direction(camera, x + 0.5, y + 0.5);
+				double distance = target == null || this.hideTarget ? Double.NaN : distance(camera.eye(), direction, target);
+				boolean inView = !Double.isNaN(distance);
+				boolean hit = inView && this.occluders.stream().noneMatch(block -> distance(camera.eye(), direction, block) < distance);
+				unoccluded[p] = inView ? (byte) 255 : 0;
 				mask[p] = hit ? (byte) 255 : 0;
 				rgb[p * 3] = (byte) (hit ? 230 : 140);
 				rgb[p * 3 + 1] = (byte) (hit ? 160 : 140);
@@ -89,11 +106,11 @@ final class ScriptedEnvironment implements GenerationEnvironment {
 			}
 		}
 
-		return new CapturedImages(width, height, rgb, mask, mask.clone());
+		return new CapturedImages(width, height, rgb, mask, unoccluded);
 	}
 
-	/** Slab test of a ray against the unit block cell at {@code block}. */
-	private static boolean hits(double[] origin, double[] direction, int[] block) {
+	/** Slab test of a ray against the unit block cell at {@code block}: the entry distance, or NaN on a miss. */
+	private static double distance(double[] origin, double[] direction, int[] block) {
 		double near = 0.0;
 		double far = Double.POSITIVE_INFINITY;
 		for (int axis = 0; axis < 3; axis++) {
@@ -101,7 +118,7 @@ final class ScriptedEnvironment implements GenerationEnvironment {
 			double max = block[axis] + 1.0;
 			if (Math.abs(direction[axis]) < 1e-12) {
 				if (origin[axis] < min || origin[axis] > max) {
-					return false;
+					return Double.NaN;
 				}
 
 				continue;
@@ -113,7 +130,7 @@ final class ScriptedEnvironment implements GenerationEnvironment {
 			far = Math.min(far, Math.max(t1, t2));
 		}
 
-		return near <= far;
+		return near <= far ? near : Double.NaN;
 	}
 
 	@Override
@@ -123,7 +140,11 @@ final class ScriptedEnvironment implements GenerationEnvironment {
 
 	@Override
 	public DatasetManifest.RenderEnvironment renderEnvironment() {
-		return new DatasetManifest.RenderEnvironment("scripted", "none", "none", true, 8, 0.5, "off", null, List.of(new DatasetManifest.ResourcePack("vanilla", null)));
+		return new DatasetManifest.RenderEnvironment("scripted", "none", "none", true, 8, 0.5, "off", null, List.of(new DatasetManifest.ResourcePack("vanilla", null)), new JsonObject());
+	}
+
+	int observations() {
+		return this.observations;
 	}
 
 	private String nextOperation() {

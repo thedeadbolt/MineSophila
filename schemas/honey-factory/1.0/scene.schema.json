@@ -25,7 +25,17 @@
             "viewpoint": {"$ref": "common.schema.json#/$defs/seed"}
           }
         },
-        "algorithm": {"const": "seed-v1"}
+        "algorithm": {"const": "seed-v1"},
+        "parameters": {
+          "description": "What the scene generator drew. The validators check that aim_block lies inside the arena bounds and viewpoint_draws has one entry per accepted sample.",
+          "type": "object",
+          "required": ["aim_block", "viewpoint_draws", "layout"],
+          "properties": {
+            "aim_block": {"$ref": "common.schema.json#/$defs/blockPos"},
+            "viewpoint_draws": {"type": "array", "items": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}},
+            "layout": {"type": "object"}
+          }
+        }
       }
     },
     "template": {

@@ -2,6 +2,7 @@ package io.github.thedeadbolt.honeyfactory.generation;
 
 import com.google.gson.JsonObject;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
+import io.github.thedeadbolt.honeyfactory.contract.BlockBox;
 import io.github.thedeadbolt.honeyfactory.contract.CaptureMode;
 import io.github.thedeadbolt.honeyfactory.contract.SampleRecord;
 import io.github.thedeadbolt.honeyfactory.contract.SceneRecord;
@@ -12,9 +13,10 @@ import io.github.thedeadbolt.honeyfactory.dataset.SampleDescriptor;
 import io.github.thedeadbolt.honeyfactory.dataset.SceneDescriptor;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.scene.ArenaLayout;
+import io.github.thedeadbolt.honeyfactory.scene.GeneratedScene;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
 import io.github.thedeadbolt.honeyfactory.scene.Template;
-import org.jspecify.annotations.Nullable;
+import java.util.List;
 
 /** Builds the contract records of one dataset from generation results; it touches no files. */
 final class RecordFactory {
@@ -62,16 +64,25 @@ final class RecordFactory {
 		);
 	}
 
-	/** @param target the absolute target block, or null when the scene has none */
-	SceneRecord scene(SceneDescriptor descriptor, ScenePlan plan, int @Nullable [] target, GenerationEnvironment.SceneReady ready, int acceptedSamples) {
+	/** @param draws the accepted draw of each viewpoint, in order */
+	SceneRecord scene(SceneDescriptor descriptor, GeneratedScene generated, List<Integer> draws, GenerationEnvironment.SceneReady ready, int acceptedSamples) {
 		ResolvedConfig.Arena size = this.config.arena();
+		ScenePlan plan = generated.plan();
 		Template template = plan.template();
+		int[] target = plan.targetPosition(this.arena);
+		int[] aim = generated.aimBlock();
+		BlockBox core = this.arena.core();
+		SceneRecord.Parameters parameters = new SceneRecord.Parameters(
+			new int[] {core.minX() + aim[0], core.minY() + aim[1], core.minZ() + aim[2]},
+			draws.stream().mapToInt(Integer::intValue).toArray(),
+			generated.layoutParameters()
+		);
 		return new SceneRecord(
 			SchemaVersion.CURRENT,
 			descriptor.sceneId(),
 			descriptor.split(),
 			this.config.difficulty(),
-			new SceneRecord.Generation(descriptor.slot().sceneIndex(), descriptor.attemptIndex(), descriptor.seeds(), SceneSeeds.ALGORITHM),
+			new SceneRecord.Generation(descriptor.slot().sceneIndex(), descriptor.attemptIndex(), descriptor.seeds(), SceneSeeds.ALGORITHM, parameters),
 			new SceneRecord.Template(template.id(), template.version(), template.sha256()),
 			new SceneRecord.Arena(
 				ArenaLayout.DIMENSION_ID,

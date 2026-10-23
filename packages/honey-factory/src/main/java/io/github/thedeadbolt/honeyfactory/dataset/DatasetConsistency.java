@@ -18,8 +18,12 @@ import java.util.Set;
  * Cross-record rules over a manifest and its parsed scene and sample records. Each record
  * is assumed individually valid; this checks what no single record can show.
  *
- * <p>Generating and failed datasets are checked for internal consistency only. Complete
- * datasets must also meet their quotas, final split counts and split-leakage rules.
+ * <p>Every dataset, whatever its lifecycle, must be internally consistent: unique IDs,
+ * samples inheriting their scene's split and target presence, target-present samples
+ * meeting the level's visibility rule, and, for scene grouping, every scene in the class
+ * and split {@code scene-slots-v1} assigns its index. Since a scene's samples inherit its
+ * split and each index has exactly one slot, no grouping key can reach two splits.
+ * Complete datasets must also meet their quotas and final split counts.
  */
 public final class DatasetConsistency {
 	private DatasetConsistency() {
@@ -28,6 +32,10 @@ public final class DatasetConsistency {
 	/** Returns every violation found; an empty list means the records are consistent. */
 	public static List<String> check(DatasetManifest manifest, List<SceneRecord> scenes, List<SampleRecord> samples) {
 		List<String> errors = new ArrayList<>();
+		List<SceneSlots.Slot> slots = manifest.splitGrouping() == SplitGrouping.SCENE
+			? SceneSlots.plan(manifest.seed(), manifest.acceptedScenesRequested(), manifest.targetPresentScenes(), manifest.splitRatios())
+			: null;
+		DatasetManifest.Visibility visibility = manifest.visibility();
 		Map<String, SceneRecord> scenesById = new HashMap<>();
 		for (SceneRecord scene : scenes) {
 			if (scenesById.put(scene.sceneId(), scene) != null) {
@@ -45,6 +53,10 @@ public final class DatasetConsistency {
 			SceneSeeds expected = SceneSeeds.derive(manifest.seed(), scene.generation().sceneIndex(), scene.generation().attemptIndex());
 			if (!expected.equals(scene.generation().seeds())) {
 				errors.add("scene " + scene.sceneId() + ": seeds do not derive from the dataset seed, scene index and attempt index");
+			}
+
+			if (slots != null) {
+				checkSlot(scene, slots, errors);
 			}
 		}
 
@@ -70,6 +82,12 @@ public final class DatasetConsistency {
 
 			if (sample.target().targetPresent() != scene.target().present()) {
 				errors.add(label + "target_present differs from its scene");
+			}
+
+			if (sample.target().targetPresent() && sample.augmentation() == null
+				&& !visibility.accepts(sample.target().targetStatus(), sample.target().visibilityRatio())) {
+				errors.add(label + "target_status " + sample.target().targetStatus().jsonName() + " with visibility_ratio " + sample.target().visibilityRatio()
+					+ " fails the dataset's " + visibility.rule().jsonName() + " rule");
 			}
 
 			if (sample.mode() != manifest.captureMode()) {
@@ -123,6 +141,25 @@ public final class DatasetConsistency {
 		}
 
 		return errors;
+	}
+
+	/** The scene must sit in the class and split its index's slot fixes. */
+	private static void checkSlot(SceneRecord scene, List<SceneSlots.Slot> slots, List<String> errors) {
+		int index = scene.generation().sceneIndex();
+		if (index >= slots.size()) {
+			errors.add("scene " + scene.sceneId() + ": scene_index " + index + " exceeds the requested " + slots.size() + " scenes");
+			return;
+		}
+
+		SceneSlots.Slot slot = slots.get(index);
+		if (scene.split() != slot.split()) {
+			errors.add("scene " + scene.sceneId() + ": split " + scene.split().jsonName() + " differs from the " + slot.split().jsonName() + " that "
+				+ SceneSlots.ALGORITHM + " assigns");
+		}
+
+		if (scene.target().present() != slot.targetPresent()) {
+			errors.add("scene " + scene.sceneId() + ": target presence differs from the class " + SceneSlots.ALGORITHM + " assigns");
+		}
 	}
 
 	private static void checkComplete(

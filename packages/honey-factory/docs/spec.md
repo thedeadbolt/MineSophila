@@ -766,7 +766,8 @@ smoke run may override it with only a few scenes.
   visibility, capture, mask validation and file-write failures.
 - Before starting, estimate uncompressed output size and check available space under
   the configured output root. Keep a configurable free-space reserve and stop safely
-  if it would be crossed. Exact reserve default remains open.
+  if it would be crossed. The reserve is `output.free_space_reserve_bytes`, 10 GiB by
+  default; like the output root, it is not part of the dataset configuration.
 - Mark the dataset `complete` only when quotas and validation pass. If attempt limits,
   storage limits or unrecoverable capture errors stop the run, retain its partial data
   and mark it `failed`; never report a smaller dataset as successful without an
@@ -814,8 +815,21 @@ IDLE -> PREPARING_SCENE -> READY -> ACTING -> SETTLING -> CAPTURING -> READY
                               \______________________________________-> FAILED
 ```
 
-Cancellation and recovery semantics remain to be designed. Invalid operations for
-the current state return an error instead of overlapping or being silently queued.
+Invalid operations for the current state return an error instead of overlapping or being
+silently queued.
+
+Dataset cancellation (agreed with M4, ADR 0009) is a request honoured at the next safe
+boundary: before the next reset, viewpoint change, capture or scene attempt.
+
+- An operation already running finishes.
+- The unfinished scene attempt is discarded with its images.
+- A scene whose last capture already finished is kept.
+- The dataset is marked `failed` with the reason `cancelled`, unless no work remained,
+  in which case it completes normally.
+
+Leaving the world fails the running operation with the same clean-up. A manifest still
+`generating` after the game stopped records an interrupted run. Recovering such a run in
+place is not supported; regenerate it instead.
 
 ### Dataset viewpoints and environment episodes
 

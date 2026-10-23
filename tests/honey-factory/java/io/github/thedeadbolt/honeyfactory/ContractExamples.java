@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -50,7 +51,8 @@ public final class ContractExamples {
 	private static final int[] ARENA_MAX = {31, 79, 31};
 	private static final int[] TARGET = {16, 65, 16};
 
-	public record Dataset(DatasetManifest manifest, List<SceneRecord> scenes, List<SampleRecord> samples) {
+	/** {@code images} maps each dataset-relative image path to its PNG bytes. */
+	public record Dataset(DatasetManifest manifest, List<SceneRecord> scenes, List<SampleRecord> samples, Map<String, byte[]> images) {
 		public byte[] scenesJsonl() {
 			return Jsonl.write(this.scenes.stream().map(SceneRecord::toJson).toList());
 		}
@@ -67,11 +69,15 @@ public final class ContractExamples {
 		return ConfigResolver.resolve(CONFIG);
 	}
 
-	/** A complete dataset; present scenes give one fully and one partially visible sample. */
+	/**
+	 * A complete dataset with real image files; present scenes show the target fully
+	 * visible as a different square in each view.
+	 */
 	public static Dataset completeDataset() {
 		ResolvedConfig config = config();
 		List<SceneRecord> scenes = new ArrayList<>();
 		List<SampleRecord> samples = new ArrayList<>();
+		Map<String, byte[]> images = new LinkedHashMap<>();
 		Map<Split, int[]> totals = new EnumMap<>(Split.class);
 		for (Split split : Split.values()) {
 			totals.put(split, new int[2]);
@@ -83,15 +89,19 @@ public final class ContractExamples {
 			totals.get(slot.split())[0]++;
 			for (int viewpoint = 0; viewpoint < config.viewpoints().count(); viewpoint++) {
 				SampleDescriptor descriptor = scene.sample(viewpoint);
-				SampleRecord.Target target = slot.targetPresent()
-					? (viewpoint == 0 ? fullyVisible() : partiallyVisible())
-					: absent();
-				samples.add(sample(descriptor, target));
+				byte[] mask = slot.targetPresent() ? (viewpoint == 0 ? square(24, 20, 16, 16) : square(30, 24, 10, 12)) : new byte[SIZE * SIZE];
+				MaskStatistics visible = MaskStatistics.of(mask, SIZE, SIZE);
+				SampleRecord.Target target = slot.targetPresent() ? SampleRecord.Target.of(true, true, visible, visible.positivePixels(), 8.0 - viewpoint) : absent();
+				byte[] rgb = StoredPng.rgb(SIZE, SIZE, render(mask));
+				byte[] maskPng = StoredPng.gray(SIZE, SIZE, mask);
+				images.put(descriptor.rgbPath(), rgb);
+				images.put(descriptor.maskPath(), maskPng);
+				samples.add(sample(descriptor, target, imageFile(descriptor.rgbPath(), rgb), imageFile(descriptor.maskPath(), maskPng)));
 				totals.get(slot.split())[1]++;
 			}
 		}
 
-		Dataset generating = new Dataset(DatasetManifest.generating(config.toJson(), CREATED, software(), render(), provenance()), scenes, samples);
+		Dataset generating = new Dataset(DatasetManifest.generating(config.toJson(), CREATED, software(), render(), provenance()), scenes, samples, images);
 		Map<Split, DatasetManifest.SplitCount> splitCounts = new EnumMap<>(Split.class);
 		totals.forEach((split, count) -> splitCounts.put(split, new DatasetManifest.SplitCount(count[0], count[1])));
 		DatasetManifest base = generating.manifest();
@@ -113,7 +123,24 @@ public final class ContractExamples {
 			base.licence(),
 			base.intendedUse()
 		);
-		return new Dataset(complete, scenes, samples);
+		return new Dataset(complete, scenes, samples, images);
+	}
+
+	/** Grey wherever the mask is empty, honey-coloured where it is set. */
+	private static byte[] render(byte[] mask) {
+		byte[] rgb = new byte[mask.length * 3];
+		for (int p = 0; p < mask.length; p++) {
+			boolean honey = mask[p] != 0;
+			rgb[p * 3] = (byte) (honey ? 230 : 140);
+			rgb[p * 3 + 1] = (byte) (honey ? 160 : 140);
+			rgb[p * 3 + 2] = (byte) (honey ? 30 : 140);
+		}
+
+		return rgb;
+	}
+
+	private static SampleRecord.ImageFile imageFile(String path, byte[] png) {
+		return new SampleRecord.ImageFile(path, SampleRecord.MEDIA_TYPE, SIZE, SIZE, png.length, Sha256.hex(png));
 	}
 
 	public static SceneRecord scene(SceneDescriptor descriptor, int acceptedSamples) {
@@ -133,7 +160,8 @@ public final class ContractExamples {
 			descriptor.sceneId(),
 			descriptor.split(),
 			1,
-			new SceneRecord.Generation(descriptor.slot().sceneIndex(), descriptor.attemptIndex(), descriptor.seeds(), "seed-v1"),
+			new SceneRecord.Generation(descriptor.slot().sceneIndex(), descriptor.attemptIndex(), descriptor.seeds(), "seed-v1",
+				new SceneRecord.Parameters(TARGET.clone(), new int[acceptedSamples], new JsonObject())),
 			new SceneRecord.Template("level-1-platform", 1, Sha256.hex("level-1-platform template v1".getBytes(StandardCharsets.UTF_8))),
 			new SceneRecord.Arena("honey_factory:arena", ARENA_MIN.clone(), ARENA_MIN.clone(), ARENA_MAX.clone(), 32, 32, 16, 4),
 			null,
@@ -144,7 +172,7 @@ public final class ContractExamples {
 		);
 	}
 
-	public static SampleRecord sample(SampleDescriptor descriptor, SampleRecord.Target target) {
+	public static SampleRecord sample(SampleDescriptor descriptor, SampleRecord.Target target, SampleRecord.ImageFile rgb, SampleRecord.ImageFile mask) {
 		String id = descriptor.sampleId();
 		return new SampleRecord(
 			SchemaVersion.CURRENT,
@@ -152,8 +180,8 @@ public final class ContractExamples {
 			descriptor.sceneId(),
 			descriptor.split(),
 			descriptor.viewpointIndex(),
-			new SampleRecord.ImageFile(descriptor.rgbPath(), SampleRecord.MEDIA_TYPE, SIZE, SIZE, 4096 + descriptor.viewpointIndex(), Sha256.hex(("rgb " + id).getBytes(StandardCharsets.UTF_8))),
-			new SampleRecord.ImageFile(descriptor.maskPath(), SampleRecord.MEDIA_TYPE, SIZE, SIZE, 512 + descriptor.viewpointIndex(), Sha256.hex(("mask " + id).getBytes(StandardCharsets.UTF_8))),
+			rgb,
+			mask,
 			SampleRecord.Camera.of(new double[] {16.5, 65.0, 24.5 - descriptor.viewpointIndex()}, ConfigResolver.EYE_HEIGHT_BLOCKS, 180.0, 10.0),
 			CaptureMode.PERSPECTIVE_90,
 			new JsonObject(),
@@ -206,7 +234,16 @@ public final class ContractExamples {
 	}
 
 	public static DatasetManifest.RenderEnvironment render() {
-		return new DatasetManifest.RenderEnvironment("OpenGL", "AMD Radeon RX 7600", "Mesa 26.2.4", true, 12, 0.5, "off", null, List.of(new DatasetManifest.ResourcePack("vanilla", null)));
+		return new DatasetManifest.RenderEnvironment("OpenGL", "AMD Radeon RX 7600", "Mesa 26.2.4", true, 12, 0.5, "off", null, List.of(new DatasetManifest.ResourcePack("vanilla", null)), renderSettings());
+	}
+
+	public static JsonObject renderSettings() {
+		JsonObject settings = new JsonObject();
+		settings.addProperty("graphics_preset", "fancy");
+		settings.addProperty("cutout_leaves", true);
+		settings.addProperty("mipmap_levels", 4);
+		settings.addProperty("texture_filtering", "none");
+		return settings;
 	}
 
 	public static DatasetManifest.Provenance provenance() {

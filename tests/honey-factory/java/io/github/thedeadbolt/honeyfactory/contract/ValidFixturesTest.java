@@ -1,5 +1,6 @@
 package io.github.thedeadbolt.honeyfactory.contract;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import io.github.thedeadbolt.honeyfactory.ContractExamples;
@@ -8,7 +9,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import io.github.thedeadbolt.honeyfactory.dataset.DatasetValidator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -23,6 +26,7 @@ class ValidFixturesTest {
 		files.put("dataset/dataset.json", Jsonl.document(dataset.manifest().toJson()));
 		files.put("dataset/scenes.jsonl", dataset.scenesJsonl());
 		files.put("dataset/samples.jsonl", dataset.samplesJsonl());
+		dataset.images().forEach((path, png) -> files.put("dataset/" + path, png));
 
 		DatasetManifest generating = DatasetManifest.generating(
 			ContractExamples.config().toJson(), ContractExamples.CREATED, ContractExamples.software(), ContractExamples.render(), ContractExamples.provenance()
@@ -65,7 +69,17 @@ class ValidFixturesTest {
 				Files.write(path, file.getValue());
 			}
 
-			assertEquals(new String(file.getValue(), StandardCharsets.UTF_8), Files.readString(path), file.getKey() + " is stale; regenerate the fixtures");
+			if (file.getKey().endsWith(".png")) {
+				assertArrayEquals(file.getValue(), Files.readAllBytes(path), file.getKey() + " is stale; regenerate the fixtures");
+			} else {
+				assertEquals(new String(file.getValue(), StandardCharsets.UTF_8), Files.readString(path), file.getKey() + " is stale; regenerate the fixtures");
+			}
 		}
+	}
+
+	@Test
+	void committedDatasetPassesFullValidation() throws IOException {
+		DatasetValidator.Report report = DatasetValidator.validate(Fixtures.contract().resolve("dataset"));
+		assertEquals(List.of(), report.errors());
 	}
 }

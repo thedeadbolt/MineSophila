@@ -27,12 +27,12 @@ class Level1GeneratorTest {
 	void recordsItsVersionInTheResolvedConfiguration() {
 		assertEquals(Algorithms.LEVEL1_GENERATOR, CONFIG.toJson().getAsJsonObject("generator").getAsJsonObject("algorithms").get("scene_generator").getAsString());
 		assertEquals(Algorithms.LEVEL1_GENERATOR, GENERATOR.version());
-		ResolvedConfig level2 = ConfigResolver.resolve("""
-			{"dataset": {"name": "level2-test", "seed": 42, "difficulty": 2}, "output": {"root": "/tmp/honey"}}
+		ResolvedConfig level4 = ConfigResolver.resolve("""
+			{"dataset": {"name": "level4-test", "seed": 42, "difficulty": 4}, "output": {"root": "/tmp/honey"}}
 			""");
-		assertTrue(!level2.toJson().getAsJsonObject("generator").getAsJsonObject("algorithms").has("scene_generator"));
-		assertThrows(UnsupportedOperationException.class, () -> SceneGenerators.forConfig(level2));
-		assertThrows(IllegalArgumentException.class, () -> new Level1Generator(level2));
+		assertTrue(!level4.toJson().getAsJsonObject("generator").getAsJsonObject("algorithms").has("scene_generator"));
+		assertThrows(UnsupportedOperationException.class, () -> SceneGenerators.forConfig(level4));
+		assertThrows(IllegalArgumentException.class, () -> new Level1Generator(level4));
 	}
 
 	@Test
@@ -46,7 +46,7 @@ class Level1GeneratorTest {
 			assertTrue(target.x() >= 0 && target.x() < 32 && target.z() >= 0 && target.z() < 32);
 			assertEquals("minecraft:honey_block", target.state());
 			assertArrayEquals(new int[] {target.x(), 1, target.z()}, scene.aimBlock());
-			assertEquals(Level1Generator.TEMPLATE_ID, scene.plan().template().id());
+			assertEquals(PlatformGenerator.TEMPLATE_ID, scene.plan().template().id());
 			assertEquals(32 * 32, scene.plan().template().blocks().size());
 		}
 	}
