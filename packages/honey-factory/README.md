@@ -6,9 +6,12 @@ The [package specification](docs/spec.md) records the agreed behaviour and accep
 criteria. The [implementation roadmap](docs/roadmap.md) orders the work into gated,
 reviewable milestones.
 
-The common entrypoint logs startup. The only feature is the temporary
-[M0 rendering-feasibility fixture](docs/m0-rendering-feasibility.md); see the proposed
-scenario generation and frame capture in the [architecture](../../docs/architecture.md).
+Implemented so far: the temporary
+[M0 rendering-feasibility fixture](docs/m0-rendering-feasibility.md), and M1's
+configuration resolver, data contract records and deterministic ID, seed and split
+rules. Datasets follow the language-neutral [data contract](../../schemas/honey-factory/).
+See the proposed scenario generation and frame capture in the
+[architecture](../../docs/architecture.md).
 
 This is a Gradle project, separate from the uv workspace. It targets Minecraft 26.3 and
 Java 25; dependency versions live in `gradle.properties`. Java 17+ can start the wrapper;
@@ -19,7 +22,10 @@ The mod id is `honey_factory`; Java packages use `io.github.thedeadbolt.honeyfac
 
 ## Layout
 
-- `src/main/`: common code and mod resources.
+- `src/main/`: common code and mod resources. `contract/` holds the dataset record types and
+  the published canonical-JSON, ID, seed and layout algorithms; `config/` resolves and
+  validates generation settings; `dataset/` plans scene slots and checks records against
+  each other. Dependencies point toward `contract/`, and none of these import Minecraft.
 - `src/client/`: client entrypoint and future rendering/capture code.
 - [`tests/honey-factory/`](../../tests/honey-factory/): repository-level JUnit sources,
   configured by this project's `build.gradle`.

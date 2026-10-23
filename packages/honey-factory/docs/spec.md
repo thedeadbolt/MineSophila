@@ -93,9 +93,9 @@ worlds remain required because a crash can interrupt restoration.
 ### Deterministic seeds and validation
 
 Derive layout, target and viewpoint seeds independently from the dataset seed, scene
-index and generation-attempt index using a documented, versioned algorithm. Do not
-consume one shared random stream whose later results change when an earlier scene is
-rejected.
+index and generation-attempt index using a documented, versioned algorithm (`seed-v1`
+in the [data contract](../../../schemas/honey-factory/README.md)). Do not consume one shared random stream whose later
+results change when an earlier scene is rejected.
 
 Record the derived seeds, generator/template versions, resolved dimensions, target
 state and a checksum of the resulting block layout. Rebuilding the same descriptor
@@ -449,9 +449,9 @@ one capture mode. Resolution and other generation settings are fixed in its mani
 A changed configuration produces a new dataset ID instead of mixing incompatible
 samples.
 
-The output root is configurable. The local proposed default is
-`/mnt/fastvault/minesophila/datasets`; this machine-specific path is not part of the
-portable dataset format and must not be hard-coded in readers.
+The output root is required in every configuration and has no default; on this machine
+it is normally `/mnt/fastvault/minesophila/datasets`. This machine-specific path is not
+part of the portable dataset format and must not be hard-coded in readers.
 
 ```text
 <output-root>/<dataset-id>/
@@ -480,7 +480,8 @@ portable dataset format and must not be hard-coded in readers.
 - Use lossless RGB PNGs and lossless binary mask PNGs initially. File encoding can
   become configurable later only if readers can identify it from the manifest.
 - Shard files by a stable prefix derived from the sample ID so a single directory
-  does not accumulate every image. The precise ID/hash algorithm remains open.
+  does not accumulate every image. IDs and shards follow `ids-v1` in the
+  [data contract](../../../schemas/honey-factory/README.md).
 - Assign the split at scene level. All viewpoints and derived samples inherit it.
   `derived/` holds fly-vision outputs or augmentations without modifying sources.
 - Store paths in indexes relative to the dataset directory so datasets can move.
@@ -549,8 +550,8 @@ One scene record describes one world arrangement shared by all of its viewpoints
 Do not list every arena block in the ordinary scene record. Template identity,
 versioned generation parameters and seeds reproduce the layout; `layout_sha256`
 verifies it. A full block snapshot may be stored as an optional diagnostic artifact.
-The canonical layout serialization used for hashing must be versioned before the
-first reproducibility test.
+The canonical layout serialization used for hashing is `layout-v1` in the
+[data contract](../../../schemas/honey-factory/README.md).
 
 #### `samples.jsonl`
 

@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "sample_id": "s000000-v00",
+  "scene_id": "s000000",
+  "split": "validation",
+  "viewpoint_index": 0,
+  "files": {
+    "rgb": {
+      "path": "rgb/validation/0a/s000000-v00.png",
+      "media_type": "image/png",
+      "width": 64,
+      "height": 64,
+      "bytes": 4096,
+      "sha256": "2729eb848d0b76c6fb6c560108f6f06459673c22a71813056d16bd1b56986bdc"
+    },
+    "mask": {
+      "path": "masks/validation/0a/s000000-v00.png",
+      "media_type": "image/png",
+      "width": 64,
+      "height": 64,
+      "bytes": 512,
+      "sha256": "868ee66cde544ef97f01ffc2133a1383572068088e3badff46913a4311b8b92a"
+    }
+  },
+  "camera": {
+    "player_position": [
+      16.5,
+      65.0,
+      24.5
+    ],
+    "eye_position": [
+      16.5,
+      66.62,
+      24.5
+    ],
+    "eye_height_blocks": 1.62,
+    "yaw_degrees": 180.0,
+    "pitch_degrees": 10.0,
+    "forward": [
+      -1.2060416625018976E-16,
+      -0.17364817766693033,
+      -0.984807753012208
+    ],
+    "right": [
+      1.0,
+      0.0,
+      -1.2246467991473532E-16
+    ],
+    "up": [
+      -2.1265768495757713E-17,
+      0.984807753012208,
+      -0.17364817766693033
+    ]
+  },
+  "projection": {
+    "mode": "PERSPECTIVE_90",
+    "overrides": {}
+  },
+  "capture": {
+    "operation_id": "op-s000000-v00",
+    "world_tick": 1000,
+    "partial_tick": 1.0,
+    "ready": true,
+    "settling_ticks": 20
+  },
+  "target": {
+    "target_present": true,
+    "target_in_projection": true,
+    "visible_pixels": 128,
+    "unoccluded_pixels": 256,
+    "visibility_ratio": 0.5,
+    "target_status": "partially_visible",
+    "visible_bbox_xywh": [
+      32,
+      20,
+      8,
+      16
+    ],
+    "visible_centroid_xy": [
+      36.0,
+      28.0
+    ],
+    "distance_blocks": 7.0
+  },
+  "conditions": {
+    "time_of_day_ticks": 6000,
+    "weather": "clear",
+    "biome": "minecraft:the_void",
+    "sky_light": 15,
+    "block_light": 0,
+    "rgb_mean_luminance": 0.5
+  }
+}

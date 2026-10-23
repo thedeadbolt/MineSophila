@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.0",
+  "sample_id": "s000001-v00",
+  "scene_id": "s000001",
+  "split": "validation",
+  "viewpoint_index": 0,
+  "files": {
+    "rgb": {
+      "path": "rgb/validation/e4/s000001-v00.png",
+      "media_type": "image/png",
+      "width": 64,
+      "height": 64,
+      "bytes": 4096,
+      "sha256": "39730b00b34b82df01d201e02c75fc7d34049f4045a515d654aafbc02b892b39"
+    },
+    "mask": {
+      "path": "masks/validation/e4/s000001-v00.png",
+      "media_type": "image/png",
+      "width": 64,
+      "height": 64,
+      "bytes": 512,
+      "sha256": "df6990615e737cec44ef1271a1c86131733c37577967aa9bdf3f21d912731936"
+    }
+  },
+  "camera": {
+    "player_position": [
+      16.5,
+      65.0,
+      24.5
+    ],
+    "eye_position": [
+      16.5,
+      66.62,
+      24.5
+    ],
+    "eye_height_blocks": 1.62,
+    "yaw_degrees": 180.0,
+    "pitch_degrees": 10.0,
+    "forward": [
+      -1.2060416625018976E-16,
+      -0.17364817766693033,
+      -0.984807753012208
+    ],
+    "right": [
+      1.0,
+      0.0,
+      -1.2246467991473532E-16
+    ],
+    "up": [
+      -2.1265768495757713E-17,
+      0.984807753012208,
+      -0.17364817766693033
+    ]
+  },
+  "projection": {
+    "mode": "PERSPECTIVE_90",
+    "overrides": {}
+  },
+  "capture": {
+    "operation_id": "op-s000001-v00",
+    "world_tick": 1000,
+    "partial_tick": 1.0,
+    "ready": true,
+    "settling_ticks": 20
+  },
+  "target": {
+    "target_present": false,
+    "target_in_projection": false,
+    "visible_pixels": 0,
+    "unoccluded_pixels": 0,
+    "visibility_ratio": null,
+    "target_status": "absent",
+    "visible_bbox_xywh": null,
+    "visible_centroid_xy": null
+  },
+  "conditions": {
+    "time_of_day_ticks": 6000,
+    "weather": "clear",
+    "biome": "minecraft:the_void",
+    "sky_light": 15,
+    "block_light": 0,
+    "rgb_mean_luminance": 0.5
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "scene_id": "s000001",
+  "split": "validation",
+  "difficulty": 1,
+  "generation": {
+    "scene_index": 1,
+    "attempt_index": 0,
+    "seeds": {
+      "layout": 7259561567917276,
+      "target": 6421102322348852,
+      "viewpoint": 5308029166806194
+    },
+    "algorithm": "seed-v1"
+  },
+  "template": {
+    "id": "level-1-platform",
+    "version": 1,
+    "sha256": "a8f6733c99f8240ae3c1246d8b4e11de6997c5864450324d7b7713e1f155b530"
+  },
+  "arena": {
+    "dimension": "honey_factory:arena",
+    "origin": [
+      0,
+      64,
+      0
+    ],
+    "bounds": {
+      "min": [
+        0,
+        64,
+        0
+      ],
+      "max": [
+        31,
+        79,
+        31
+      ]
+    },
+    "core_size": {
+      "width": 32,
+      "length": 32,
+      "height": 16
+    },
+    "margin": 4
+  },
+  "target": {
+    "present": false,
+    "block_id": "minecraft:honey_block"
+  },
+  "environment": {
+    "time_of_day_ticks": 6000,
+    "weather": "clear",
+    "gamerules": {
+      "advance_time": false,
+      "advance_weather": false,
+      "spawn_mobs": false
+    }
+  },
+  "layout_sha256": "27a7aa5dcdf21358366b4876c03de7b6846a429a4b8217063db748a1fd37ca3c",
+  "accepted_sample_count": 2
+}

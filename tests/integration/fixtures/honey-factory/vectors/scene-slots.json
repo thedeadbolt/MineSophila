@@ -1,0 +1,181 @@
+{
+  "algorithm": "scene-slots-v1",
+  "cases": [
+    {
+      "dataset_seed": 42,
+      "accepted_scenes": 10,
+      "target_present_scenes": 8,
+      "ratios": [
+        0.8,
+        0.1,
+        0.1
+      ],
+      "slots": [
+        {
+          "scene_index": 0,
+          "target_present": true,
+          "split": "train"
+        },
+        {
+          "scene_index": 1,
+          "target_present": false,
+          "split": "train"
+        },
+        {
+          "scene_index": 2,
+          "target_present": true,
+          "split": "train"
+        },
+        {
+          "scene_index": 3,
+          "target_present": true,
+          "split": "train"
+        },
+        {
+          "scene_index": 4,
+          "target_present": true,
+          "split": "test"
+        },
+        {
+          "scene_index": 5,
+          "target_present": true,
+          "split": "validation"
+        },
+        {
+          "scene_index": 6,
+          "target_present": true,
+          "split": "train"
+        },
+        {
+          "scene_index": 7,
+          "target_present": false,
+          "split": "train"
+        },
+        {
+          "scene_index": 8,
+          "target_present": true,
+          "split": "train"
+        },
+        {
+          "scene_index": 9,
+          "target_present": true,
+          "split": "train"
+        }
+      ]
+    },
+    {
+      "dataset_seed": 7,
+      "accepted_scenes": 13,
+      "target_present_scenes": 10,
+      "ratios": [
+        0.7,
+        0.2,
+        0.1
+      ],
+      "slots": [
+        {
+          "scene_index": 0,
+          "target_present": false,
+          "split": "train"
+        },
+        {
+          "scene_index": 1,
+          "target_present": true,
+          "split": "train"
+        },
+        {
+          "scene_index": 2,
+          "target_present": true,
+          "split": "test"
+        },
+        {
+          "scene_index": 3,
+          "target_present": true,
+          "split": "train"
+        },
+        {
+          "scene_index": 4,
+          "target_present": true,
+          "split": "validation"
+        },
+        {
+          "scene_index": 5,
+          "target_present": false,
+          "split": "train"
+        },
+        {
+          "scene_index": 6,
+          "target_present": false,
+          "split": "validation"
+        },
+        {
+          "scene_index": 7,
+          "target_present": true,
+          "split": "validation"
+        },
+        {
+          "scene_index": 8,
+          "target_present": true,
+          "split": "train"
+        },
+        {
+          "scene_index": 9,
+          "target_present": true,
+          "split": "train"
+        },
+        {
+          "scene_index": 10,
+          "target_present": true,
+          "split": "train"
+        },
+        {
+          "scene_index": 11,
+          "target_present": true,
+          "split": "train"
+        },
+        {
+          "scene_index": 12,
+          "target_present": true,
+          "split": "train"
+        }
+      ]
+    },
+    {
+      "dataset_seed": 123,
+      "accepted_scenes": 5,
+      "target_present_scenes": 4,
+      "ratios": [
+        0.5,
+        0.25,
+        0.25
+      ],
+      "slots": [
+        {
+          "scene_index": 0,
+          "target_present": true,
+          "split": "validation"
+        },
+        {
+          "scene_index": 1,
+          "target_present": true,
+          "split": "train"
+        },
+        {
+          "scene_index": 2,
+          "target_present": true,
+          "split": "test"
+        },
+        {
+          "scene_index": 3,
+          "target_present": false,
+          "split": "train"
+        },
+        {
+          "scene_index": 4,
+          "target_present": true,
+          "split": "train"
+        }
+      ]
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 # honey-factory implementation roadmap
 
-Updated 2026-10-22. The package is a Fabric scaffold plus the temporary M0
-rendering-feasibility fixture; the features below are otherwise not implemented. The accepted behaviour and
+Updated 2026-10-23. M0 and M1 are implemented: the temporary rendering-feasibility
+fixture, configuration, data contract and deterministic ID/seed/split rules. Later
+features are not implemented. The accepted behaviour and
 success criteria live in the [package specification](spec.md).
 
 ## Scope
@@ -34,7 +35,7 @@ external TCP adapter. Those remain separate integrations or extensions.
 | ID | Milestone | Depends on | Status |
 |---|---|---|---|
 | M0 | Minecraft 26.3 rendering feasibility | — | Exit gate passed; [findings](m0-rendering-feasibility.md), ADR 0005 accepted |
-| M1 | Core configuration and data contracts | M0 findings | Planned |
+| M1 | Core configuration and data contracts | M0 findings | Exit gate passed; ADR 0006 |
 | M2 | Owned world and synchronous coordinator | M1 | Planned |
 | M3 | Level-1 perspective vertical slice | M0–M2 | Planned |
 | M4 | Dataset runner and levels 1–3 | M3 | Planned |

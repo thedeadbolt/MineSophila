@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/thedeadbolt/MineSophila/schemas/honey-factory/1.0/scene.schema.json",
+  "title": "honey-factory scenes.jsonl record",
+  "description": "One world arrangement shared by its viewpoints. The contract validators additionally check that scene_id matches scene_index, bounds are ordered, the target lies inside them, its state belongs to block_id and seeds derive from the dataset seed.",
+  "type": "object",
+  "required": ["schema_version", "scene_id", "split", "difficulty", "generation", "template", "arena", "target", "environment", "layout_sha256", "accepted_sample_count"],
+  "properties": {
+    "schema_version": {"$ref": "common.schema.json#/$defs/schemaVersion"},
+    "scene_id": {"$ref": "common.schema.json#/$defs/sceneId"},
+    "split": {"$ref": "common.schema.json#/$defs/split"},
+    "difficulty": {"$ref": "common.schema.json#/$defs/difficulty"},
+    "generation": {
+      "type": "object",
+      "required": ["scene_index", "attempt_index", "seeds", "algorithm"],
+      "properties": {
+        "scene_index": {"type": "integer", "minimum": 0, "maximum": 999998},
+        "attempt_index": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "seeds": {
+          "type": "object",
+          "required": ["layout", "target", "viewpoint"],
+          "properties": {
+            "layout": {"$ref": "common.schema.json#/$defs/seed"},
+            "target": {"$ref": "common.schema.json#/$defs/seed"},
+            "viewpoint": {"$ref": "common.schema.json#/$defs/seed"}
+          }
+        },
+        "algorithm": {"const": "seed-v1"}
+      }
+    },
+    "template": {
+      "type": "object",
+      "required": ["id", "version", "sha256"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "version": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "arena": {
+      "type": "object",
+      "required": ["dimension", "origin", "bounds", "core_size", "margin"],
+      "properties": {
+        "dimension": {"$ref": "common.schema.json#/$defs/namespacedId"},
+        "origin": {"$ref": "common.schema.json#/$defs/blockPos"},
+        "bounds": {"$ref": "common.schema.json#/$defs/blockBounds"},
+        "core_size": {
+          "type": "object",
+          "required": ["width", "length", "height"],
+          "properties": {
+            "width": {"type": "integer", "minimum": 1},
+            "length": {"type": "integer", "minimum": 1},
+            "height": {"type": "integer", "minimum": 1}
+          }
+        },
+        "margin": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
+      }
+    },
+    "source_patch": {
+      "type": "object",
+      "required": ["world_seed", "dimension", "bounds", "generator_version", "patch_id"],
+      "properties": {
+        "world_seed": {"type": "integer"},
+        "dimension": {"$ref": "common.schema.json#/$defs/namespacedId"},
+        "bounds": {"$ref": "common.schema.json#/$defs/blockBounds"},
+        "generator_version": {"type": "string", "minLength": 1},
+        "patch_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": ["present", "block_id"],
+      "properties": {
+        "present": {"type": "boolean"},
+        "block_id": {"$ref": "common.schema.json#/$defs/namespacedId"},
+        "block_state": {"$ref": "common.schema.json#/$defs/blockState"},
+        "position": {"$ref": "common.schema.json#/$defs/blockPos"}
+      },
+      "if": {"properties": {"present": {"const": true}}},
+      "then": {"required": ["block_state", "position"]},
+      "else": {"not": {"anyOf": [{"required": ["block_state"]}, {"required": ["position"]}]}}
+    },
+    "environment": {
+      "type": "object",
+      "required": ["time_of_day_ticks", "weather", "gamerules"],
+      "properties": {
+        "time_of_day_ticks": {"$ref": "common.schema.json#/$defs/timeOfDayTicks"},
+        "weather": {"$ref": "common.schema.json#/$defs/weather"},
+        "gamerules": {"type": "object", "additionalProperties": {"type": ["boolean", "integer"]}}
+      }
+    },
+    "layout_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "accepted_sample_count": {"type": "integer", "minimum": 0, "maximum": 99}
+  },
+  "if": {"properties": {"difficulty": {"const": 5}}},
+  "then": {"required": ["source_patch"]},
+  "else": {"not": {"required": ["source_patch"]}}
+}

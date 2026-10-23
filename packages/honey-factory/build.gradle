@@ -73,6 +73,13 @@ tasks.withType(JavaCompile).configureEach {
 
 test {
 	useJUnitPlatform()
+
+	// Contract tests read the language-neutral schemas and shared fixtures.
+	def repoRoot = file('../..').canonicalPath
+	inputs.dir("${repoRoot}/schemas/honey-factory").withPropertyName("contractSchemas")
+	inputs.dir("${repoRoot}/tests/integration/fixtures/honey-factory").withPropertyName("contractFixtures")
+	systemProperty "honeyfactory.repoRoot", repoRoot
+	systemProperty "honeyfactory.regenerateFixtures", providers.systemProperty("honeyfactory.regenerateFixtures").getOrElse("false")
 }
 
 jar {

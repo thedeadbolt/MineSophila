@@ -1,0 +1,150 @@
+{
+  "schema_version": "1.0",
+  "dataset_id": "honey-l1-fixture-ddabe58fb3f7",
+  "content_version": "1",
+  "lifecycle": "generating",
+  "created_at_utc": "2026-10-23T09:00:00Z",
+  "completed_at_utc": null,
+  "resolved_config_sha256": "ddabe58fb3f774be41144b181bff8231b3cc57fd10eeea3b48dee605a275ae7e",
+  "difficulty": 1,
+  "target": {
+    "block_id": "minecraft:honey_block",
+    "allowed_block_states": [
+      "minecraft:honey_block"
+    ],
+    "present_fraction": 0.5,
+    "target_present_scenes": 2,
+    "target_absent_scenes": 2
+  },
+  "generator": {
+    "dataset_name": "honey-l1-fixture",
+    "seed": 42,
+    "accepted_scenes": 4,
+    "scene_attempt_limit": 40,
+    "arena": {
+      "width": 32,
+      "length": 32,
+      "height": 16,
+      "margin": 4
+    },
+    "lighting": {
+      "time_of_day_ticks": 6000,
+      "weather": "clear"
+    },
+    "visibility": {
+      "rule": "fully_visible",
+      "min_ratio": null,
+      "max_ratio": null
+    },
+    "algorithms": {
+      "config_hash": "jcs-sha256-v1",
+      "seeds": "seed-v1",
+      "ids": "ids-v1",
+      "scene_slots": "scene-slots-v1",
+      "layout": "layout-v1"
+    }
+  },
+  "capture": {
+    "mode": "PERSPECTIVE_90",
+    "width": 64,
+    "height": 64,
+    "projection": {
+      "horizontal_fov_degrees": 90.0,
+      "vertical_fov_degrees": 90.0,
+      "principal_point_px": [
+        32.0,
+        32.0
+      ],
+      "focal_length_px": [
+        32.0,
+        32.0
+      ],
+      "pixel_centre": "half-pixel"
+    },
+    "mask": {
+      "encoding": "png-gray8",
+      "meaning": "visible-target-geometry-v1",
+      "positive_value": 255,
+      "negative_value": 0
+    },
+    "viewpoints": {
+      "count": 2,
+      "distance_min_blocks": 3.0,
+      "distance_max_blocks": 16.0,
+      "yaw_jitter_degrees": 15.0,
+      "pitch_jitter_degrees": 10.0,
+      "attempts_per_viewpoint": 50,
+      "eye_height_blocks": 1.62
+    },
+    "augmentations": []
+  },
+  "splits": {
+    "ratios": {
+      "train": 0.5,
+      "validation": 0.5,
+      "test": 0.0
+    },
+    "grouping": "scene",
+    "algorithm": "scene-slots-v1"
+  },
+  "software": {
+    "minecraft": "26.3",
+    "fabric_loader": "0.19.5",
+    "fabric_api": "0.163.0+26.3",
+    "mod": "0.0.1",
+    "java": "25.0.1",
+    "git_commit": "0123456789abcdef0123456789abcdef01234567",
+    "git_dirty": false
+  },
+  "render_environment": {
+    "graphics_backend": "OpenGL",
+    "gpu": "AMD Radeon RX 7600",
+    "driver": "Mesa 26.2.4",
+    "improved_transparency": true,
+    "render_distance_chunks": 12,
+    "gamma": 0.5,
+    "cloud_status": "off",
+    "shader_pack": null,
+    "resource_packs": [
+      {
+        "id": "vanilla",
+        "sha256": null
+      }
+    ]
+  },
+  "storage": {
+    "indexes": {
+      "scenes": "scenes.jsonl",
+      "samples": "samples.jsonl"
+    },
+    "image_roots": {
+      "rgb": "rgb",
+      "mask": "masks"
+    },
+    "encodings": {
+      "rgb": "png-rgb8",
+      "mask": "png-gray8"
+    },
+    "sharding": "ids-v1",
+    "channels": [
+      "rgb",
+      "mask"
+    ]
+  },
+  "counts": {
+    "requested_scenes": 4,
+    "attempted_scenes": 0,
+    "accepted_scenes": 0,
+    "rejected_scenes": 0,
+    "failed_scenes": 0,
+    "accepted_samples": 0,
+    "rejection_reasons": {}
+  },
+  "provenance": {
+    "tool": "honey-factory 0.0.1",
+    "parent_dataset_ids": [],
+    "derivations": []
+  },
+  "licence": "unassigned",
+  "intended_use": "unassigned"
+}
