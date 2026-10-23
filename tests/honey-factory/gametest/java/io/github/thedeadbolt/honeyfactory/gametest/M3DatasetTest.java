@@ -2,9 +2,6 @@ package io.github.thedeadbolt.honeyfactory.gametest;
 
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
-import io.github.thedeadbolt.honeyfactory.HoneyFactory;
-import io.github.thedeadbolt.honeyfactory.client.generation.DatasetRuns;
-import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
 import io.github.thedeadbolt.honeyfactory.contract.DatasetManifest;
 import io.github.thedeadbolt.honeyfactory.contract.SampleRecord;
 import io.github.thedeadbolt.honeyfactory.dataset.DatasetValidator;
@@ -17,12 +14,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
@@ -36,12 +31,11 @@ public class M3DatasetTest implements FabricClientGameTest {
 	private static final int SCENES = 8;
 	private static final int VIEWPOINTS = 4;
 	private static final int TIMEOUT_TICKS = 20 * 60 * 20;
-	private static final int PROGRESS_TICKS = 100;
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
 		Path output = GameTestSupport.repoRoot().resolve("packages/honey-factory/build/m3-datasets");
-		deleteRecursively(output);
+		GameTestSupport.deleteRecursively(output);
 		List<String> failures = new ArrayList<>();
 		GameTestSupport.pinCaptureSettings(context);
 		DatasetValidator.Report first = generate(context, "honey-factory-m3-data-a", output.resolve("a"), failures);
@@ -65,24 +59,7 @@ public class M3DatasetTest implements FabricClientGameTest {
 	private static DatasetValidator.Report generate(ClientGameTestContext context, String worldName, Path root, List<String> failures) {
 		try (TestSingleplayerContext world = GameTestSupport.datasetWorld(context, worldName)) {
 			GameTestSupport.claim(world, worldName);
-			String configName = worldName + ".json";
-			Path gameDirectory = context.computeOnClient(minecraft -> minecraft.gameDirectory.toPath());
-			Files.writeString(gameDirectory.resolve(configName), config(root), StandardCharsets.UTF_8);
-			DatasetGenerator.Result previous = context.computeOnClient(minecraft -> DatasetRuns.last());
-			context.runOnClient(minecraft -> minecraft.player.connection.sendCommand("honeyfactory_dataset generate " + configName));
-			for (int waited = 0; !context.computeOnClient(minecraft -> DatasetRuns.running() == null && DatasetRuns.last() != previous); waited += PROGRESS_TICKS) {
-				if (waited >= TIMEOUT_TICKS) {
-					throw new AssertionError(worldName + ": generation did not finish within " + TIMEOUT_TICKS + " ticks");
-				}
-
-				context.waitTicks(PROGRESS_TICKS);
-				context.runOnClient(minecraft -> {
-					DatasetGenerator generator = DatasetRuns.running();
-					HoneyFactory.LOGGER.info("M3 dataset test: {} {}", generator == null ? null : generator.progress(), EnvironmentRuntime.get().status());
-				});
-			}
-
-			DatasetGenerator.Result result = context.computeOnClient(minecraft -> DatasetRuns.last());
+			DatasetGenerator.Result result = GameTestSupport.generate(context, worldName, config(root), progress -> false, TIMEOUT_TICKS);
 			if (result.failure() != null) {
 				failures.add(worldName + ": generation failed: " + result.failure() + " " + result.validationErrors());
 				return null;
@@ -182,17 +159,4 @@ public class M3DatasetTest implements FabricClientGameTest {
 			""".formatted(VIEWPOINTS, SCENES, root.toString().replace("\\", "\\\\"));
 	}
 
-	private static void deleteRecursively(Path path) {
-		if (!Files.exists(path)) {
-			return;
-		}
-
-		try (Stream<Path> files = Files.walk(path)) {
-			for (Path file : files.sorted(Comparator.reverseOrder()).toList()) {
-				Files.delete(file);
-			}
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
-		}
-	}
 }

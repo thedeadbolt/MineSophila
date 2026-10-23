@@ -91,6 +91,13 @@
               "op": "set",
               "path": "/accepted_sample_count",
               "value": 1
+            },
+            {
+              "op": "set",
+              "path": "/generation/parameters/viewpoint_draws",
+              "value": [
+                0
+              ]
             }
           ]
         }
@@ -235,6 +242,50 @@
         }
       ],
       "expect_error": "viewpoint_index exceeds"
+    },
+    {
+      "name": "scenes sit in the split scene-slots-v1 assigns",
+      "edits": [
+        {
+          "file": "scenes.jsonl",
+          "line": 0,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/split",
+              "value": "train"
+            }
+          ]
+        }
+      ],
+      "expect_error": "scene-slots-v1 assigns"
+    },
+    {
+      "name": "target-present samples meet the visibility rule",
+      "edits": [
+        {
+          "file": "samples.jsonl",
+          "line": 0,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/target/unoccluded_pixels",
+              "value": 512
+            },
+            {
+              "op": "set",
+              "path": "/target/visibility_ratio",
+              "value": 0.5
+            },
+            {
+              "op": "set",
+              "path": "/target/target_status",
+              "value": "partially_visible"
+            }
+          ]
+        }
+      ],
+      "expect_error": "fails the dataset's fully_visible rule"
     }
   ]
 }

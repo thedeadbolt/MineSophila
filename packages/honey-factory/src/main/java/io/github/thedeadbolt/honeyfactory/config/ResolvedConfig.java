@@ -24,7 +24,7 @@ import org.jspecify.annotations.Nullable;
  * <p>{@link #toJson()} is the canonical resolved configuration: the manifest's
  * {@code difficulty}, {@code target}, {@code generator}, {@code capture} and
  * {@code splits} members, without final split counts. Its JCS SHA-256 is the
- * resolved-configuration hash. The machine-specific output root is excluded.
+ * resolved-configuration hash. The machine-specific output settings are excluded.
  */
 public record ResolvedConfig(
 	String datasetName,
@@ -39,7 +39,7 @@ public record ResolvedConfig(
 	Capture capture,
 	Quotas quotas,
 	Splits splits,
-	Path outputRoot
+	Output output
 ) {
 	public static final String PANORAMA_PROJECTION = "equirectangular-310x160-v1";
 	public static final String CUBE_FACE_ORIENTATION = "cube-faces-v1";
@@ -80,6 +80,17 @@ public record ResolvedConfig(
 	}
 
 	public record Splits(double train, double validation, double test, SplitGrouping grouping) {
+	}
+
+	/**
+	 * Where datasets are written and the free space a run keeps there; neither affects the
+	 * generated data, so neither enters the resolved configuration.
+	 */
+	public record Output(Path root, long freeSpaceReserveBytes) {
+	}
+
+	public Path outputRoot() {
+		return this.output.root();
 	}
 
 	public String sha256() {

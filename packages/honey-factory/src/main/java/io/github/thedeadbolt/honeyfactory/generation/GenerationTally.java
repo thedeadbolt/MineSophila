@@ -2,6 +2,7 @@ package io.github.thedeadbolt.honeyfactory.generation;
 
 import io.github.thedeadbolt.honeyfactory.contract.DatasetManifest;
 import io.github.thedeadbolt.honeyfactory.contract.Split;
+import java.time.Duration;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -59,7 +60,7 @@ final class GenerationTally {
 		return Map.copyOf(this.splitCounts);
 	}
 
-	DatasetGenerator.Progress progress() {
-		return new DatasetGenerator.Progress(this.requestedScenes, this.accepted, this.attempted, this.acceptedSamples, this.rejected);
+	DatasetGenerator.Progress progress(Duration elapsed) {
+		return new DatasetGenerator.Progress(this.requestedScenes, this.accepted, this.attempted, this.acceptedSamples, this.rejected, Map.copyOf(this.rejectionReasons), elapsed);
 	}
 }

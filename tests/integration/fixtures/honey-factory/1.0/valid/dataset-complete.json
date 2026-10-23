@@ -125,7 +125,13 @@
         "id": "vanilla",
         "sha256": null
       }
-    ]
+    ],
+    "settings": {
+      "graphics_preset": "fancy",
+      "cutout_leaves": true,
+      "mipmap_levels": 4,
+      "texture_filtering": "none"
+    }
   },
   "storage": {
     "indexes": {
@@ -166,12 +172,12 @@
     "hash_algorithm": "sha256",
     "indexes": {
       "scenes": {
-        "bytes": 3476,
-        "sha256": "e7fd4eb5565fc8ab5c9494cb251ea6b373d017375e5cf65be3c0fcf0b7bfbfdc"
+        "bytes": 3772,
+        "sha256": "d1b3990bb11b989bd87a18b261e18febad8af3869ab2c60eeeb97bc123938415"
       },
       "samples": {
-        "bytes": 10930,
-        "sha256": "2868a492e1bd4144d9da956c86dd94e3d05fd7ce05dd3c985038844c1a2e21df"
+        "bytes": 10940,
+        "sha256": "e6870ef950308ba2f9c3d83cd5b38e1622439abeb9a02334765fc89620548ae7"
       }
     },
     "validation": {

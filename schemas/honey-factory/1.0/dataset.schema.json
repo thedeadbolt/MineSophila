@@ -202,6 +202,11 @@
             "required": ["id", "sha256"],
             "properties": {"id": {"type": "string", "minLength": 1}, "sha256": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/sha256"}]}}
           }
+        },
+        "settings": {
+          "description": "Every other client option that can change captured pixels, by option name.",
+          "type": "object",
+          "additionalProperties": {"type": ["boolean", "number", "string"]}
         }
       }
     },

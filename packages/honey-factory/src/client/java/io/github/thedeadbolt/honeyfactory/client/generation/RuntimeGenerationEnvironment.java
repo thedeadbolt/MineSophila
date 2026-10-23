@@ -1,5 +1,6 @@
 package io.github.thedeadbolt.honeyfactory.client.generation;
 
+import com.google.gson.JsonObject;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.device.DeviceInfo;
 import io.github.thedeadbolt.honeyfactory.BuildInfo;
@@ -19,6 +20,7 @@ import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Options;
 import org.jspecify.annotations.Nullable;
 
 /** Dataset generation through the client environment runtime of the running game. */
@@ -89,8 +91,34 @@ public final class RuntimeGenerationEnvironment implements GenerationEnvironment
 			minecraft.options.gamma().get(),
 			minecraft.options.cloudStatus().get().name().toLowerCase(Locale.ROOT),
 			null,
-			packs
+			packs,
+			settings(minecraft.options)
 		);
+	}
+
+	/** Every other option that can change captured pixels; the capture itself overrides the FOV and section fade-in. */
+	private static JsonObject settings(Options options) {
+		JsonObject settings = new JsonObject();
+		settings.addProperty("graphics_preset", name(options.graphicsPreset().get()));
+		settings.addProperty("cutout_leaves", options.cutoutLeaves().get());
+		settings.addProperty("ambient_occlusion", options.ambientOcclusion().get());
+		settings.addProperty("mipmap_levels", options.mipmapLevels().get());
+		settings.addProperty("texture_filtering", name(options.textureFiltering().get()));
+		settings.addProperty("max_anisotropy_bit", options.maxAnisotropyBit().get());
+		settings.addProperty("biome_blend_radius", options.biomeBlendRadius().get());
+		settings.addProperty("cloud_range", options.cloudRange().get());
+		settings.addProperty("weather_radius", options.weatherRadius().get());
+		settings.addProperty("entity_shadows", options.entityShadows().get());
+		settings.addProperty("particles", name(options.particles().get()));
+		settings.addProperty("vignette", options.vignette().get());
+		settings.addProperty("bob_view", options.bobView().get());
+		settings.addProperty("screen_effect_scale", options.screenEffectScale().get());
+		settings.addProperty("fov_effect_scale", options.fovEffectScale().get());
+		return settings;
+	}
+
+	private static String name(Enum<?> value) {
+		return value.name().toLowerCase(Locale.ROOT);
 	}
 
 	private static String version(String modId) {

@@ -11,6 +11,8 @@ public final class SceneGenerators {
 	public static SceneGenerator forConfig(ResolvedConfig config) {
 		return switch (config.difficulty()) {
 			case 1 -> new Level1Generator(config);
+			case 2 -> new Level2Generator(config);
+			case 3 -> new Level3Generator(config);
 			default -> throw new UnsupportedOperationException("level " + config.difficulty() + " has no scene generator yet");
 		};
 	}

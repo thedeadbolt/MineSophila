@@ -10,16 +10,16 @@
       "media_type": "image/png",
       "width": 64,
       "height": 64,
-      "bytes": 4096,
-      "sha256": "39730b00b34b82df01d201e02c75fc7d34049f4045a515d654aafbc02b892b39"
+      "bytes": 12420,
+      "sha256": "ba9e86a2a5820a44c8f26402c8579471ca5d115117b8a52db98e2f384d87efab"
     },
     "mask": {
       "path": "masks/validation/e4/s000001-v00.png",
       "media_type": "image/png",
       "width": 64,
       "height": 64,
-      "bytes": 512,
-      "sha256": "df6990615e737cec44ef1271a1c86131733c37577967aa9bdf3f21d912731936"
+      "bytes": 4228,
+      "sha256": "6b900b2f6939de138fc5a00123be4190b867052295b845faba30d15fa6014f46"
     }
   },
   "camera": {

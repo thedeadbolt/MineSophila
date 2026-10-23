@@ -1,13 +1,23 @@
 package io.github.thedeadbolt.honeyfactory.gametest;
 
+import io.github.thedeadbolt.honeyfactory.HoneyFactory;
+import io.github.thedeadbolt.honeyfactory.client.generation.DatasetRuns;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
+import io.github.thedeadbolt.honeyfactory.generation.DatasetGenerator;
 import io.github.thedeadbolt.honeyfactory.world.ArenaDimension;
 import io.github.thedeadbolt.honeyfactory.world.WorldGuard;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.minecraft.client.CloudStatus;
@@ -17,6 +27,8 @@ import org.jspecify.annotations.Nullable;
 
 /** Shared steps of the honey-factory client game tests. */
 final class GameTestSupport {
+	static final int PROGRESS_TICKS = 100;
+
 	private GameTestSupport() {
 	}
 
@@ -52,6 +64,54 @@ final class GameTestSupport {
 		}
 
 		return Path.of(root);
+	}
+
+	/**
+	 * Writes {@code config} to the game directory, starts generating it by command and waits
+	 * until the run ends. Once {@code cancelWhen} accepts the progress, the run is cancelled
+	 * by command too. Progress is logged every {@value #PROGRESS_TICKS} ticks.
+	 */
+	static DatasetGenerator.Result generate(ClientGameTestContext context, String name, String config, Predicate<DatasetGenerator.Progress> cancelWhen, int timeoutTicks) {
+		String configName = name + ".json";
+		Path gameDirectory = context.computeOnClient(minecraft -> minecraft.gameDirectory.toPath());
+		try {
+			Files.writeString(gameDirectory.resolve(configName), config, StandardCharsets.UTF_8);
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+
+		DatasetGenerator.Result previous = context.computeOnClient(minecraft -> DatasetRuns.last());
+		context.runOnClient(minecraft -> minecraft.player.connection.sendCommand("honeyfactory_dataset generate " + configName));
+		boolean cancelled = false;
+		for (int waited = 0; !context.computeOnClient(minecraft -> DatasetRuns.running() == null && DatasetRuns.last() != previous); waited += PROGRESS_TICKS) {
+			if (waited >= timeoutTicks) {
+				throw new AssertionError(name + ": generation did not finish within " + timeoutTicks + " ticks");
+			}
+
+			context.waitTicks(PROGRESS_TICKS);
+			DatasetGenerator.Progress progress = context.computeOnClient(minecraft -> DatasetRuns.running() == null ? null : DatasetRuns.running().progress());
+			HoneyFactory.LOGGER.info("{}: {} {}", name, progress, context.computeOnClient(minecraft -> EnvironmentRuntime.get().status()));
+			if (!cancelled && progress != null && cancelWhen.test(progress)) {
+				context.runOnClient(minecraft -> minecraft.player.connection.sendCommand("honeyfactory_dataset cancel"));
+				cancelled = true;
+			}
+		}
+
+		return context.computeOnClient(minecraft -> DatasetRuns.last());
+	}
+
+	static void deleteRecursively(Path path) {
+		if (!Files.exists(path)) {
+			return;
+		}
+
+		try (Stream<Path> files = Files.walk(path)) {
+			for (Path file : files.sorted(Comparator.reverseOrder()).toList()) {
+				Files.delete(file);
+			}
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
 	}
 
 	static <T> T await(ClientGameTestContext context, Function<EnvironmentRuntime, CompletableFuture<T>> request) {

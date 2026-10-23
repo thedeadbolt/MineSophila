@@ -12,6 +12,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
+import java.util.TreeMap;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.network.chat.Component;
@@ -23,8 +25,11 @@ import net.minecraft.network.chat.Component;
  * <pre>
  * generate &lt;config path&gt;   resolve a JSON configuration (relative to the game directory) and start
  * status                    progress of the running or last generation
- * cancel                    stop the running generation; the dataset is marked failed
+ * cancel                    stop the running generation at its next safe boundary
  * </pre>
+ *
+ * <p>Cancelling lets the running reset, viewpoint change or capture finish, discards the
+ * unfinished scene and marks the dataset failed; see {@link DatasetGenerator}.
  */
 public final class DatasetCommands {
 	private DatasetCommands() {
@@ -56,8 +61,10 @@ public final class DatasetCommands {
 				String message;
 				if (generator != null) {
 					DatasetGenerator.Progress progress = generator.progress();
+					double minutes = Math.max(progress.elapsed().toMillis(), 1) / 60_000.0;
 					message = "Running: " + progress.acceptedScenes() + "/" + progress.requestedScenes() + " scenes, " + progress.acceptedSamples() + " samples, "
-						+ progress.attemptedScenes() + " attempts, " + progress.rejectedScenes() + " rejected";
+						+ progress.attemptedScenes() + " attempts, " + progress.rejectedScenes() + " rejected " + new TreeMap<>(progress.rejectionReasons())
+						+ String.format(Locale.ROOT, ", %.1f samples/min", progress.acceptedSamples() / minutes);
 				} else if (DatasetRuns.last() != null) {
 					DatasetGenerator.Result last = DatasetRuns.last();
 					message = "Last: " + last.manifest().datasetId() + " " + last.manifest().lifecycle().jsonName() + (last.failure() == null ? "" : " (" + last.failure() + ")");
@@ -76,7 +83,7 @@ public final class DatasetCommands {
 				}
 
 				generator.cancel();
-				context.getSource().sendFeedback(Component.literal("Cancelling after the current step"));
+				context.getSource().sendFeedback(Component.literal("Cancelling once the current operation finishes; the dataset will be marked failed"));
 				return 1;
 			}))));
 	}

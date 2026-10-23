@@ -43,10 +43,19 @@ public final class SceneSlots {
 			throw new UnsupportedOperationException("Split grouping by source world arrives with level 5 in M6");
 		}
 
-		int scenes = config.quotas().acceptedScenes();
-		List<Integer> byClassKey = ordered(config.seed(), "class", range(scenes));
+		ResolvedConfig.Splits splits = config.splits();
+		double[] ratios = {splits.train(), splits.validation(), splits.test()};
+		return plan(config.seed(), config.quotas().acceptedScenes(), config.quotas().targetPresentScenes(), ratios);
+	}
+
+	/**
+	 * The slots of {@code scenes} accepted scenes, {@code presentScenes} of them with a target,
+	 * split by the train, validation and test {@code ratios}.
+	 */
+	public static List<Slot> plan(long seed, int scenes, int presentScenes, double[] ratios) {
+		List<Integer> byClassKey = ordered(seed, "class", range(scenes));
 		boolean[] present = new boolean[scenes];
-		for (int i = 0; i < config.quotas().targetPresentScenes(); i++) {
+		for (int i = 0; i < presentScenes; i++) {
 			present[byClassKey.get(i)] = true;
 		}
 
@@ -59,8 +68,8 @@ public final class SceneSlots {
 				}
 			}
 
-			int[] counts = splitCounts(members.size(), config.splits());
-			List<Integer> bySplitKey = ordered(config.seed(), "split", members);
+			int[] counts = splitCounts(members.size(), ratios);
+			List<Integer> bySplitKey = ordered(seed, "split", members);
 			int next = 0;
 			for (Split split : Split.values()) {
 				for (int c = 0; c < counts[split.ordinal()]; c++) {
@@ -78,12 +87,12 @@ public final class SceneSlots {
 	}
 
 	/** Largest-remainder apportionment of {@code total} scenes by the split ratios. */
-	static int[] splitCounts(int total, ResolvedConfig.Splits ratios) {
-		BigDecimal[] exact = {
-			BigDecimal.valueOf(ratios.train()).multiply(BigDecimal.valueOf(total)),
-			BigDecimal.valueOf(ratios.validation()).multiply(BigDecimal.valueOf(total)),
-			BigDecimal.valueOf(ratios.test()).multiply(BigDecimal.valueOf(total)),
-		};
+	static int[] splitCounts(int total, double[] ratios) {
+		BigDecimal[] exact = new BigDecimal[3];
+		for (int i = 0; i < 3; i++) {
+			exact[i] = BigDecimal.valueOf(ratios[i]).multiply(BigDecimal.valueOf(total));
+		}
+
 		int[] counts = new int[3];
 		int assigned = 0;
 		for (int i = 0; i < 3; i++) {

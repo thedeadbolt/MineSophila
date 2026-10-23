@@ -59,6 +59,10 @@ public record DatasetManifest(
 	public record ResourcePack(String id, @Nullable String sha256) {
 	}
 
+	/**
+	 * The client's rendering setup. {@code settings} records every other client option that
+	 * can change captured pixels, by option name, as booleans, numbers or strings.
+	 */
 	public record RenderEnvironment(
 		String graphicsBackend,
 		String gpu,
@@ -68,8 +72,17 @@ public record DatasetManifest(
 		double gamma,
 		String cloudStatus,
 		@Nullable String shaderPack,
-		List<ResourcePack> resourcePacks
+		List<ResourcePack> resourcePacks,
+		JsonObject settings
 	) {
+		public RenderEnvironment {
+			settings = settings.deepCopy();
+		}
+
+		@Override
+		public JsonObject settings() {
+			return this.settings.deepCopy();
+		}
 	}
 
 	public record Counts(
@@ -190,6 +203,28 @@ public record DatasetManifest(
 		return capture().get("height").getAsInt();
 	}
 
+	/** The level's visibility rule with its inclusive ratio bounds, null where unbounded. */
+	public record Visibility(VisibilityRule rule, @Nullable Double minRatio, @Nullable Double maxRatio) {
+		public boolean accepts(TargetStatus status, @Nullable Double ratio) {
+			return this.rule.accepts(status, ratio, this.minRatio, this.maxRatio);
+		}
+	}
+
+	public Visibility visibility() {
+		JsonFields visibility = JsonFields.of(generator().getAsJsonObject("visibility"));
+		return new Visibility(
+			visibility.enumValue("rule", VisibilityRule::fromJson),
+			visibility.nullableDecimal("min_ratio", 0.0, 1.0),
+			visibility.nullableDecimal("max_ratio", 0.0, 1.0)
+		);
+	}
+
+	/** Requested train, validation and test ratios, in that order. */
+	public double[] splitRatios() {
+		JsonFields ratios = JsonFields.of(this.configuration.getAsJsonObject("splits").getAsJsonObject("ratios"));
+		return new double[] {ratios.decimal("train", 0.0, 1.0), ratios.decimal("validation", 0.0, 1.0), ratios.decimal("test", 0.0, 1.0)};
+	}
+
 	public SplitGrouping splitGrouping() {
 		return SplitGrouping.fromJson(this.configuration.getAsJsonObject("splits").get("grouping").getAsString());
 	}
@@ -293,6 +328,7 @@ public record DatasetManifest(
 		}
 
 		render.add("resource_packs", packs);
+		render.add("settings", this.renderEnvironment.settings());
 		return render;
 	}
 
@@ -476,8 +512,16 @@ public record DatasetManifest(
 		requireConstant(algorithms, "ids", Algorithms.IDS);
 		requireConstant(algorithms, "scene_slots", Algorithms.SCENE_SLOTS);
 		requireConstant(algorithms, "layout", Algorithms.LAYOUT);
+		JsonFields visibility = generator.object("visibility");
+		visibility.enumValue("rule", VisibilityRule::fromJson);
+		visibility.nullableDecimal("min_ratio", 0.0, 1.0);
+		visibility.nullableDecimal("max_ratio", 0.0, 1.0);
 		JsonFields splits = configuration.object("splits");
 		requireConstant(splits, "algorithm", Algorithms.SCENE_SLOTS);
+		JsonFields ratios = splits.object("ratios");
+		for (String split : List.of("train", "validation", "test")) {
+			ratios.decimal(split, 0.0, 1.0);
+		}
 		boolean level5 = configuration.integer32("difficulty", 1, 5) == 5;
 		if (generator.has("natural_region") != level5) {
 			throw generator.error("natural_region", level5 ? "is required for level 5" : "applies only to level 5");
@@ -532,6 +576,17 @@ public record DatasetManifest(
 			throw render.error("improved_transparency", "must be true: masks require improved transparency (ADR 0005)");
 		}
 
+		JsonObject settings = new JsonObject();
+		if (render.has("settings")) {
+			JsonFields fields = render.object("settings");
+			settings = fields.raw();
+			for (String name : settings.keySet()) {
+				if (!settings.get(name).isJsonPrimitive()) {
+					throw fields.error(name, "must be a boolean, number or string");
+				}
+			}
+		}
+
 		List<ResourcePack> packs = render.objects("resource_packs").stream()
 			.map(pack -> new ResourcePack(pack.string("id"), pack.nullableString("sha256")))
 			.toList();
@@ -544,7 +599,8 @@ public record DatasetManifest(
 			render.decimal("gamma", 0.0, 1.0),
 			render.string("cloud_status"),
 			render.nullableString("shader_pack"),
-			packs
+			packs,
+			settings
 		);
 	}
 

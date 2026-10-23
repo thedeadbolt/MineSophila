@@ -14,12 +14,21 @@ public final class Algorithms {
 	public static final String LAYOUT = BlockLayout.ALGORITHM;
 	/** Level-1 open-platform scene and viewpoint generation. */
 	public static final String LEVEL1_GENERATOR = "level1-open-platform-v1";
+	/** Level-2 clutter and distractor generation. */
+	public static final String LEVEL2_GENERATOR = "level2-clutter-v1";
+	/** Level-3 partial-hiding generation. */
+	public static final String LEVEL3_GENERATOR = "level3-partial-hiding-v1";
 
 	private Algorithms() {
 	}
 
 	/** The scene generator for a difficulty level, or null while that level has none. */
 	public static @Nullable String sceneGenerator(int difficulty) {
-		return difficulty == 1 ? LEVEL1_GENERATOR : null;
+		return switch (difficulty) {
+			case 1 -> LEVEL1_GENERATOR;
+			case 2 -> LEVEL2_GENERATOR;
+			case 3 -> LEVEL3_GENERATOR;
+			default -> null;
+		};
 	}
 }

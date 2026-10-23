@@ -20,12 +20,18 @@ Every record carries `schema_version`. Readers reject another major version and 
 unknown members from a compatible minor version, so the schemas never forbid extra
 members. A breaking change needs a new major version directory.
 
-The schemas check structure and every rule expressible within one record. Rules needing
-arithmetic across members (status versus counts, ratio, bounding-box placement, path
-versus ID and shard, camera basis, configuration hash) and rules across records
-(references, inheritance, quotas, split leakage) belong to the validators. The
-[shared fixtures](../../tests/integration/fixtures/honey-factory/) mark each case as
-`schema` or `semantic` so both layers stay honest.
+The schemas check structure and every rule expressible within one record. Other rules
+belong to the validators:
+
+- rules needing arithmetic across members: status versus counts, ratio, bounding-box
+  placement, path versus ID and shard, camera basis, configuration hash, and one viewpoint
+  draw per accepted sample;
+- rules across records: references, inheritance, the `scene-slots-v1` class and split of
+  every scene, the level's visibility rule, quotas and split leakage.
+
+The mod's Java validator and the independent `honey-factory-tools validate-dataset` both
+enforce them. The [shared fixtures](../../tests/integration/fixtures/honey-factory/) mark
+each case as `schema` or `semantic` so both layers stay honest.
 
 ## Encoding rules
 

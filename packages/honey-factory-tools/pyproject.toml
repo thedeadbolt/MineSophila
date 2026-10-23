@@ -6,7 +6,10 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
 authors = [{ name = "João Moutinho" }]
-dependencies = ["jsonschema>=4.23"]
+dependencies = [
+    "jsonschema>=4.23",
+    "pillow>=11.3",
+]
 
 [project.scripts]
 honey-factory-tools = "honey_factory_tools.cli:main"

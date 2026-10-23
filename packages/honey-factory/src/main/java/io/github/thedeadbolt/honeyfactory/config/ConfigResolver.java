@@ -35,7 +35,7 @@ import org.jspecify.annotations.Nullable;
  * capture        mode, width, height, cube_face_size (PANORAMA_310 only)
  * quotas         accepted_scenes, scene_attempts_per_accepted_scene
  * splits         train, validation, test
- * output         root (required, absolute)
+ * output         root (required, absolute), free_space_reserve_bytes
  * </pre>
  */
 public final class ConfigResolver {
@@ -52,6 +52,8 @@ public final class ConfigResolver {
 	private static final Double LEVEL3_MIN_RATIO = 0.2;
 	private static final Double LEVEL3_MAX_RATIO = 0.8;
 	private static final Double LEVEL4_5_MIN_RATIO = 0.1;
+	/** Free space a run leaves on the output file system by default: 10 GiB. */
+	public static final long DEFAULT_FREE_SPACE_RESERVE_BYTES = 10L << 30;
 
 	private ConfigResolver() {
 	}
@@ -88,9 +90,9 @@ public final class ConfigResolver {
 		ResolvedConfig.Capture capture = capture(root.objectOrEmpty("capture"));
 		ResolvedConfig.Quotas quotas = quotas(root.objectOrEmpty("quotas"), target.presentFraction());
 		ResolvedConfig.Splits splits = splits(root.objectOrEmpty("splits"), difficulty);
-		Path outputRoot = outputRoot(root.object("output"));
+		ResolvedConfig.Output output = output(root.object("output"));
 
-		return new ResolvedConfig(name, difficulty, seed, target, arena, region, viewpoints, lighting, visibility, capture, quotas, splits, outputRoot);
+		return new ResolvedConfig(name, difficulty, seed, target, arena, region, viewpoints, lighting, visibility, capture, quotas, splits, output);
 	}
 
 	private static ResolvedConfig.Target target(JsonFields target) {
@@ -116,10 +118,11 @@ public final class ConfigResolver {
 
 	private static ResolvedConfig.Arena arena(JsonFields arena) {
 		arena.rejectUnknown(Set.of("width", "length", "height", "margin"));
+		// At least two layers: the floor and the target standing on it.
 		ResolvedConfig.Arena resolved = new ResolvedConfig.Arena(
 			arena.integer32("width", 1, 256, 32),
 			arena.integer32("length", 1, 256, 32),
-			arena.integer32("height", 1, 256, 16),
+			arena.integer32("height", 2, 256, 16),
 			arena.integer32("margin", 0, 64, 4)
 		);
 		// The margin extends above the build height, and the owned region is 256 blocks tall.
@@ -264,18 +267,20 @@ public final class ConfigResolver {
 		return new ResolvedConfig.Splits(train, validation, test, difficulty == 5 ? SplitGrouping.SOURCE_WORLD : SplitGrouping.SCENE);
 	}
 
-	private static Path outputRoot(JsonFields output) {
-		output.rejectUnknown(Set.of("root"));
+	private static ResolvedConfig.Output output(JsonFields output) {
+		output.rejectUnknown(Set.of("root", "free_space_reserve_bytes"));
 		String root = output.string("root");
+		Path path;
 		try {
-			Path path = Path.of(root);
-			if (!path.isAbsolute()) {
-				throw output.error("root", "must be an absolute path");
-			}
-
-			return path.normalize();
+			path = Path.of(root);
 		} catch (InvalidPathException e) {
 			throw output.error("root", "is not a valid path: " + e.getMessage());
 		}
+
+		if (!path.isAbsolute()) {
+			throw output.error("root", "must be an absolute path");
+		}
+
+		return new ResolvedConfig.Output(path.normalize(), output.integer("free_space_reserve_bytes", 0, Long.MAX_VALUE, DEFAULT_FREE_SPACE_RESERVE_BYTES));
 	}
 }
