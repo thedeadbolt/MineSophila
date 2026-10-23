@@ -7,6 +7,7 @@ import io.github.thedeadbolt.honeyfactory.contract.SampleRecord;
 import io.github.thedeadbolt.honeyfactory.contract.SceneRecord;
 import io.github.thedeadbolt.honeyfactory.contract.SceneSeeds;
 import io.github.thedeadbolt.honeyfactory.contract.SchemaVersion;
+import io.github.thedeadbolt.honeyfactory.dataset.DatasetWriter;
 import io.github.thedeadbolt.honeyfactory.dataset.SampleDescriptor;
 import io.github.thedeadbolt.honeyfactory.dataset.SceneDescriptor;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
@@ -29,8 +30,7 @@ final class RecordFactory {
 
 	SampleRecord sample(
 		SampleDescriptor sample,
-		SampleRecord.ImageFile rgb,
-		SampleRecord.ImageFile mask,
+		DatasetWriter.SampleFiles files,
 		GenerationEnvironment.ViewReady view,
 		GenerationEnvironment.Observation observation,
 		SampleRecord.Target target,
@@ -43,8 +43,8 @@ final class RecordFactory {
 			sample.sceneId(),
 			sample.split(),
 			sample.viewpointIndex(),
-			rgb,
-			mask,
+			files.rgb(),
+			files.mask(),
 			SampleRecord.Camera.of(new double[] {pose.x(), pose.y(), pose.z()}, this.config.viewpoints().eyeHeightBlocks(), pose.yawDegrees(), pose.pitchDegrees()),
 			this.mode,
 			new JsonObject(),

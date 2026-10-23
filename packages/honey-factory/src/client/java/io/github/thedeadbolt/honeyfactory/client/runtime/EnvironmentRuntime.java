@@ -149,22 +149,8 @@ public final class EnvironmentRuntime {
 				ArenaExecutor.placeViewpoint(server, player(server), layout, firstViewpoint, ConfigResolver.EYE_HEIGHT_BLOCKS);
 				return result;
 			});
-			RenderStability stability = new RenderStability();
-			boolean[] refreshed = {false};
-			return new Pending<>(operation, work, this.timing.resetSettleTicks(), this.timing.resetTimeoutTicks(), result -> {
-				Minecraft minecraft = Minecraft.getInstance();
-				boolean shown = inArena(minecraft) && atPose(minecraft, firstViewpoint)
-					&& expected.equals(BlockStates.layoutSha256(minecraft.level, layout.resetVolume()));
-				if (shown && !refreshed[0]) {
-					// Change marks for the arena can be dropped while the camera waits on the
-					// distant staging platform; rebuild every arena section from the client's blocks.
-					refreshed[0] = true;
-					markSectionsDirty(minecraft, layout.resetVolume());
-					return stability.holds(false);
-				}
-
-				return stability.holds(shown && refreshed[0] && sectionsCompiled(minecraft));
-			}, (result, settled) -> {
+			SceneReadiness readiness = new SceneReadiness(layout, firstViewpoint, expected);
+			return new Pending<>(operation, work, this.timing.resetSettleTicks(), this.timing.resetTimeoutTicks(), result -> readiness.ready(Minecraft.getInstance()), (result, settled) -> {
 				this.scene = plan;
 				this.layoutSha256 = result.layoutSha256();
 				return new SceneState(operation.id(), result.layoutSha256(), result.serverTick(), settled, clientPose(Minecraft.getInstance()));
@@ -308,6 +294,39 @@ public final class EnvironmentRuntime {
 	private static CameraPose clientPose(Minecraft minecraft) {
 		LocalPlayer player = minecraft.player;
 		return new CameraPose(player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot());
+	}
+
+	/**
+	 * Whether the client shows a freshly built scene: in the arena at the first viewpoint
+	 * with the expected layout, then every arena section rebuilt and stable for
+	 * {@link #STABLE_FRAMES} frames.
+	 */
+	private final class SceneReadiness {
+		private final ArenaLayout layout;
+		private final CameraPose pose;
+		private final String expectedLayout;
+		private final RenderStability stability = new RenderStability();
+		private boolean refreshed;
+
+		SceneReadiness(ArenaLayout layout, CameraPose pose, String expectedLayout) {
+			this.layout = layout;
+			this.pose = pose;
+			this.expectedLayout = expectedLayout;
+		}
+
+		boolean ready(Minecraft minecraft) {
+			boolean shown = inArena(minecraft) && atPose(minecraft, this.pose)
+				&& this.expectedLayout.equals(BlockStates.layoutSha256(minecraft.level, this.layout.resetVolume()));
+			if (shown && !this.refreshed) {
+				// Change marks for the arena can be dropped while the camera waits on the
+				// distant staging platform; rebuild every arena section from the client's blocks.
+				this.refreshed = true;
+				markSectionsDirty(minecraft, this.layout.resetVolume());
+				return this.stability.holds(false);
+			}
+
+			return this.stability.holds(shown && this.refreshed && sectionsCompiled(minecraft));
+		}
 	}
 
 	/** Whether render conditions have held over at least {@link #STABLE_FRAMES} complete level frames. */

@@ -1,4 +1,4 @@
-package io.github.thedeadbolt.honeyfactory.dataset;
+package io.github.thedeadbolt.honeyfactory.image;
 
 import java.awt.Transparency;
 import java.awt.color.ColorSpace;

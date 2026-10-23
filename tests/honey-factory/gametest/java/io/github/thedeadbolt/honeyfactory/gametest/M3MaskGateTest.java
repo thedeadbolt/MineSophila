@@ -11,17 +11,18 @@ import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
 import io.github.thedeadbolt.honeyfactory.config.ConfigResolver;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
+import io.github.thedeadbolt.honeyfactory.contract.BlockBox;
 import io.github.thedeadbolt.honeyfactory.contract.JsonWrite;
 import io.github.thedeadbolt.honeyfactory.contract.MaskStatistics;
 import io.github.thedeadbolt.honeyfactory.contract.Sha256;
 import io.github.thedeadbolt.honeyfactory.contract.TargetStatus;
 import io.github.thedeadbolt.honeyfactory.contract.VisibilityRule;
-import io.github.thedeadbolt.honeyfactory.dataset.PngImages;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import io.github.thedeadbolt.honeyfactory.environment.OperationState;
 import io.github.thedeadbolt.honeyfactory.generation.ObservationCheck;
-import io.github.thedeadbolt.honeyfactory.scene.FixturePlans;
+import io.github.thedeadbolt.honeyfactory.image.PngImages;
 import io.github.thedeadbolt.honeyfactory.scene.FixturePlans.Fixture;
+import io.github.thedeadbolt.honeyfactory.scene.FixturePlans;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -164,7 +165,7 @@ public class M3MaskGateTest implements FabricClientGameTest {
 
 		MaskStatistics visible = MaskStatistics.of(images.visibleMask(), SIZE, SIZE);
 		int unoccluded = images.unoccludedPixels();
-		boolean inProjection = projection.intersects(camera, new double[] {target[0], target[1], target[2]}, new double[] {target[0] + 1, target[1] + 1, target[2] + 1});
+		boolean inProjection = projection.intersects(camera, BlockBox.cell(target));
 		TargetStatus status = TargetStatus.derive(true, inProjection, visible.positivePixels(), unoccluded);
 		result.addProperty("visible_pixels", visible.positivePixels());
 		result.addProperty("unoccluded_pixels", unoccluded);
@@ -198,10 +199,9 @@ public class M3MaskGateTest implements FabricClientGameTest {
 			failures.add(fixture + ": masks disagree with the ray check away from edges: " + rays);
 		}
 
-		ObservationCheck.Outcome outcome = ObservationCheck.check(LEVEL_1, projection, camera, target, images);
-		boolean level1 = status == TargetStatus.FULLY_VISIBLE;
-		if ((outcome.rejection() == null) != level1) {
-			failures.add(fixture + ": level-1 acceptance " + (outcome.rejection() == null) + " for status " + status.jsonName());
+		boolean accepted = ObservationCheck.check(LEVEL_1, projection, camera, BlockBox.cell(target), images) instanceof ObservationCheck.Outcome.Accepted;
+		if (accepted != (status == TargetStatus.FULLY_VISIBLE)) {
+			failures.add(fixture + ": level-1 acceptance " + accepted + " for status " + status.jsonName());
 		}
 	}
 
@@ -268,13 +268,13 @@ public class M3MaskGateTest implements FabricClientGameTest {
 		EnvironmentRuntime.Observation far = GameTestSupport.await(context, runtime -> runtime.observe(tiny));
 		CameraFrame camera = CameraFrame.of(far.pose(), ConfigResolver.EYE_HEIGHT_BLOCKS);
 		int[] target = FixturePlans.plan(Fixture.FAR).targetPosition(FixturePlans.ARENA);
-		ObservationCheck.Outcome outcome = ObservationCheck.check(LEVEL_1, tiny, camera, target, far.capture().images());
+		String rejection = ObservationCheck.check(LEVEL_1, tiny, camera, BlockBox.cell(target), far.capture().images()) instanceof ObservationCheck.Outcome.Rejected rejected ? rejected.reason() : null;
 		int predicted = RayCheck.targetPixels(tiny, camera, target);
 		result.addProperty("subpixel_unoccluded_pixels", far.capture().images().unoccludedPixels());
 		result.addProperty("subpixel_ray_pixels", predicted);
-		result.addProperty("subpixel_rejection", outcome.rejection());
-		if (predicted != 0 || far.capture().images().unoccludedPixels() != 0 || !ObservationCheck.VISIBILITY.equals(outcome.rejection())) {
-			failures.add("subpixel: expected no target pixels and a visibility rejection, got " + far.capture().images().unoccludedPixels() + " px (rays " + predicted + "), " + outcome.rejection());
+		result.addProperty("subpixel_rejection", rejection);
+		if (predicted != 0 || far.capture().images().unoccludedPixels() != 0 || !ObservationCheck.VISIBILITY.equals(rejection)) {
+			failures.add("subpixel: expected no target pixels and a visibility rejection, got " + far.capture().images().unoccludedPixels() + " px (rays " + predicted + "), " + rejection);
 		}
 
 		context.runOnClient(minecraft -> CaptureService.failNextCapture("readback"));

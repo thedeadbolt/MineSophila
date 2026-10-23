@@ -89,19 +89,19 @@ public final class Level1Generator implements SceneGenerator {
 		double feetY = 1.0;
 		ResolvedConfig.Arena arena = this.config.arena();
 		if (x < PLAYER_HALF_WIDTH || x > arena.width() - PLAYER_HALF_WIDTH || z < PLAYER_HALF_WIDTH || z > arena.length() - PLAYER_HALF_WIDTH) {
-			return ViewpointCandidate.rejected("camera_off_platform");
+			return new ViewpointCandidate.Rejected("camera_off_platform");
 		}
 
 		boolean overlapsAim = x + PLAYER_HALF_WIDTH > aim[0] && x - PLAYER_HALF_WIDTH < aim[0] + 1
 			&& z + PLAYER_HALF_WIDTH > aim[2] && z - PLAYER_HALF_WIDTH < aim[2] + 1
 			&& feetY < aim[1] + 1 && feetY + PLAYER_HEIGHT > aim[1];
 		if (overlapsAim) {
-			return ViewpointCandidate.rejected("camera_overlaps_target");
+			return new ViewpointCandidate.Rejected("camera_overlaps_target");
 		}
 
 		ViewpointPlan base = ViewpointPlan.lookingAt(x, feetY, z, settings.eyeHeightBlocks(), aim[0], aim[1], aim[2]);
 		float yaw = (float) ViewpointPlan.wrapDegrees(base.yawDegrees() + yawJitter);
 		float pitch = (float) Math.clamp(base.pitchDegrees() + pitchJitter, -90.0, 90.0);
-		return ViewpointCandidate.of(new ViewpointPlan(x, feetY, z, yaw, pitch));
+		return new ViewpointCandidate.Placeable(new ViewpointPlan(x, feetY, z, yaw, pitch));
 	}
 }

@@ -12,6 +12,26 @@ public record BlockBox(int minX, int minY, int minZ, int maxX, int maxY, int max
 		return new BlockBox(min[0], min[1], min[2], max[0], max[1], max[2]);
 	}
 
+	/** The box of the single block at {@code position}. */
+	public static BlockBox cell(int[] position) {
+		return new BlockBox(position[0], position[1], position[2], position[0], position[1], position[2]);
+	}
+
+	/** The world-space corner at the minimum block's minimum faces. */
+	public double[] lowerCorner() {
+		return new double[] {this.minX, this.minY, this.minZ};
+	}
+
+	/** The world-space corner at the maximum block's maximum faces. */
+	public double[] upperCorner() {
+		return new double[] {this.maxX + 1.0, this.maxY + 1.0, this.maxZ + 1.0};
+	}
+
+	/** The world-space centre of the box. */
+	public double[] center() {
+		return new double[] {(this.minX + this.maxX + 1.0) / 2.0, (this.minY + this.maxY + 1.0) / 2.0, (this.minZ + this.maxZ + 1.0) / 2.0};
+	}
+
 	public boolean contains(int x, int y, int z) {
 		return x >= this.minX && x <= this.maxX && y >= this.minY && y <= this.maxY && z >= this.minZ && z <= this.maxZ;
 	}

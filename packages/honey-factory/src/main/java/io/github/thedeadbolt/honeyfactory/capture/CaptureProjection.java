@@ -1,6 +1,7 @@
 package io.github.thedeadbolt.honeyfactory.capture;
 
 import com.google.gson.JsonObject;
+import io.github.thedeadbolt.honeyfactory.contract.BlockBox;
 import io.github.thedeadbolt.honeyfactory.contract.CaptureMode;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -35,6 +36,11 @@ public sealed interface CaptureProjection permits PerspectiveProjection {
 
 	/** Whether any part of the axis-aligned box lies inside the captured field of view. */
 	boolean intersects(CameraFrame camera, double[] boxMin, double[] boxMax);
+
+	/** Whether any part of the blocks in {@code box} lies inside the captured field of view. */
+	default boolean intersects(CameraFrame camera, BlockBox box) {
+		return intersects(camera, box.lowerCorner(), box.upperCorner());
+	}
 
 	/** The manifest's {@code capture.projection} members for this projection. */
 	JsonObject metadata();

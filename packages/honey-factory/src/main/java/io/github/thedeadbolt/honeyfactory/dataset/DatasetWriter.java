@@ -1,11 +1,13 @@
 package io.github.thedeadbolt.honeyfactory.dataset;
 
+import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
 import io.github.thedeadbolt.honeyfactory.contract.DatasetManifest;
 import io.github.thedeadbolt.honeyfactory.contract.Ids;
 import io.github.thedeadbolt.honeyfactory.contract.Jsonl;
 import io.github.thedeadbolt.honeyfactory.contract.SampleRecord;
 import io.github.thedeadbolt.honeyfactory.contract.SceneRecord;
 import io.github.thedeadbolt.honeyfactory.contract.Sha256;
+import io.github.thedeadbolt.honeyfactory.image.PngImages;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -29,6 +31,13 @@ public final class DatasetWriter {
 	public static final String MANIFEST = "dataset.json";
 	public static final String SCENES = "scenes.jsonl";
 	public static final String SAMPLES = "samples.jsonl";
+
+	/** The image files of one written sample. */
+	public record SampleFiles(SampleRecord.ImageFile rgb, SampleRecord.ImageFile mask) {
+		public List<String> paths() {
+			return List.of(this.rgb.path(), this.mask.path());
+		}
+	}
 
 	private final Path root;
 
@@ -63,9 +72,25 @@ public final class DatasetWriter {
 	}
 
 	/** Writes PNG bytes at a dataset-relative path and describes the final file. */
-	public SampleRecord.ImageFile writeImage(String relativePath, byte[] png, int width, int height) throws IOException {
+	private SampleRecord.ImageFile writeImage(String relativePath, byte[] png, int width, int height) throws IOException {
 		writeAtomically(resolve(relativePath), png);
 		return new SampleRecord.ImageFile(relativePath, SampleRecord.MEDIA_TYPE, width, height, png.length, Sha256.hex(png));
+	}
+
+	/**
+	 * Writes a sample's RGB image and visible mask as PNGs at their dataset paths. On failure
+	 * any image already written is removed again.
+	 */
+	public SampleFiles writeSample(SampleDescriptor sample, CapturedImages images) throws IOException {
+		int width = images.width();
+		int height = images.height();
+		SampleRecord.ImageFile rgb = writeImage(sample.rgbPath(), PngImages.encodeRgb(width, height, images.rgb()), width, height);
+		try {
+			return new SampleFiles(rgb, writeImage(sample.maskPath(), PngImages.encodeGray(width, height, images.visibleMask()), width, height));
+		} catch (IOException | RuntimeException e) {
+			deleteImages(List.of(sample.rgbPath()));
+			throw e;
+		}
 	}
 
 	/** Removes image files of a rejected scene; records never referenced them. */

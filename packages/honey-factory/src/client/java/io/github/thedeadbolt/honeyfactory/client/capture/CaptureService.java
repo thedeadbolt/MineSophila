@@ -1,7 +1,6 @@
 package io.github.thedeadbolt.honeyfactory.client.capture;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.platform.Window;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
@@ -13,7 +12,7 @@ import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import java.nio.ByteBuffer;
-import net.minecraft.client.Camera;
+import java.util.List;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -37,7 +36,6 @@ public final class CaptureService {
 	/** Every capture renders with {@code DeltaTracker.ONE}: the state at the end of the current tick. */
 	public static final double PARTIAL_TICK = 1.0;
 
-	private static @Nullable Float verticalFovOverride;
 	private static @Nullable String injectedFailure;
 
 	/** One capture; times are CPU wall time for render submission and for readback. */
@@ -53,7 +51,7 @@ public final class CaptureService {
 
 	/** The vertical field of view the camera must use while a capture renders, or null. */
 	public static @Nullable Float verticalFovOverride() {
-		return verticalFovOverride;
+		return CaptureSetup.activeVerticalFov();
 	}
 
 	/** Makes the next capture fail with {@code reason}, for failure-handling tests. */
@@ -69,6 +67,23 @@ public final class CaptureService {
 	 *     render or readback step fails; no partial images are returned
 	 */
 	public static Capture capture(Minecraft minecraft, CaptureProjection projection, @Nullable BlockPos target) {
+		CaptureProjection.View view = supportedView(minecraft, projection);
+		long worldTick = minecraft.level.getGameTime();
+		try (CaptureSetup ignored = CaptureSetup.apply(minecraft, view)) {
+			long start = System.nanoTime();
+			renderFrame(minecraft, target);
+			long rendered = System.nanoTime();
+			CapturedImages images = readImages(minecraft.gameRenderer.mainRenderTarget(), view, target != null);
+			return new Capture(images, worldTick, PARTIAL_TICK, rendered - start, System.nanoTime() - rendered);
+		} catch (EnvironmentException | UnsupportedOperationException e) {
+			throw e;
+		} catch (RuntimeException e) {
+			throw failure(e.toString());
+		}
+	}
+
+	/** The single unrotated view a capture can render, after checking the client can capture at all. */
+	private static CaptureProjection.View supportedView(Minecraft minecraft, CaptureProjection projection) {
 		if (minecraft.level == null || minecraft.player == null) {
 			throw failure("no client level");
 		}
@@ -84,78 +99,38 @@ public final class CaptureService {
 			throw failure("injected: " + reason);
 		}
 
-		if (projection.views().size() != 1) {
-			throw new UnsupportedOperationException("Multi-view capture arrives with PANORAMA_310 in M5");
+		List<CaptureProjection.View> views = projection.views();
+		if (views.size() != 1 || views.getFirst().yawOffsetDegrees() != 0.0 || views.getFirst().pitchOffsetDegrees() != 0.0) {
+			throw new UnsupportedOperationException("Multi-view and rotated captures arrive with PANORAMA_310 in M5");
 		}
 
-		CaptureProjection.View view = projection.views().getFirst();
-		if (view.yawOffsetDegrees() != 0.0 || view.pitchOffsetDegrees() != 0.0) {
-			throw new UnsupportedOperationException("Rotated views arrive with PANORAMA_310 in M5");
+		return views.getFirst();
+	}
+
+	/** Renders one level frame, with the target masks when there is a target. */
+	private static void renderFrame(Minecraft minecraft, @Nullable BlockPos target) {
+		if (target != null) {
+			TargetMaskRenderer.arm(target);
 		}
 
-		long worldTick = minecraft.level.getGameTime();
-		Window window = minecraft.getWindow();
-		RenderTarget main = minecraft.gameRenderer.mainRenderTarget();
-		Camera camera = minecraft.gameRenderer.mainCamera();
-		int originalWidth = window.getWidth();
-		int originalHeight = window.getHeight();
-		boolean bobView = minecraft.options.bobView().get();
-		double chunkFade = minecraft.options.chunkSectionFadeInTime().get();
-		int width = view.width();
-		int height = view.height();
-		try {
-			minecraft.options.bobView().set(false);
-			// Section fade-in follows wall-clock time, which would make RGB depend on timing.
-			minecraft.options.chunkSectionFadeInTime().set(0.0);
-			minecraft.gameRenderer.setRenderBlockOutline(false);
-			camera.enablePanoramicMode();
-			verticalFovOverride = (float) view.verticalFovDegrees();
-			window.setWidth(width);
-			window.setHeight(height);
-			main.resize(width, height);
-
-			long start = System.nanoTime();
-			if (target != null) {
-				TargetMaskRenderer.arm(target);
+		minecraft.gameRenderer.update(DeltaTracker.ONE);
+		minecraft.gameRenderer.extract(DeltaTracker.ONE, true);
+		minecraft.gameRenderer.renderLevel();
+		if (target != null) {
+			String maskFailure = TargetMaskRenderer.finish();
+			if (maskFailure != null) {
+				throw failure(maskFailure);
 			}
-
-			minecraft.gameRenderer.update(DeltaTracker.ONE);
-			minecraft.gameRenderer.extract(DeltaTracker.ONE, true);
-			minecraft.gameRenderer.renderLevel();
-			if (target != null) {
-				String maskFailure = TargetMaskRenderer.finish();
-				if (maskFailure != null) {
-					throw failure(maskFailure);
-				}
-			}
-
-			long rendered = System.nanoTime();
-			CapturedImages images;
-			if (target == null) {
-				images = CapturedImages.withoutTarget(width, height, channels(readBack(main.getColorTexture())[0], 3));
-			} else {
-				byte[][] pixels = readBack(main.getColorTexture(), TargetMaskRenderer.visibleTexture(), TargetMaskRenderer.unoccludedTexture());
-				images = new CapturedImages(width, height, channels(pixels[0], 3), channels(pixels[1], 1), channels(pixels[2], 1));
-			}
-
-			return new Capture(images, worldTick, PARTIAL_TICK, rendered - start, System.nanoTime() - rendered);
-		} catch (RuntimeException e) {
-			if (e instanceof EnvironmentException || e instanceof UnsupportedOperationException) {
-				throw e;
-			}
-
-			throw failure(e.toString());
-		} finally {
-			verticalFovOverride = null;
-			camera.disablePanoramicMode();
-			minecraft.gameRenderer.setRenderBlockOutline(true);
-			minecraft.options.bobView().set(bobView);
-			minecraft.options.chunkSectionFadeInTime().set(chunkFade);
-			window.setWidth(originalWidth);
-			window.setHeight(originalHeight);
-			main.resize(originalWidth, originalHeight);
-			TargetMaskRenderer.close();
 		}
+	}
+
+	private static CapturedImages readImages(RenderTarget main, CaptureProjection.View view, boolean withMasks) {
+		if (!withMasks) {
+			return CapturedImages.withoutTarget(view.width(), view.height(), channels(readBack(main.getColorTexture())[0], 3));
+		}
+
+		byte[][] pixels = readBack(main.getColorTexture(), TargetMaskRenderer.visibleTexture(), TargetMaskRenderer.unoccludedTexture());
+		return new CapturedImages(view.width(), view.height(), channels(pixels[0], 3), channels(pixels[1], 1), channels(pixels[2], 1));
 	}
 
 	private static EnvironmentException failure(String reason) {

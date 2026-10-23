@@ -1,7 +1,7 @@
 package io.github.thedeadbolt.honeyfactory.client;
 
 import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
-import io.github.thedeadbolt.honeyfactory.client.generation.DatasetRuns;
+import io.github.thedeadbolt.honeyfactory.client.generation.DatasetCommands;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentCommands;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
 import net.fabricmc.api.ClientModInitializer;
@@ -16,6 +16,6 @@ public class HoneyFactoryClient implements ClientModInitializer {
 		CaptureService.initialize();
 		EnvironmentRuntime.initialize();
 		EnvironmentCommands.initialize();
-		DatasetRuns.initialize();
+		DatasetCommands.initialize();
 	}
 }

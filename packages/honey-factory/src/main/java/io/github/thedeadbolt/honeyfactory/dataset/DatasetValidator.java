@@ -9,6 +9,7 @@ import io.github.thedeadbolt.honeyfactory.contract.MaskStatistics;
 import io.github.thedeadbolt.honeyfactory.contract.SampleRecord;
 import io.github.thedeadbolt.honeyfactory.contract.SceneRecord;
 import io.github.thedeadbolt.honeyfactory.contract.Sha256;
+import io.github.thedeadbolt.honeyfactory.image.PngImages;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

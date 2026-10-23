@@ -1,6 +1,6 @@
 package io.github.thedeadbolt.honeyfactory.capture;
 
-import io.github.thedeadbolt.honeyfactory.dataset.PngImages;
+import io.github.thedeadbolt.honeyfactory.image.PngImages;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

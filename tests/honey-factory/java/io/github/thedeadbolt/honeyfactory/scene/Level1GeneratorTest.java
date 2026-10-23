@@ -73,13 +73,13 @@ class Level1GeneratorTest {
 			for (int attempt = 0; attempt < 50; attempt++) {
 				ViewpointCandidate candidate = GENERATOR.viewpoint(scene, viewpoint, attempt);
 				assertEquals(candidate, GENERATOR.viewpoint(scene, viewpoint, attempt), "draws are deterministic");
-				if (candidate.plan() == null) {
-					rejections.add(candidate.rejection());
+				if (candidate instanceof ViewpointCandidate.Rejected rejected) {
+					rejections.add(rejected.reason());
 					continue;
 				}
 
 				accepted++;
-				ViewpointPlan plan = candidate.plan();
+				ViewpointPlan plan = ((ViewpointCandidate.Placeable) candidate).plan();
 				double dx = aim[0] + 0.5 - plan.x();
 				double dz = aim[2] + 0.5 - plan.z();
 				double distance = Math.hypot(dx, dz);
@@ -129,9 +129,9 @@ class Level1GeneratorTest {
 
 	private static final String PINNED_LAYOUT = "4524b21ee056ed19744fa244f43548590b8f79dee2f7cbe4115f6d68cfa16e6d";
 	private static final String PINNED_VIEWPOINTS = """
-		ViewpointCandidate[plan=ViewpointPlan[x=22.941385641938943, y=1.0, z=26.128690485560043, yawDegrees=98.75511169433594, pitchDegrees=-0.7622568011283875], rejection=null]
-		ViewpointCandidate[plan=ViewpointPlan[x=6.869347503393224, y=1.0, z=14.080706581627279, yawDegrees=-34.49997329711914, pitchDegrees=11.442506790161133], rejection=null]
-		ViewpointCandidate[plan=null, rejection=camera_off_platform]
-		ViewpointCandidate[plan=null, rejection=camera_off_platform]
+		Placeable[plan=ViewpointPlan[x=22.941385641938943, y=1.0, z=26.128690485560043, yawDegrees=98.75511169433594, pitchDegrees=-0.7622568011283875]]
+		Placeable[plan=ViewpointPlan[x=6.869347503393224, y=1.0, z=14.080706581627279, yawDegrees=-34.49997329711914, pitchDegrees=11.442506790161133]]
+		Rejected[reason=camera_off_platform]
+		Rejected[reason=camera_off_platform]
 		""";
 }
