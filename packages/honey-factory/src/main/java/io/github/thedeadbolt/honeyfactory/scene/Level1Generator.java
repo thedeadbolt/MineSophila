@@ -56,7 +56,7 @@ public final class Level1Generator implements SceneGenerator {
 	}
 
 	@Override
-	public GeneratedScene scene(int sceneIndex, int attemptIndex, SceneSeeds seeds, boolean targetPresent) {
+	public GeneratedScene scene(SceneSeeds seeds, boolean targetPresent) {
 		SeededRandom random = new SeededRandom(PREFIX + "target/" + seeds.target());
 		int x = random.nextInt(this.config.arena().width());
 		int z = random.nextInt(this.config.arena().length());
@@ -71,7 +71,7 @@ public final class Level1Generator implements SceneGenerator {
 
 		ResolvedConfig.Lighting lighting = this.config.lighting();
 		ScenePlan plan = new ScenePlan(this.template, delta, target, lighting.timeOfDayTicks(), lighting.weather());
-		return new GeneratedScene(sceneIndex, attemptIndex, seeds, plan, new int[] {x, 1, z});
+		return new GeneratedScene(seeds, plan, new int[] {x, 1, z});
 	}
 
 	@Override
@@ -100,14 +100,8 @@ public final class Level1Generator implements SceneGenerator {
 		}
 
 		ViewpointPlan base = ViewpointPlan.lookingAt(x, feetY, z, settings.eyeHeightBlocks(), aim[0], aim[1], aim[2]);
-		float yaw = (float) wrapDegrees(base.yawDegrees() + yawJitter);
+		float yaw = (float) ViewpointPlan.wrapDegrees(base.yawDegrees() + yawJitter);
 		float pitch = (float) Math.clamp(base.pitchDegrees() + pitchJitter, -90.0, 90.0);
 		return ViewpointCandidate.of(new ViewpointPlan(x, feetY, z, yaw, pitch));
-	}
-
-	/** {@code degrees} in {@code [-180, 180)}. */
-	static double wrapDegrees(double degrees) {
-		double wrapped = (degrees + 180.0) % 360.0;
-		return (wrapped < 0 ? wrapped + 360.0 : wrapped) - 180.0;
 	}
 }

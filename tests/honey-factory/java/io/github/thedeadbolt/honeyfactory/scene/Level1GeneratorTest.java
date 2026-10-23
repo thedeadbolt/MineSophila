@@ -38,7 +38,7 @@ class Level1GeneratorTest {
 	@Test
 	void presentScenesPlaceOneTargetOnTheFloor() {
 		for (int index = 0; index < 50; index++) {
-			GeneratedScene scene = GENERATOR.scene(index, 0, SceneSeeds.derive(42, index, 0), true);
+			GeneratedScene scene = GENERATOR.scene(SceneSeeds.derive(42, index, 0), true);
 			Placement target = scene.plan().target();
 			assertNotNull(target);
 			assertEquals(List.of(target), scene.plan().delta());
@@ -54,8 +54,8 @@ class Level1GeneratorTest {
 	@Test
 	void absentScenesAimWhereTheTargetWouldBe() {
 		SceneSeeds seeds = SceneSeeds.derive(42, 7, 3);
-		GeneratedScene present = GENERATOR.scene(7, 3, seeds, true);
-		GeneratedScene absent = GENERATOR.scene(7, 3, seeds, false);
+		GeneratedScene present = GENERATOR.scene(seeds, true);
+		GeneratedScene absent = GENERATOR.scene(seeds, false);
 		assertNull(absent.plan().target());
 		assertTrue(absent.plan().delta().isEmpty());
 		assertArrayEquals(present.aimBlock(), absent.aimBlock());
@@ -65,7 +65,7 @@ class Level1GeneratorTest {
 
 	@Test
 	void viewpointsFollowTheConfiguredDistanceAndJitter() {
-		GeneratedScene scene = GENERATOR.scene(0, 0, SceneSeeds.derive(42, 0, 0), true);
+		GeneratedScene scene = GENERATOR.scene(SceneSeeds.derive(42, 0, 0), true);
 		int[] aim = scene.aimBlock();
 		Set<String> rejections = new HashSet<>();
 		int accepted = 0;
@@ -87,7 +87,7 @@ class Level1GeneratorTest {
 				assertEquals(1.0, plan.y());
 				assertTrue(plan.x() >= 0.3 && plan.x() <= 31.7 && plan.z() >= 0.3 && plan.z() <= 31.7);
 				ViewpointPlan aimed = ViewpointPlan.lookingAt(plan.x(), plan.y(), plan.z(), 1.62, aim[0], aim[1], aim[2]);
-				assertTrue(Math.abs(Level1Generator.wrapDegrees(plan.yawDegrees() - aimed.yawDegrees())) <= 15.0 + 1e-4);
+				assertTrue(Math.abs(ViewpointPlan.wrapDegrees(plan.yawDegrees() - aimed.yawDegrees())) <= 15.0 + 1e-4);
 				assertTrue(Math.abs(plan.pitchDegrees() - aimed.pitchDegrees()) <= 10.0 + 1e-4);
 				assertEquals(plan.yawDegrees(), (float) plan.yawDegrees(), "angles are stored at float precision");
 			}
@@ -100,7 +100,7 @@ class Level1GeneratorTest {
 	/** Pins the generator's output so an accidental algorithm change cannot pass silently. */
 	@Test
 	void outputIsPinned() {
-		GeneratedScene scene = GENERATOR.scene(3, 1, SceneSeeds.derive(42, 3, 1), true);
+		GeneratedScene scene = GENERATOR.scene(SceneSeeds.derive(42, 3, 1), true);
 		ArenaLayout arena = ArenaLayout.of(CONFIG.arena());
 		assertEquals(PINNED_LAYOUT, scene.plan().layoutSha256(arena));
 		StringBuilder draws = new StringBuilder();

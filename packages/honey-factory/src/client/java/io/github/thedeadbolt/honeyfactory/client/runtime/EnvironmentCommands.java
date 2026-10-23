@@ -15,13 +15,13 @@ import io.github.thedeadbolt.honeyfactory.capture.PerspectiveProjection;
 import io.github.thedeadbolt.honeyfactory.contract.MaskStatistics;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
+import io.github.thedeadbolt.honeyfactory.environment.Futures;
 import io.github.thedeadbolt.honeyfactory.environment.OperationCoordinator;
 import io.github.thedeadbolt.honeyfactory.scene.FixturePlans;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -53,14 +53,14 @@ public final class EnvironmentCommands {
 			LiteralArgumentBuilder<FabricClientCommandSource> reset = literal("reset");
 			for (FixturePlans.Fixture fixture : FixturePlans.Fixture.values()) {
 				reset.then(literal(fixture.commandName()).executes(context -> report(context, EnvironmentRuntime.get().reset(
-					FixturePlans.ARENA, FixturePlans.plan(fixture), EnvironmentRuntime.pose(FixturePlans.viewpoint(fixture))
+					FixturePlans.ARENA, FixturePlans.plan(fixture), FixturePlans.viewpoint(fixture).pose()
 				), scene -> "Reset " + fixture.commandName() + " (" + scene.operationId() + "), layout " + scene.layoutSha256())));
 			}
 
 			dispatcher.register(literal("honeyfactory_env")
 				.then(reset)
 				.then(literal("viewpoint")
-					.then(literal("fixture").executes(context -> viewpoint(context, EnvironmentRuntime.pose(FixturePlans.VIEWPOINT))))
+					.then(literal("fixture").executes(context -> viewpoint(context, FixturePlans.VIEWPOINT.pose())))
 					.then(argument("x", DoubleArgumentType.doubleArg()).then(argument("y", DoubleArgumentType.doubleArg()).then(argument("z", DoubleArgumentType.doubleArg())
 						.then(argument("yaw", FloatArgumentType.floatArg(-180.0F, 180.0F)).then(argument("pitch", FloatArgumentType.floatArg(-90.0F, 90.0F))
 							.executes(context -> viewpoint(context, new CameraPose(
@@ -116,7 +116,7 @@ public final class EnvironmentCommands {
 			if (error == null) {
 				source.sendFeedback(Component.literal(success.apply(value)));
 			} else {
-				Throwable cause = error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
+				Throwable cause = Futures.cause(error);
 				source.sendError(Component.literal(cause instanceof EnvironmentException environment ? environment.toString() : String.valueOf(cause)));
 			}
 		});

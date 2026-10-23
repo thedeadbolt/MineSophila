@@ -101,15 +101,12 @@ public final class FixturePlans {
 		return switch (fixture) {
 			case NEAR -> ViewpointPlan.lookingAt(FEET_X, 1.0, 18.2, EYE, 16, 1, 16);
 			case FAR -> ViewpointPlan.lookingAt(16.5, 1.0, 30.5, EYE, 16, 1, 1);
-			case EDGE -> turned(VIEWPOINT, 45.0);
-			case OUT_OF_VIEW -> turned(VIEWPOINT, 180.0);
+			case EDGE -> VIEWPOINT.turned(45.0);
+			case OUT_OF_VIEW -> VIEWPOINT.turned(180.0);
 			default -> VIEWPOINT;
 		};
 	}
 
-	private static ViewpointPlan turned(ViewpointPlan viewpoint, double degrees) {
-		return new ViewpointPlan(viewpoint.x(), viewpoint.y(), viewpoint.z(), Level1Generator.wrapDegrees(viewpoint.yawDegrees() + degrees), viewpoint.pitchDegrees());
-	}
 
 	/** Three blocks of {@code state} centred in front of the target at z = 19. */
 	private static void row(List<Placement> delta, int y, IntFunction<String> state) {

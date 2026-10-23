@@ -1,17 +1,16 @@
 package io.github.thedeadbolt.honeyfactory.contract;
 
 /** Capture projection selected per dataset; the JSON name is the constant name. */
-public enum CaptureMode {
+public enum CaptureMode implements JsonEnum {
 	PERSPECTIVE_90,
 	PANORAMA_310;
 
-	public static CaptureMode fromJson(String name) {
-		for (CaptureMode mode : values()) {
-			if (mode.name().equals(name)) {
-				return mode;
-			}
-		}
+	@Override
+	public String jsonName() {
+		return name();
+	}
 
-		throw new IllegalArgumentException("unknown capture mode '" + name + "'; expected PERSPECTIVE_90 or PANORAMA_310");
+	public static CaptureMode fromJson(String name) {
+		return JsonEnum.parse(CaptureMode.class, name);
 	}
 }

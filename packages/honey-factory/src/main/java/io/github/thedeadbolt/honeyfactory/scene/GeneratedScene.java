@@ -7,5 +7,5 @@ import io.github.thedeadbolt.honeyfactory.contract.SceneSeeds;
  * in a target-present scene, or the cell a target would occupy in a target-absent one, so
  * both classes share one viewpoint distribution.
  */
-public record GeneratedScene(int sceneIndex, int attemptIndex, SceneSeeds seeds, ScenePlan plan, int[] aimBlock) {
+public record GeneratedScene(SceneSeeds seeds, ScenePlan plan, int[] aimBlock) {
 }

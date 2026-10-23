@@ -15,7 +15,6 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -43,7 +42,6 @@ public final class ConfigResolver {
 	/** First-person standing eye height used for every viewpoint, in blocks. */
 	public static final double EYE_HEIGHT_BLOCKS = 1.62;
 
-	private static final Pattern BLOCK_ID = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
 	private static final Set<String> SECTIONS = Set.of(
 		"dataset", "target", "arena", "natural_region", "viewpoints", "lighting", "visibility", "capture", "quotas", "splits", "output"
 	);
@@ -98,7 +96,7 @@ public final class ConfigResolver {
 	private static ResolvedConfig.Target target(JsonFields target) {
 		target.rejectUnknown(Set.of("block_id", "allowed_block_states", "present_fraction"));
 		String blockId = target.string("block_id", "minecraft:honey_block");
-		if (!BLOCK_ID.matcher(blockId).matches()) {
+		if (!Ids.NAMESPACED_ID.matcher(blockId).matches()) {
 			throw target.error("block_id", "must be a namespaced block ID such as minecraft:honey_block");
 		}
 

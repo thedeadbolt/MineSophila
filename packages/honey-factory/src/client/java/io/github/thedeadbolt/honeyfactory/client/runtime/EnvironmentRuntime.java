@@ -13,7 +13,6 @@ import io.github.thedeadbolt.honeyfactory.environment.OperationState;
 import io.github.thedeadbolt.honeyfactory.environment.ReadinessGate;
 import io.github.thedeadbolt.honeyfactory.scene.ArenaLayout;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
-import io.github.thedeadbolt.honeyfactory.scene.ViewpointPlan;
 import io.github.thedeadbolt.honeyfactory.world.ArenaDimension;
 import io.github.thedeadbolt.honeyfactory.world.ArenaExecutor;
 import io.github.thedeadbolt.honeyfactory.world.BlockStates;
@@ -94,11 +93,6 @@ public final class EnvironmentRuntime {
 		return INSTANCE;
 	}
 
-	/** The absolute camera pose of an arena-relative viewpoint plan. */
-	public static CameraPose pose(ViewpointPlan viewpoint) {
-		double[] feet = viewpoint.feet();
-		return new CameraPose(feet[0], feet[1], feet[2], (float) viewpoint.yawDegrees(), (float) viewpoint.pitchDegrees());
-	}
 
 	public static void initialize() {
 		ClientTickEvents.END_CLIENT_TICK.register(minecraft -> INSTANCE.tick());

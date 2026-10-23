@@ -3,32 +3,16 @@ package io.github.thedeadbolt.honeyfactory.contract;
 import org.jspecify.annotations.Nullable;
 
 /** One unambiguous target state per sample, derived from mask evidence in specification order. */
-public enum TargetStatus {
-	ABSENT("absent"),
-	OUT_OF_VIEW("out_of_view"),
-	SUBPIXEL("subpixel"),
-	FULLY_OCCLUDED("fully_occluded"),
-	FULLY_VISIBLE("fully_visible"),
-	PARTIALLY_VISIBLE("partially_visible");
-
-	private final String jsonName;
-
-	TargetStatus(String jsonName) {
-		this.jsonName = jsonName;
-	}
-
-	public String jsonName() {
-		return this.jsonName;
-	}
+public enum TargetStatus implements JsonEnum {
+	ABSENT,
+	OUT_OF_VIEW,
+	SUBPIXEL,
+	FULLY_OCCLUDED,
+	FULLY_VISIBLE,
+	PARTIALLY_VISIBLE;
 
 	public static TargetStatus fromJson(String name) {
-		for (TargetStatus status : values()) {
-			if (status.jsonName.equals(name)) {
-				return status;
-			}
-		}
-
-		throw new IllegalArgumentException("Unknown target status '" + name + "'");
+		return JsonEnum.parse(TargetStatus.class, name);
 	}
 
 	/**

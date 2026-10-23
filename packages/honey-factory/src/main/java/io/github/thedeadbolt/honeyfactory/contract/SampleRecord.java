@@ -249,11 +249,7 @@ public record SampleRecord(
 			throw file.error("media_type", "must be " + MEDIA_TYPE);
 		}
 
-		String sha256 = file.string("sha256");
-		if (!Sha256.isHex(sha256)) {
-			throw file.error("sha256", "must be 64 lowercase hexadecimal characters");
-		}
-
+		String sha256 = file.sha256("sha256");
 		return new ImageFile(path, mediaType, file.integer32("width", 1, 65_536), file.integer32("height", 1, 65_536), file.integer("bytes", 1, Long.MAX_VALUE), sha256);
 	}
 

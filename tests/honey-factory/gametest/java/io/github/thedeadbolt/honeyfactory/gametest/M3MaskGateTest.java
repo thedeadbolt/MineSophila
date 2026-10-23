@@ -1,7 +1,6 @@
 package io.github.thedeadbolt.honeyfactory.gametest;
 
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.github.thedeadbolt.honeyfactory.capture.CameraFrame;
 import io.github.thedeadbolt.honeyfactory.capture.CaptureDebugFiles;
@@ -12,6 +11,7 @@ import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
 import io.github.thedeadbolt.honeyfactory.config.ConfigResolver;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
+import io.github.thedeadbolt.honeyfactory.contract.JsonWrite;
 import io.github.thedeadbolt.honeyfactory.contract.MaskStatistics;
 import io.github.thedeadbolt.honeyfactory.contract.Sha256;
 import io.github.thedeadbolt.honeyfactory.contract.TargetStatus;
@@ -106,7 +106,7 @@ public class M3MaskGateTest implements FabricClientGameTest {
 	}
 
 	private static void reset(ClientGameTestContext context, Fixture fixture) {
-		GameTestSupport.await(context, runtime -> runtime.reset(FixturePlans.ARENA, FixturePlans.plan(fixture), EnvironmentRuntime.pose(FixturePlans.viewpoint(fixture))));
+		GameTestSupport.await(context, runtime -> runtime.reset(FixturePlans.ARENA, FixturePlans.plan(fixture), FixturePlans.viewpoint(fixture).pose()));
 	}
 
 	/** Repeated captures with the server's ticking frozen, so the world does not advance between them. */
@@ -169,9 +169,8 @@ public class M3MaskGateTest implements FabricClientGameTest {
 		result.addProperty("visible_pixels", visible.positivePixels());
 		result.addProperty("unoccluded_pixels", unoccluded);
 		result.addProperty("target_status", status.jsonName());
-		result.add("visibility_ratio", TargetStatus.visibilityRatio(visible.positivePixels(), unoccluded) == null ? null
-			: new com.google.gson.JsonPrimitive(TargetStatus.visibilityRatio(visible.positivePixels(), unoccluded)));
-		result.add("visible_bbox_xywh", visible.bboxXywh() == null ? null : toJson(visible.bboxXywh()));
+		result.add("visibility_ratio", JsonWrite.nullable(TargetStatus.visibilityRatio(visible.positivePixels(), unoccluded)));
+		result.add("visible_bbox_xywh", JsonWrite.nullable(visible.bboxXywh()));
 
 		TargetStatus expected = switch (fixture) {
 			case OPEN, NEAR, FAR, EDGE -> TargetStatus.FULLY_VISIBLE;
@@ -343,14 +342,5 @@ public class M3MaskGateTest implements FabricClientGameTest {
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}
-	}
-
-	private static JsonArray toJson(int[] values) {
-		JsonArray array = new JsonArray();
-		for (int value : values) {
-			array.add(value);
-		}
-
-		return array;
 	}
 }

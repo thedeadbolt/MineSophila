@@ -132,12 +132,10 @@ public record SceneRecord(
 		}
 
 		JsonFields template = fields.object("template");
-		Template templateRecord = new Template(template.string("id"), template.integer32("version", 0, Integer.MAX_VALUE), template.string("sha256"));
+		Template templateRecord = new Template(template.string("id"), template.integer32("version", 0, Integer.MAX_VALUE), template.sha256("sha256"));
 		if (templateRecord.id().isEmpty()) {
 			throw template.error("id", "must not be empty");
 		}
-
-		requireHex(template, "sha256", templateRecord.sha256());
 
 		JsonFields arena = fields.object("arena");
 		JsonFields bounds = arena.object("bounds");
@@ -146,7 +144,7 @@ public record SceneRecord(
 		requireOrdered(bounds, min, max);
 		JsonFields core = arena.object("core_size");
 		Arena arenaRecord = new Arena(
-			requireNamespaced(arena, "dimension"),
+			arena.namespacedId("dimension"),
 			arena.integers("origin", 3),
 			min,
 			max,
@@ -165,7 +163,7 @@ public record SceneRecord(
 			requireOrdered(patchBounds, patchMin, patchMax);
 			patch = new SourcePatch(
 				source.integer("world_seed", Long.MIN_VALUE, Long.MAX_VALUE),
-				requireNamespaced(source, "dimension"),
+				source.namespacedId("dimension"),
 				patchMin,
 				patchMax,
 				source.string("generator_version"),
@@ -195,15 +193,14 @@ public record SceneRecord(
 			gamerules
 		);
 
-		String layout = fields.string("layout_sha256");
-		requireHex(fields, "layout_sha256", layout);
+		String layout = fields.sha256("layout_sha256");
 		int accepted = fields.integer32("accepted_sample_count", 0, Ids.MAX_VIEWPOINTS);
 		return new SceneRecord(version, sceneId, split, difficulty, generationRecord, templateRecord, arenaRecord, patch, target, environmentRecord, layout, accepted);
 	}
 
 	private static Target target(JsonFields target, int[] min, int[] max) {
 		boolean present = target.bool("present");
-		String blockId = requireNamespaced(target, "block_id");
+		String blockId = target.namespacedId("block_id");
 		if (!present) {
 			if (target.has("block_state") || target.has("position")) {
 				throw target.error(target.has("block_state") ? "block_state" : "position", "must be omitted when the target is absent");
@@ -227,26 +224,11 @@ public record SceneRecord(
 		return new Target(true, blockId, state, position);
 	}
 
-	private static String requireNamespaced(JsonFields fields, String name) {
-		String value = fields.string(name);
-		if (!value.matches("[a-z0-9_.-]+:[a-z0-9_./-]+")) {
-			throw fields.error(name, "must be a namespaced ID such as minecraft:overworld");
-		}
-
-		return value;
-	}
-
 	private static void requireOrdered(JsonFields bounds, int[] min, int[] max) {
 		for (int i = 0; i < 3; i++) {
 			if (min[i] > max[i]) {
 				throw bounds.error("min", "must not exceed max on any axis");
 			}
-		}
-	}
-
-	private static void requireHex(JsonFields fields, String name, String value) {
-		if (!Sha256.isHex(value)) {
-			throw fields.error(name, "must be 64 lowercase hexadecimal characters");
 		}
 	}
 }

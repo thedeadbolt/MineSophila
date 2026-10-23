@@ -10,7 +10,8 @@ public interface SceneGenerator {
 	/** Versioned identity, recorded as {@code generator.algorithms.scene_generator}. */
 	String version();
 
-	GeneratedScene scene(int sceneIndex, int attemptIndex, SceneSeeds seeds, boolean targetPresent);
+	/** The scene of one generation attempt, from that attempt's derived seeds. */
+	GeneratedScene scene(SceneSeeds seeds, boolean targetPresent);
 
 	/**
 	 * Draw {@code attemptIndex} for viewpoint {@code viewpointIndex}. Draws are independent,

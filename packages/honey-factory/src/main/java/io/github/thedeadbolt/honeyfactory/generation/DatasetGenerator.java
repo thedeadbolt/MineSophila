@@ -1,15 +1,13 @@
 package io.github.thedeadbolt.honeyfactory.generation;
 
-import com.google.gson.JsonObject;
 import io.github.thedeadbolt.honeyfactory.HoneyFactory;
 import io.github.thedeadbolt.honeyfactory.capture.CameraFrame;
 import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
+import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
 import io.github.thedeadbolt.honeyfactory.contract.DatasetManifest;
 import io.github.thedeadbolt.honeyfactory.contract.SampleRecord;
 import io.github.thedeadbolt.honeyfactory.contract.SceneRecord;
-import io.github.thedeadbolt.honeyfactory.contract.SchemaVersion;
-import io.github.thedeadbolt.honeyfactory.contract.SceneSeeds;
 import io.github.thedeadbolt.honeyfactory.contract.Split;
 import io.github.thedeadbolt.honeyfactory.dataset.DatasetValidator;
 import io.github.thedeadbolt.honeyfactory.dataset.DatasetWriter;
@@ -19,12 +17,12 @@ import io.github.thedeadbolt.honeyfactory.dataset.SceneDescriptor;
 import io.github.thedeadbolt.honeyfactory.dataset.SceneSlots;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
+import io.github.thedeadbolt.honeyfactory.environment.Futures;
 import io.github.thedeadbolt.honeyfactory.scene.ArenaLayout;
 import io.github.thedeadbolt.honeyfactory.scene.GeneratedScene;
 import io.github.thedeadbolt.honeyfactory.scene.SceneGenerator;
 import io.github.thedeadbolt.honeyfactory.scene.SceneGenerators;
 import io.github.thedeadbolt.honeyfactory.scene.ViewpointCandidate;
-import io.github.thedeadbolt.honeyfactory.scene.ViewpointPlan;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
@@ -35,7 +33,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -86,6 +83,7 @@ public final class DatasetGenerator {
 	private final SceneGenerator generator;
 	private final ArenaLayout arena;
 	private final CaptureProjection projection;
+	private final RecordFactory records;
 	private final Map<String, Integer> rejectionReasons = new LinkedHashMap<>();
 	private final Map<Split, DatasetManifest.SplitCount> splitCounts = new EnumMap<>(Split.class);
 	private @Nullable DatasetWriter writer;
@@ -106,6 +104,7 @@ public final class DatasetGenerator {
 		this.arena = ArenaLayout.of(config.arena());
 		ResolvedConfig.Capture capture = config.capture();
 		this.projection = CaptureProjection.of(capture.mode(), capture.width(), capture.height(), capture.cubeFaceSize());
+		this.records = new RecordFactory(config, this.arena, this.projection.mode());
 		for (Split split : Split.values()) {
 			this.splitCounts.put(split, new DatasetManifest.SplitCount(0, 0));
 		}
@@ -161,7 +160,7 @@ public final class DatasetGenerator {
 
 		this.attempted++;
 		SceneDescriptor descriptor = SceneDescriptor.of(this.config, slot, attemptIndex);
-		GeneratedScene scene = this.generator.scene(slot.sceneIndex(), attemptIndex, descriptor.seeds(), slot.targetPresent());
+		GeneratedScene scene = this.generator.scene(descriptor.seeds(), slot.targetPresent());
 		SceneAttempt sceneAttempt = new SceneAttempt(descriptor, scene);
 		this.running = sceneAttempt;
 		return sceneAttempt.run().thenCompose(outcome -> {
@@ -190,7 +189,7 @@ public final class DatasetGenerator {
 	}
 
 	private Result finish(@Nullable Throwable error) {
-		Throwable cause = error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
+		Throwable cause = Futures.cause(error);
 		String failure = null;
 		if (cause instanceof Stop stop) {
 			failure = stop.getMessage();
@@ -266,7 +265,7 @@ public final class DatasetGenerator {
 			for (int attempt = 0; attempt < limit; attempt++) {
 				ViewpointCandidate candidate = DatasetGenerator.this.generator.viewpoint(this.scene, 0, attempt);
 				if (candidate.plan() != null) {
-					CameraPose first = pose(candidate.plan());
+					CameraPose first = candidate.plan().pose();
 					int firstAttempt = attempt;
 					return DatasetGenerator.this.environment.reset(DatasetGenerator.this.arena, this.scene.plan(), first).thenCompose(ready -> {
 						this.current = first;
@@ -281,7 +280,7 @@ public final class DatasetGenerator {
 
 		private CompletableFuture<SceneOutcome> viewpoint(int index, int attempt, GenerationEnvironment.SceneReady ready) {
 			if (index == DatasetGenerator.this.config.viewpoints().count()) {
-				return CompletableFuture.completedFuture(new SceneOutcome(List.copyOf(this.samples), List.copyOf(this.files), sceneRecord(ready), null));
+				return CompletableFuture.completedFuture(new SceneOutcome(List.copyOf(this.samples), List.copyOf(this.files), DatasetGenerator.this.records.scene(this.descriptor, this.scene.plan(), this.target, ready, this.samples.size()), null));
 			}
 
 			if (DatasetGenerator.this.cancelled) {
@@ -298,7 +297,7 @@ public final class DatasetGenerator {
 				return viewpoint(index, attempt + 1, ready);
 			}
 
-			CameraPose pose = pose(candidate.plan());
+			CameraPose pose = candidate.plan().pose();
 			CompletableFuture<GenerationEnvironment.ViewReady> placed = pose.equals(this.current)
 				? CompletableFuture.completedFuture(new GenerationEnvironment.ViewReady(ready.operationId(), pose, this.currentSettledTicks))
 				: DatasetGenerator.this.environment.setViewpoint(pose);
@@ -310,7 +309,7 @@ public final class DatasetGenerator {
 						? viewpoint(index + 1, 0, ready)
 						: viewpoint(index, attempt + 1, ready));
 			}).exceptionallyCompose(error -> {
-				Throwable cause = error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
+				Throwable cause = Futures.cause(error);
 				if (cause instanceof EnvironmentException environmentError && environmentError.reason() == EnvironmentException.Reason.CAPTURE_FAILED) {
 					// The coordinator is FAILED after a capture failure; only a new reset can continue.
 					HoneyFactory.LOGGER.warn("Capture failed in {}: {}", this.descriptor.sceneId(), environmentError.getMessage());
@@ -324,8 +323,7 @@ public final class DatasetGenerator {
 		/** Writes the images and records the sample when the capture is acceptable. */
 		private boolean accept(int index, GenerationEnvironment.ViewReady view, GenerationEnvironment.Observation observation) {
 			ResolvedConfig config = DatasetGenerator.this.config;
-			double eyeHeight = config.viewpoints().eyeHeightBlocks();
-			CameraFrame camera = CameraFrame.of(view.pose(), eyeHeight);
+			CameraFrame camera = CameraFrame.of(view.pose(), config.viewpoints().eyeHeightBlocks());
 			ObservationCheck.Outcome outcome = ObservationCheck.check(config.visibility(), DatasetGenerator.this.projection, camera, this.target, observation.images());
 			if (outcome.rejection() != null) {
 				this.lastRejection = outcome.rejection();
@@ -334,36 +332,13 @@ public final class DatasetGenerator {
 			}
 
 			SampleDescriptor sample = this.descriptor.sample(index);
-			var images = observation.images();
+			CapturedImages images = observation.images();
 			try {
 				SampleRecord.ImageFile rgb = DatasetGenerator.this.writer.writeImage(sample.rgbPath(), PngImages.encodeRgb(images.width(), images.height(), images.rgb()), images.width(), images.height());
 				this.files.add(sample.rgbPath());
 				SampleRecord.ImageFile mask = DatasetGenerator.this.writer.writeImage(sample.maskPath(), PngImages.encodeGray(images.width(), images.height(), images.visibleMask()), images.width(), images.height());
 				this.files.add(sample.maskPath());
-				CameraPose pose = view.pose();
-				this.samples.add(new SampleRecord(
-					SchemaVersion.CURRENT,
-					sample.sampleId(),
-					sample.sceneId(),
-					sample.split(),
-					index,
-					rgb,
-					mask,
-					SampleRecord.Camera.of(new double[] {pose.x(), pose.y(), pose.z()}, eyeHeight, pose.yawDegrees(), pose.pitchDegrees()),
-					DatasetGenerator.this.projection.mode(),
-					new JsonObject(),
-					new SampleRecord.CaptureInfo(observation.operationId(), observation.worldTick(), observation.partialTick(), true, (int) view.settledTicks()),
-					outcome.target(),
-					new SampleRecord.Conditions(
-						this.scene.plan().timeOfDayTicks(),
-						this.scene.plan().weather(),
-						observation.biome(),
-						observation.skyLight(),
-						observation.blockLight(),
-						images.meanLuminance()
-					),
-					null
-				));
+				this.samples.add(DatasetGenerator.this.records.sample(sample, rgb, mask, view, observation, outcome.target(), this.scene.plan()));
 			} catch (IOException e) {
 				throw new UncheckedIOException(e);
 			}
@@ -371,35 +346,8 @@ public final class DatasetGenerator {
 			return true;
 		}
 
-		private SceneRecord sceneRecord(GenerationEnvironment.SceneReady ready) {
-			ArenaLayout arena = DatasetGenerator.this.arena;
-			ResolvedConfig.Arena size = DatasetGenerator.this.config.arena();
-			var plan = this.scene.plan();
-			var template = plan.template();
-			SceneSeeds seeds = this.descriptor.seeds();
-			return new SceneRecord(
-				SchemaVersion.CURRENT,
-				this.descriptor.sceneId(),
-				this.descriptor.split(),
-				DatasetGenerator.this.config.difficulty(),
-				new SceneRecord.Generation(this.descriptor.slot().sceneIndex(), this.descriptor.attemptIndex(), seeds, SceneSeeds.ALGORITHM),
-				new SceneRecord.Template(template.id(), template.version(), template.sha256()),
-				new SceneRecord.Arena(ArenaLayout.DIMENSION_ID, arena.core().min(), arena.resetVolume().min(), arena.resetVolume().max(), size.width(), size.length(), size.height(), size.margin()),
-				null,
-				new SceneRecord.Target(this.target != null, DatasetGenerator.this.config.target().blockId(), plan.target() == null ? null : plan.target().state(), this.target),
-				new SceneRecord.Environment(plan.timeOfDayTicks(), plan.weather(), ready.gamerules()),
-				ready.layoutSha256(),
-				this.samples.size()
-			);
-		}
-
 		private SceneOutcome rejected(String reason) {
 			return new SceneOutcome(List.of(), List.copyOf(this.files), null, reason);
-		}
-
-		private static CameraPose pose(ViewpointPlan plan) {
-			double[] feet = plan.feet();
-			return new CameraPose(feet[0], feet[1], feet[2], (float) plan.yawDegrees(), (float) plan.pitchDegrees());
 		}
 	}
 }

@@ -69,7 +69,7 @@ public class M2EnvironmentTest implements FabricClientGameTest {
 			expect(failures, "claim with the wrong name", EnvironmentException.Reason.NOT_OWNED, world.getServer().computeOnServer(server -> claimReason(server, "my survival world")));
 			expect(failures, "claim with the world's name", null, world.getServer().computeOnServer(server -> claimReason(server, WORLD_NAME)));
 
-			expect(failures, "viewpoint after a failed reset", EnvironmentException.Reason.INVALID_STATE, rejection(context, runtime -> runtime.setViewpoint(EnvironmentRuntime.pose(FixturePlans.VIEWPOINT))));
+			expect(failures, "viewpoint after a failed reset", EnvironmentException.Reason.INVALID_STATE, rejection(context, runtime -> runtime.setViewpoint(FixturePlans.VIEWPOINT.pose())));
 			expect(failures, "step", EnvironmentException.Reason.UNSUPPORTED, rejection(context, runtime -> runtime.step("move_forward")));
 
 			Map<BlockPos, BlockState> sentinels = placeSentinels(context, world);
@@ -130,7 +130,7 @@ public class M2EnvironmentTest implements FabricClientGameTest {
 	}
 
 	private static CompletableFuture<EnvironmentRuntime.SceneState> resetFixture(EnvironmentRuntime runtime, FixturePlans.Fixture fixture) {
-		return runtime.reset(FixturePlans.ARENA, FixturePlans.plan(fixture), EnvironmentRuntime.pose(FixturePlans.VIEWPOINT));
+		return runtime.reset(FixturePlans.ARENA, FixturePlans.plan(fixture), FixturePlans.VIEWPOINT.pose());
 	}
 
 	private static void observe(ClientGameTestContext context, String label, List<String> failures, boolean visible) {
