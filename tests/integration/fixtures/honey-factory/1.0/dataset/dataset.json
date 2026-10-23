@@ -1,11 +1,11 @@
 {
   "schema_version": "1.0",
-  "dataset_id": "honey-l1-fixture-386306ae5189",
+  "dataset_id": "honey-l1-fixture-bd97f92da5cd",
   "content_version": "1",
   "lifecycle": "complete",
   "created_at_utc": "2026-10-23T09:00:00Z",
   "completed_at_utc": "2026-10-23T09:30:00Z",
-  "resolved_config_sha256": "386306ae5189836bc5bd567ea9452b27bcd4fc70f05df0ed3c5bf05ff7e1a6a9",
+  "resolved_config_sha256": "bd97f92da5cd43b24218556f47825c571eb4372f15ac475ee2487723d838ff75",
   "difficulty": 1,
   "target": {
     "block_id": "minecraft:honey_block",
@@ -27,9 +27,20 @@
       "height": 16,
       "margin": 4
     },
-    "lighting": {
-      "time_of_day_ticks": 6000,
-      "weather": "clear"
+    "scene": {
+      "preset": "level1",
+      "base": {
+        "type": "platform",
+        "floor": "minecraft:light_gray_concrete"
+      },
+      "parts": [],
+      "sight": "any",
+      "lighting": {
+        "time_of_day_ticks": 6000,
+        "weathers": [
+          "clear"
+        ]
+      }
     },
     "visibility": {
       "rule": "fully_visible",
@@ -42,7 +53,7 @@
       "ids": "ids-v1",
       "scene_slots": "scene-slots-v1",
       "layout": "layout-v1",
-      "scene_generator": "level1-open-platform-v1"
+      "scene_generator": "scene-recipe-v1"
     }
   },
   "capture": {

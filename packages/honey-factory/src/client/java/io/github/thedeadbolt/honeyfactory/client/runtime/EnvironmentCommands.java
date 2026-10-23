@@ -6,23 +6,33 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import io.github.thedeadbolt.honeyfactory.capture.CaptureDebugFiles;
-import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
 import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
+import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
 import io.github.thedeadbolt.honeyfactory.capture.CubeFace;
 import io.github.thedeadbolt.honeyfactory.capture.PanoramicProjection;
 import io.github.thedeadbolt.honeyfactory.capture.PerspectiveProjection;
+import io.github.thedeadbolt.honeyfactory.contract.ContractException;
+import io.github.thedeadbolt.honeyfactory.contract.Ids;
+import io.github.thedeadbolt.honeyfactory.contract.JsonFields;
 import io.github.thedeadbolt.honeyfactory.contract.MaskStatistics;
+import io.github.thedeadbolt.honeyfactory.contract.SceneSeeds;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import io.github.thedeadbolt.honeyfactory.environment.Futures;
 import io.github.thedeadbolt.honeyfactory.environment.OperationCoordinator;
 import io.github.thedeadbolt.honeyfactory.scene.FixturePlans;
+import io.github.thedeadbolt.honeyfactory.scene.ScenePresets;
+import io.github.thedeadbolt.honeyfactory.scene.ScenePreview;
+import io.github.thedeadbolt.honeyfactory.scene.SceneSpec;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
@@ -39,6 +49,10 @@ import net.minecraft.network.chat.Component;
  *
  * <pre>
  * reset &lt;fixture&gt;                          build a fixture plan and move to its viewpoint
+ * reset preset &lt;name&gt; [seed [index]]        build scene index (default 0) of a preset recipe and
+ *                                           move to its first viewpoint; seed defaults to 0
+ * reset recipe &lt;file&gt; [seed [index]]        the same for a recipe file in the game directory,
+ *                                           written like a configuration's scene section
  * viewpoint fixture | &lt;x y z yaw pitch&gt;      place the camera (feet position)
  * observe &lt;label&gt; &lt;width&gt; &lt;height&gt;          capture RGB and masks into honey-factory-debug/&lt;label&gt;
  * observe &lt;label&gt; &lt;width&gt; &lt;height&gt; panorama &lt;face size&gt;
@@ -63,6 +77,19 @@ public final class EnvironmentCommands {
 					FixturePlans.ARENA, FixturePlans.plan(fixture), FixturePlans.viewpoint(fixture).pose()
 				), scene -> "Reset " + fixture.commandName() + " (" + scene.operationId() + "), layout " + scene.layoutSha256())));
 			}
+
+			reset.then(literal("preset").then(argument("name", StringArgumentType.word())
+				.suggests((context, builder) -> {
+					ScenePresets.names().forEach(builder::suggest);
+					return builder.buildFuture();
+				})
+				.executes(context -> preview(context, false))
+				.then(argument("seed", LongArgumentType.longArg(0, SceneSeeds.MAX_SEED)).executes(context -> preview(context, false))
+					.then(argument("index", IntegerArgumentType.integer(0, Ids.MAX_SCENES - 1)).executes(context -> preview(context, false))))));
+			reset.then(literal("recipe").then(argument("file", StringArgumentType.string())
+				.executes(context -> preview(context, true))
+				.then(argument("seed", LongArgumentType.longArg(0, SceneSeeds.MAX_SEED)).executes(context -> preview(context, true))
+					.then(argument("index", IntegerArgumentType.integer(0, Ids.MAX_SCENES - 1)).executes(context -> preview(context, true))))));
 
 			dispatcher.register(literal("honeyfactory_env")
 				.then(reset)
@@ -129,6 +156,40 @@ public final class EnvironmentCommands {
 			return "Observed (" + observation.operationId() + "): " + images.visibleMask().length + " px, visible "
 				+ MaskStatistics.of(images.visibleMask(), images.width(), images.height()).positivePixels() + ", unoccluded " + images.unoccludedPixels() + " -> " + directory;
 		});
+	}
+
+	/** Builds one scene of a preset or recipe file and moves to its first viewpoint. */
+	private static int preview(CommandContext<FabricClientCommandSource> context, boolean fromFile) {
+		long seed = has(context, "seed") ? LongArgumentType.getLong(context, "seed") : 0;
+		int index = has(context, "index") ? IntegerArgumentType.getInteger(context, "index") : 0;
+		String name;
+		SceneSpec spec;
+		try {
+			if (fromFile) {
+				name = StringArgumentType.getString(context, "file");
+				Path file = context.getSource().getClient().gameDirectory.toPath().resolve(name);
+				spec = SceneSpec.read(JsonFields.of(JsonFields.parseObject(Files.readString(file, StandardCharsets.UTF_8))), "level1");
+			} else {
+				name = StringArgumentType.getString(context, "name");
+				spec = ScenePresets.spec(name);
+			}
+		} catch (IOException | ContractException | IllegalArgumentException e) {
+			context.getSource().sendError(Component.literal(e.getMessage()));
+			return 0;
+		}
+
+		ScenePreview preview = ScenePreview.of(spec, seed, index);
+		if (preview.viewpoint() == null) {
+			context.getSource().sendError(Component.literal("Scene " + index + " of " + name + " has no placeable first viewpoint; try another index"));
+			return 0;
+		}
+
+		return report(context, EnvironmentRuntime.get().reset(preview.arena(), preview.scene().plan(), preview.viewpoint().pose()),
+			scene -> "Reset " + name + " seed " + seed + " scene " + index + " (" + scene.operationId() + "): " + preview.scene().layoutParameters());
+	}
+
+	private static boolean has(CommandContext<FabricClientCommandSource> context, String argument) {
+		return context.getNodes().stream().anyMatch(node -> node.getNode().getName().equals(argument));
 	}
 
 	private static int viewpoint(CommandContext<FabricClientCommandSource> context, CameraPose pose) {

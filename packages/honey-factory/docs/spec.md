@@ -7,6 +7,10 @@ package; it does not describe implemented features.
 
 Agreed 2026-10-22. Levels 1–5 cover image-based honey localisation, the core project
 task. Level 6 adds optional active search through sequences of observations and actions.
+Agreed 2026-10-24: each level is a named preset of one scene-recipe generator (a base,
+layout parts, a viewpoint sight rule and lighting) that a configuration may edit or
+combine with parts of other levels; the level still sets the visibility rule
+([ADR 0011](../../../docs/adr/0011-scene-recipes.md)).
 
 | Level | Task | Scene | Blocks and distractions | How honey is hidden | Visibility rule |
 |---|---|---|---|---|---|
@@ -98,7 +102,9 @@ worlds remain required because a crash can interrupt restoration.
 
 ### Deterministic seeds and validation
 
-Derive layout, target and viewpoint seeds independently from the dataset seed, scene
+The dataset seed is a setting; a configuration without one gets a random seed, which
+the resolved configuration records (agreed 2026-10-24). Derive layout, target and
+viewpoint seeds independently from the dataset seed, scene
 index and generation-attempt index using a documented, versioned algorithm (`seed-v1`
 in the [data contract](../../../schemas/honey-factory/README.md)). Do not consume one shared random stream whose later
 results change when an earlier scene is rejected.
@@ -181,9 +187,12 @@ optional derivation step.
 
 - Configure time of day and weather. Record their resolved values with the scene or
   capture, depending on whether they remain constant across its viewpoints.
-- Begin level 1 with fixed clear daylight as stated in the difficulty table. Add
-  configured daylight/time variants progressively; do not let an undocumented
-  lighting change redefine a difficulty level.
+- Begin level 1 with fixed clear daylight as stated in the difficulty table. Agreed
+  2026-10-24: every level may be configured with other lighting, fixed or drawn per
+  scene from a time range and a list of weathers; the level presets keep fixed noon
+  and clear weather, and the manifest records the configured lighting, so no
+  undocumented lighting change redefines a level. Rain and thunder images are not
+  byte-reproducible because of their random particles.
 - Keep client visual settings that affect pixels—gamma/brightness, clouds, render
   distance, graphics mode, resource pack and relevant shader settings—fixed within
   a dataset configuration and record them in its manifest.

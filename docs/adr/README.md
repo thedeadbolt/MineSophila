@@ -16,3 +16,4 @@ Preserve accepted decisions. To change one, write a new ADR that supersedes it.
 | [0008](0008-capture-service-and-level1-generation.md) | Capture service, level-1 generation and dataset commit | Accepted |
 | [0009](0009-dataset-runner-and-levels-2-3.md) | Dataset runner, levels 2–3 and the outside validator | Accepted |
 | [0010](0010-panoramic-capture.md) | 310-degree panoramic capture | Accepted |
+| [0011](0011-scene-recipes.md) | Scene recipes instead of per-level generators | Accepted |

@@ -18,7 +18,9 @@ recorded in [ADR 0006](../../docs/adr/0006-dataset-contract-and-algorithms.md).
 
 Every record carries `schema_version`. Readers reject another major version and tolerate
 unknown members from a compatible minor version, so the schemas never forbid extra
-members. A breaking change needs a new major version directory.
+members. A breaking change needs a new major version directory. Before any dataset was
+published, 1.0 was amended in place: the manifest's `generator.lighting` became
+`generator.scene`, the full scene recipe ([ADR 0011](../../docs/adr/0011-scene-recipes.md)).
 
 The schemas check structure and every rule expressible within one record. Other rules
 belong to the validators:

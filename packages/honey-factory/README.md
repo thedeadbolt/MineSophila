@@ -73,6 +73,8 @@ use:
 
 ```text
 /honeyfactory_env reset <fixture>                         build a fixture scene, e.g. open, partial, fence
+/honeyfactory_env reset preset <name> [seed [index]]      build one scene of a preset, e.g. level4 7 2
+/honeyfactory_env reset recipe <file> [seed [index]]      the same for a recipe file in the game directory
 /honeyfactory_env viewpoint fixture | <x> <y> <z> <yaw> <pitch>
 /honeyfactory_env observe <label> <width> <height>        capture into honey-factory-debug/<label>/
 /honeyfactory_env observe <label> <width> <height> panorama <face size>
@@ -104,7 +106,47 @@ Paths are relative to the game directory; `output.root` must be absolute.
 /honeyfactory_dataset cancel
 ```
 
-The dataset is written to `<output root>/<dataset id>/`. Levels 1–3 have generators.
+The dataset is written to `<output root>/<dataset id>/`. Levels 1–4 have generators.
+Without `dataset.seed` a random seed is drawn and recorded in the manifest.
+
+### Scene recipes
+
+Every level is a preset recipe (ADR 0011): a base, layout parts built in order, a rule
+for which viewpoints to keep, and lighting. A configuration's `scene` section starts from
+its level's preset, or the one it names, and replaces what it gives. This level-3
+dataset adds level-4 vegetation and draws each scene's time and weather:
+
+```json
+"scene": {
+  "parts": [
+    {"type": "hiding_structure"},
+    {"type": "constructed_setting", "kinds": ["courtyard"]},
+    {"type": "near_aim_blocks", "count": [1, 3]}
+  ],
+  "lighting": {"time_of_day_ticks": [1000, 11000], "weathers": ["clear", "rain"]}
+}
+```
+
+| Setting | Values |
+|---|---|
+| `preset` | `level1` … `level4` |
+| `base` | `{"type": "platform", "floor": <full-cube block state>}` |
+| `parts` | `clutter`, `hiding_structure`, `background_structures`, `scattered_blocks`, `constructed_setting`, `near_aim_blocks`, `scattered_items`, each with its own settings (see its class) |
+| `sight` | `any`, `all_clear`, `partly_hidden`, `some_clear`, `clear_and_obstructed` |
+| `lighting` | `time_of_day_ticks` as a number or `[min, max]`; `weather` or `weathers` |
+
+The same recipe in Java:
+
+```java
+SceneSpec spec = SceneRecipe.of("level3")
+    .addPart(new ConstructedSettingPart(List.of("courtyard")))
+    .lighting(Lighting.of(new IntRange(1000, 11000), Weather.CLEAR, Weather.RAIN))
+    .build();
+RecipeGenerator generator = new RecipeGenerator(spec, arena, targetStates, viewpoints);
+```
+
+Rain and thunder images are not byte-reproducible; masks are. Write a `scene` section to a
+file and run `/honeyfactory_env reset recipe <file>` to look at it before generating.
 
 - **Before starting:** the run refuses to start unless the output file system holds the
   whole dataset uncompressed plus the free-space reserve.

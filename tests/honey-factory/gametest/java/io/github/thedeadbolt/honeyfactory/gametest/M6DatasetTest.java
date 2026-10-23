@@ -2,6 +2,7 @@ package io.github.thedeadbolt.honeyfactory.gametest;
 
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
 import io.github.thedeadbolt.honeyfactory.config.ConfigResolver;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
 import io.github.thedeadbolt.honeyfactory.contract.DatasetManifest;
@@ -14,6 +15,8 @@ import io.github.thedeadbolt.honeyfactory.scene.BlockPalettes;
 import io.github.thedeadbolt.honeyfactory.scene.BlockShapes;
 import io.github.thedeadbolt.honeyfactory.scene.Placement;
 import io.github.thedeadbolt.honeyfactory.scene.SceneGenerators;
+import io.github.thedeadbolt.honeyfactory.scene.ScenePresets;
+import io.github.thedeadbolt.honeyfactory.scene.ScenePreview;
 import io.github.thedeadbolt.honeyfactory.world.BlockStates;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -45,9 +48,11 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  *       {@link BlockShapes} agrees with Minecraft: full cubes occlude, slabs and straight
  *       stairs match their outline shape exactly, fence boxes lie inside the fence's
  *       outline, and leaves and plants do not occlude.</li>
- *   <li>Level-4 smoke datasets in perspective and panorama mode reach their quotas, keep
+ *   <li>Level-4 smoke datasets in perspective and panorama mode, and a mixed recipe (level-3
+ *       hiding with level-4 vegetation under varying time and rain), reach their quotas, keep
  *       every positive sample at least the configured visible fraction and pass validation.
  *       Outputs stay under {@code build/m6-datasets} for the outside validator.</li>
+ *   <li>{@code /honeyfactory_env reset preset} builds exactly the preset's scene.</li>
  * </ul>
  */
 public class M6DatasetTest implements FabricClientGameTest {
@@ -55,6 +60,12 @@ public class M6DatasetTest implements FabricClientGameTest {
 	private static final int VIEWPOINTS = 4;
 	private static final int TIMEOUT_TICKS = 20 * 60 * 30;
 	private static final int PALETTE_SCENES = 300;
+	/** Level-3 hiding mixed with level-4 vegetation, at varying times and weather, rain included. */
+	private static final String MIXED_SCENE = """
+		"scene": {
+		  "parts": [{"type": "hiding_structure"}, {"type": "constructed_setting", "kinds": ["courtyard"]}, {"type": "near_aim_blocks"}],
+		  "lighting": {"time_of_day_ticks": [1000, 11000], "weathers": ["clear", "rain"]}
+		}""";
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
@@ -72,6 +83,9 @@ public class M6DatasetTest implements FabricClientGameTest {
 			{"width": 640, "height": 480}""", output.resolve("level4-perspective")), failures));
 		summary.add("level4_panorama", smokeDataset(context, "honey-factory-m6-l4-panorama", config("m6-l4-panorama", 4, """
 			{"mode": "PANORAMA_310", "width": 1240, "height": 640, "cube_face_size": 512}""", output.resolve("level4-panorama")), failures));
+		summary.add("mixed_recipe", smokeDataset(context, "honey-factory-m6-mixed", config("m6-mixed", 3, """
+			{"width": 640, "height": 480}""", output.resolve("mixed-recipe")).replace("\"output\"", MIXED_SCENE + ", \"output\""), failures));
+		summary.add("preset_command", presetCommand(context, failures));
 		try {
 			Files.createDirectories(output);
 			Files.writeString(output.resolve("summary.json"), new GsonBuilder().setPrettyPrinting().create().toJson(summary) + "\n", StandardCharsets.UTF_8);
@@ -82,6 +96,26 @@ public class M6DatasetTest implements FabricClientGameTest {
 		if (!failures.isEmpty()) {
 			throw new AssertionError("M6 dataset failures:\n" + String.join("\n", failures));
 		}
+	}
+
+	/** Previews a preset scene by command, as a person would. */
+	private static JsonObject presetCommand(ClientGameTestContext context, List<String> failures) {
+		String name = "honey-factory-m6-preview";
+		JsonObject summary = new JsonObject();
+		try (TestSingleplayerContext world = GameTestSupport.datasetWorld(context, name)) {
+			GameTestSupport.claim(world, name);
+			context.runOnClient(minecraft -> minecraft.player.connection.sendCommand("honeyfactory_env reset preset level4 7 2"));
+			context.waitFor(minecraft -> EnvironmentRuntime.get().status().current() == null && EnvironmentRuntime.get().scene() != null, 1200);
+			ScenePreview expected = ScenePreview.of(ScenePresets.spec("level4"), 7, 2);
+			String layout = context.computeOnClient(minecraft -> EnvironmentRuntime.get().layoutSha256());
+			if (!expected.scene().plan().layoutSha256(expected.arena()).equals(layout)) {
+				failures.add(name + ": the previewed scene's layout " + layout + " differs from the preset's");
+			}
+
+			summary.addProperty("layout_sha256", layout);
+		}
+
+		return summary;
 	}
 
 	/** Checks every state level 4 places over {@value #PALETTE_SCENES} scenes against Minecraft's own blocks. */
@@ -222,7 +256,8 @@ public class M6DatasetTest implements FabricClientGameTest {
 
 		Map<String, Long> settings = report.scenes().stream()
 			.map(SceneRecord::generation)
-			.map(generation -> generation.parameters().layout().get("setting").getAsString())
+			.filter(generation -> generation.parameters().layout().getAsJsonArray("parts").get(0).getAsJsonObject().has("setting"))
+			.map(generation -> generation.parameters().layout().getAsJsonArray("parts").get(0).getAsJsonObject().get("setting").getAsString())
 			.collect(Collectors.groupingBy(setting -> setting, Collectors.counting()));
 		summary.add("settings", new GsonBuilder().create().toJsonTree(settings));
 		summary.add("visibility_ratios", new GsonBuilder().create().toJsonTree(report.samples().stream()

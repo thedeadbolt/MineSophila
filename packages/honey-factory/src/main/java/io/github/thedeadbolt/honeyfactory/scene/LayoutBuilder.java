@@ -1,35 +1,68 @@
 package io.github.thedeadbolt.honeyfactory.scene;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Collects a generated layout's placements as columns standing on the platform. Cells
- * outside the arena are dropped silently, as are blocks above its build height, so a
- * layout drawn for the default arena also fits a smaller one. The aim cell is never filled.
+ * Collects a scene's generated blocks on the platform, shared by every part of a recipe.
+ *
+ * <ul>
+ *   <li>A later block replaces an earlier one at the same cell but keeps that cell's place
+ *       in the order. Cells outside the arena or above its build height are dropped
+ *       silently, so a layout drawn for the default arena also fits a smaller one.</li>
+ *   <li>The aim cell is never filled: {@link #set} skips it, and {@link #column} skips a
+ *       whole column started at or below it.</li>
+ *   <li>A ground column counts as used once anything was set in it; {@link #free} cells
+ *       are unused.</li>
+ *   <li>Floor cells ({@code y = 0}) may be replaced, for ground blocks under plants.</li>
+ *   <li>{@link #placements()} gives every wooden fence its connections: a side connects
+ *       when the neighbouring cell holds a wooden fence or a full cube
+ *       ({@link BlockShapes#fullCube}). The target never counts, so both target classes
+ *       share one layout.</li>
+ * </ul>
  */
-final class LayoutBuilder {
+public final class LayoutBuilder {
 	/** Draws of a free cell before giving up. */
-	static final int CELL_TRIES = 32;
+	public static final int CELL_TRIES = 32;
+	/** The floor's top face; ground-level blocks stand on it. */
+	public static final int GROUND_Y = 1;
 
 	private final int width;
 	private final int length;
 	private final int height;
 	private final int[] aim;
 	private final boolean[] used;
-	private final List<Placement> placements = new ArrayList<>();
+	private final Map<Integer, String> cells = new LinkedHashMap<>();
 
-	LayoutBuilder(int width, int length, int height, int[] aim) {
+	public LayoutBuilder(int width, int length, int height, int[] aim) {
 		this.width = width;
 		this.length = length;
 		this.height = height;
-		this.aim = aim;
+		this.aim = aim.clone();
 		this.used = new boolean[width * length];
 	}
 
-	/** Whether {@code (x, z)} is inside the footprint, unused and at least {@code clearance} cells (Chebyshev) from the aim. */
-	boolean free(int x, int z, int clearance) {
+	public int width() {
+		return this.width;
+	}
+
+	public int length() {
+		return this.length;
+	}
+
+	public int height() {
+		return this.height;
+	}
+
+	public boolean inside(int x, int z) {
+		return x >= 0 && z >= 0 && x < this.width && z < this.length;
+	}
+
+	/** Whether {@code (x, z)} is inside, unused and at least {@code clearance} cells (Chebyshev) from the aim. */
+	public boolean free(int x, int z, int clearance) {
 		return inside(x, z) && !this.used[z * this.width + x] && Math.max(Math.abs(x - this.aim[0]), Math.abs(z - this.aim[2])) >= clearance;
 	}
 
@@ -37,7 +70,7 @@ final class LayoutBuilder {
 	 * A free cell at least {@code clearance} from the aim, drawn as {@code nextInt(width)},
 	 * {@code nextInt(length)} up to {@value #CELL_TRIES} times, or null when none was free.
 	 */
-	int @Nullable [] freeCell(SeededRandom random, int clearance) {
+	public int @Nullable [] freeCell(SeededRandom random, int clearance) {
 		for (int attempt = 0; attempt < CELL_TRIES; attempt++) {
 			int x = random.nextInt(this.width);
 			int z = random.nextInt(this.length);
@@ -49,28 +82,91 @@ final class LayoutBuilder {
 		return null;
 	}
 
-	/** Stacks {@code blocks} blocks of {@code state} on the platform at {@code (x, z)}, from the ground up. */
-	void column(int x, int z, int blocks, String state) {
-		column(x, z, PlatformGenerator.GROUND_Y, blocks, state);
+	/** Whether {@code (x, y, z)} holds no generated block; the floor template does not count. */
+	public boolean empty(int x, int y, int z) {
+		return !this.cells.containsKey(index(x, y, z));
 	}
 
-	/** Stacks {@code blocks} blocks of {@code state} at {@code (x, z)} from {@code fromY} up. */
-	void column(int x, int z, int fromY, int blocks, String state) {
+	/** The generated state at {@code (x, y, z)}, or null. */
+	public @Nullable String at(int x, int y, int z) {
+		return inside(x, z) && y >= 0 && y < this.height ? this.cells.get(index(x, y, z)) : null;
+	}
+
+	/** Sets one block; skipped outside the arena, above its build height and in the aim cell. */
+	public void set(int x, int y, int z, String state) {
+		if (!inside(x, z) || y < 0 || y >= this.height || (x == this.aim[0] && y == this.aim[1] && z == this.aim[2])) {
+			return;
+		}
+
+		this.used[z * this.width + x] = true;
+		this.cells.put(index(x, y, z), state);
+	}
+
+	/** Removes a generated block, if there is one. */
+	public void remove(int x, int y, int z) {
+		if (inside(x, z) && y >= 0 && y < this.height) {
+			this.cells.remove(index(x, y, z));
+		}
+	}
+
+	/** Stacks {@code blocks} blocks of {@code state} on the platform at {@code (x, z)}, from the ground up. */
+	public void column(int x, int z, int blocks, String state) {
+		column(x, z, GROUND_Y, blocks, state);
+	}
+
+	/** Stacks {@code blocks} blocks of {@code state} at {@code (x, z)} from {@code fromY} up; skipped in the aim column at or below the aim. */
+	public void column(int x, int z, int fromY, int blocks, String state) {
 		if (!inside(x, z) || (x == this.aim[0] && z == this.aim[2] && fromY <= this.aim[1])) {
 			return;
 		}
 
 		this.used[z * this.width + x] = true;
 		for (int y = fromY; y < fromY + blocks && y < this.height; y++) {
-			this.placements.add(new Placement(x, y, z, state));
+			this.cells.put(index(x, y, z), state);
 		}
 	}
 
-	List<Placement> placements() {
-		return List.copyOf(this.placements);
+	/** A plant on ground at floor level: the floor cell becomes {@code ground}. Skipped when the cell is taken or is the aim's. */
+	public void plant(int x, int z, String ground, String plant) {
+		if (!inside(x, z) || !empty(x, GROUND_Y, z) || (x == this.aim[0] && z == this.aim[2])) {
+			return;
+		}
+
+		set(x, 0, z, ground);
+		set(x, GROUND_Y, z, plant);
 	}
 
-	private boolean inside(int x, int z) {
-		return x >= 0 && z >= 0 && x < this.width && z < this.length;
+	/** Every generated block in order, wooden fences connected to their neighbours. */
+	public List<Placement> placements() {
+		List<Placement> placements = new ArrayList<>(this.cells.size());
+		this.cells.forEach((index, state) -> {
+			int x = index % this.width;
+			int z = index / this.width % this.length;
+			int y = index / (this.width * this.length);
+			placements.add(new Placement(x, y, z, woodenFence(state) ? connected(state, x, y, z) : state));
+		});
+		return List.copyOf(placements);
+	}
+
+	private String connected(String fence, int x, int y, int z) {
+		return BlockShapes.blockId(fence)
+			+ "[east=" + connects(x + 1, y, z)
+			+ ",north=" + connects(x, y, z - 1)
+			+ ",south=" + connects(x, y, z + 1)
+			+ ",waterlogged=false"
+			+ ",west=" + connects(x - 1, y, z) + "]";
+	}
+
+	private boolean connects(int x, int y, int z) {
+		String neighbour = at(x, y, z);
+		return neighbour != null && (woodenFence(neighbour) || BlockShapes.fullCube(neighbour));
+	}
+
+	private static boolean woodenFence(String state) {
+		return BlockPalettes.FENCES.contains(BlockShapes.blockId(state));
+	}
+
+	private int index(int x, int y, int z) {
+		return (y * this.length + z) * this.width + x;
 	}
 }

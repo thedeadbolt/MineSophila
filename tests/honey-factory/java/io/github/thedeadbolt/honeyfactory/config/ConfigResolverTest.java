@@ -10,6 +10,7 @@ import io.github.thedeadbolt.honeyfactory.contract.ContractException;
 import io.github.thedeadbolt.honeyfactory.contract.SplitGrouping;
 import io.github.thedeadbolt.honeyfactory.contract.VisibilityRule;
 import io.github.thedeadbolt.honeyfactory.contract.Weather;
+import io.github.thedeadbolt.honeyfactory.scene.ScenePresets;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -32,7 +33,7 @@ class ConfigResolverTest {
 		assertEquals("minecraft:honey_block", config.target().blockId());
 		assertEquals(new ResolvedConfig.Arena(32, 32, 16, 4), config.arena());
 		assertEquals(new ResolvedConfig.Viewpoints(8, 3.0, 16.0, 15.0, 10.0, 50, 1.62), config.viewpoints());
-		assertEquals(new ResolvedConfig.Lighting(6000, Weather.CLEAR), config.lighting());
+		assertEquals(ScenePresets.spec("level1"), config.scene());
 		assertEquals(new ResolvedConfig.Capture(CaptureMode.PERSPECTIVE_90, 1280, 1280, null), config.capture());
 		assertEquals(new ResolvedConfig.Quotas(1000, 800, 200, 10_000), config.quotas());
 		assertEquals(new ResolvedConfig.Splits(0.8, 0.1, 0.1, SplitGrouping.SCENE), config.splits());
@@ -79,8 +80,9 @@ class ConfigResolverTest {
 	@ParameterizedTest(name = "{0}")
 	@CsvSource(delimiter = '|', textBlock = """
 		unknown section                 | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "extra": {}}                                    | /extra
+		old lighting section            | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "lighting": {}}                                 | /lighting
+		recipe for level 5              | {"dataset": {"name": "a", "seed": 1, "difficulty": 5}, "output": {"root": "/x"}, "scene": {}, "natural_region": {"core_width": 64, "core_length": 64, "height": 96, "context_padding": 128}} | /scene
 		unknown setting                 | {"dataset": {"name": "a", "seed": 1, "difficulty": 1, "colour": 1}, "output": {"root": "/x"}}                                     | /dataset/colour
-		missing seed                    | {"dataset": {"name": "a", "difficulty": 1}, "output": {"root": "/x"}}                                                              | /dataset/seed
 		seed beyond 2^53                | {"dataset": {"name": "a", "seed": 9007199254740992, "difficulty": 1}, "output": {"root": "/x"}}                                    | /dataset/seed
 		bad dataset name                | {"dataset": {"name": "Honey L1", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}}                                            | /dataset/name
 		level 6                         | {"dataset": {"name": "a", "seed": 1, "difficulty": 6}, "output": {"root": "/x"}}                                                   | /dataset/difficulty
@@ -88,8 +90,6 @@ class ConfigResolverTest {
 		missing output root             | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}}                                                                             | /output
 		distance range reversed         | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "viewpoints": {"distance_min_blocks": 20}}        | /viewpoints/distance_min_blocks
 		too many viewpoints             | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "viewpoints": {"count": 100}}                     | /viewpoints/count
-		level 1 rain                    | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "lighting": {"weather": "rain"}}                  | /lighting/weather
-		level 1 night                   | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "lighting": {"time_of_day_ticks": 18000}}         | /lighting/time_of_day_ticks
 		level 2 ratio bound             | {"dataset": {"name": "a", "seed": 1, "difficulty": 2}, "output": {"root": "/x"}, "visibility": {"min_ratio": 0.5}}                 | /visibility/min_ratio
 		level 3 bound at 1              | {"dataset": {"name": "a", "seed": 1, "difficulty": 3}, "output": {"root": "/x"}, "visibility": {"max_ratio": 1.0}}                 | /visibility/max_ratio
 		level 3 bounds reversed         | {"dataset": {"name": "a", "seed": 1, "difficulty": 3}, "output": {"root": "/x"}, "visibility": {"min_ratio": 0.6, "max_ratio": 0.4}} | /visibility/min_ratio

@@ -31,7 +31,7 @@
     },
     "generator": {
       "type": "object",
-      "required": ["dataset_name", "seed", "accepted_scenes", "scene_attempt_limit", "arena", "lighting", "visibility", "algorithms"],
+      "required": ["dataset_name", "seed", "accepted_scenes", "scene_attempt_limit", "arena", "visibility", "algorithms"],
       "properties": {
         "dataset_name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"},
         "seed": {"$ref": "common.schema.json#/$defs/seed"},
@@ -57,12 +57,33 @@
             "context_padding": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
           }
         },
-        "lighting": {
+        "scene": {
+          "description": "The scene recipe every scene was generated from: a preset, a base, layout parts in build order, a viewpoint sight rule and lighting.",
           "type": "object",
-          "required": ["time_of_day_ticks", "weather"],
+          "required": ["preset", "base", "parts", "sight", "lighting"],
           "properties": {
-            "time_of_day_ticks": {"$ref": "common.schema.json#/$defs/timeOfDayTicks"},
-            "weather": {"$ref": "common.schema.json#/$defs/weather"}
+            "preset": {"type": "string", "minLength": 1},
+            "base": {
+              "type": "object",
+              "required": ["type", "floor"],
+              "properties": {"type": {"const": "platform"}, "floor": {"$ref": "common.schema.json#/$defs/blockState"}}
+            },
+            "parts": {
+              "type": "array",
+              "items": {"type": "object", "required": ["type"], "properties": {"type": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}}}
+            },
+            "sight": {"enum": ["any", "all_clear", "partly_hidden", "some_clear", "clear_and_obstructed"]},
+            "lighting": {
+              "type": "object",
+              "required": ["time_of_day_ticks", "weathers"],
+              "properties": {
+                "time_of_day_ticks": {"oneOf": [
+                  {"$ref": "common.schema.json#/$defs/timeOfDayTicks"},
+                  {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "common.schema.json#/$defs/timeOfDayTicks"}}
+                ]},
+                "weathers": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/weather"}}
+              }
+            }
           }
         },
         "visibility": {
@@ -286,7 +307,7 @@
     {
       "if": {"properties": {"difficulty": {"const": 5}}},
       "then": {"properties": {"generator": {"required": ["natural_region"]}, "splits": {"properties": {"grouping": {"const": "source_world"}}}}},
-      "else": {"properties": {"generator": {"not": {"required": ["natural_region"]}}, "splits": {"properties": {"grouping": {"const": "scene"}}}}}
+      "else": {"properties": {"generator": {"required": ["scene"], "not": {"required": ["natural_region"]}}, "splits": {"properties": {"grouping": {"const": "scene"}}}}}
     }
   ],
   "$defs": {

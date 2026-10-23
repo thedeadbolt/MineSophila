@@ -12,7 +12,7 @@ import io.github.thedeadbolt.honeyfactory.contract.Ids;
 import io.github.thedeadbolt.honeyfactory.contract.MaskStatistics;
 import io.github.thedeadbolt.honeyfactory.contract.SplitGrouping;
 import io.github.thedeadbolt.honeyfactory.contract.VisibilityRule;
-import io.github.thedeadbolt.honeyfactory.contract.Weather;
+import io.github.thedeadbolt.honeyfactory.scene.SceneSpec;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -34,7 +34,7 @@ public record ResolvedConfig(
 	Arena arena,
 	@Nullable NaturalRegion naturalRegion,
 	Viewpoints viewpoints,
-	Lighting lighting,
+	@Nullable SceneSpec scene,
 	Visibility visibility,
 	Capture capture,
 	Quotas quotas,
@@ -60,9 +60,6 @@ public record ResolvedConfig(
 		int attemptsPerViewpoint,
 		double eyeHeightBlocks
 	) {
-	}
-
-	public record Lighting(int timeOfDayTicks, Weather weather) {
 	}
 
 	/** The selected level's visibility rule; ratio bounds are inclusive and null where unbounded. */
@@ -141,10 +138,10 @@ public record ResolvedConfig(
 			generator.add("natural_region", region);
 		}
 
-		JsonObject lighting = new JsonObject();
-		lighting.addProperty("time_of_day_ticks", this.lighting.timeOfDayTicks());
-		lighting.addProperty("weather", this.lighting.weather().jsonName());
-		generator.add("lighting", lighting);
+		if (this.scene != null) {
+			generator.add("scene", this.scene.toJson());
+		}
+
 		JsonObject visibility = new JsonObject();
 		visibility.addProperty("rule", this.visibility.rule().jsonName());
 		visibility.add("min_ratio", this.visibility.minRatio() == null ? JsonNull.INSTANCE : new JsonPrimitive(this.visibility.minRatio()));

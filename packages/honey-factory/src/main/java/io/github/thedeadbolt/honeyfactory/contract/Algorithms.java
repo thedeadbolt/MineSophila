@@ -12,26 +12,14 @@ public final class Algorithms {
 	public static final String IDS = Ids.ALGORITHM;
 	public static final String SCENE_SLOTS = "scene-slots-v1";
 	public static final String LAYOUT = BlockLayout.ALGORITHM;
-	/** Level-1 open-platform scene and viewpoint generation. */
-	public static final String LEVEL1_GENERATOR = "level1-open-platform-v1";
-	/** Level-2 clutter and distractor generation. */
-	public static final String LEVEL2_GENERATOR = "level2-clutter-v1";
-	/** Level-3 partial-hiding generation. */
-	public static final String LEVEL3_GENERATOR = "level3-partial-hiding-v1";
-	/** Level-4 constructed-environment generation. */
-	public static final String LEVEL4_GENERATOR = "level4-constructed-v1";
+	/** Scene generation from a recipe of base, layout parts, sight rule and lighting. */
+	public static final String SCENE_RECIPE = "scene-recipe-v1";
 
 	private Algorithms() {
 	}
 
 	/** The scene generator for a difficulty level, or null while that level has none. */
 	public static @Nullable String sceneGenerator(int difficulty) {
-		return switch (difficulty) {
-			case 1 -> LEVEL1_GENERATOR;
-			case 2 -> LEVEL2_GENERATOR;
-			case 3 -> LEVEL3_GENERATOR;
-			case 4 -> LEVEL4_GENERATOR;
-			default -> null;
-		};
+		return difficulty <= 4 ? SCENE_RECIPE : null;
 	}
 }
