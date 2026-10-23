@@ -22,7 +22,9 @@ projection and sampling are defined in the
 
 ## Exit gate
 
-`M5PanoramaGateTest`, in fresh dataset worlds. The camera stands at the arena centre at
+`M5PanoramaGateTest`, in fresh dataset worlds. The golden panorama masks in
+`tests/honey-factory/gametest/resources/golden/m5/` were approved on 2026-10-23 after the
+overlays and full panoramas were reviewed. The camera stands at the arena centre at
 yaw 30 and pitch −12, so no face lines up with the block grid. The table is from the
 final run. The two verification runs after it matched the approved goldens exactly, and
 their panorama images were byte-identical to each other.
