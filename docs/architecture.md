@@ -1,7 +1,7 @@
 # Architecture
 
 This document describes the overall design. `fly-vision` is still version metadata only;
-`honey-factory` implements its roadmap through M4, a perspective dataset runner for levels 1–3
+`honey-factory` implements its roadmap through M5, a dataset runner for levels 1–3 in perspective and 310-degree panorama modes
 (see its [roadmap](../packages/honey-factory/docs/roadmap.md)). Everything else here is
 proposed.
 

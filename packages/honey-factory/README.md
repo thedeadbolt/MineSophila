@@ -15,7 +15,9 @@ capture service, level-1 generator and validated dataset writing
 [ADR 0008](../../docs/adr/0008-capture-service-and-level1-generation.md)); and M4's dataset
 runner with level-2 clutter and level-3 partial-hiding generators
 ([findings](docs/m4-dataset-runner.md),
-[ADR 0009](../../docs/adr/0009-dataset-runner-and-levels-2-3.md)). Datasets follow the
+[ADR 0009](../../docs/adr/0009-dataset-runner-and-levels-2-3.md)); and M5's 310-degree
+panoramic capture ([findings](docs/m5-panoramic-capture.md),
+[ADR 0010](../../docs/adr/0010-panoramic-capture.md)). Datasets follow the
 language-neutral [data contract](../../schemas/honey-factory/), and
 [`honey-factory-tools`](../honey-factory-tools/) validates them outside Minecraft.
 See the proposed scenario generation and frame capture in the
@@ -53,7 +55,7 @@ Run from the repository root:
 just mod-test      # JUnit tests
 just mod-build     # compile, test and package the mod
 just mod-client    # launch a development Minecraft client
-just mod-gametest  # run client game tests: the M2 environment, M3 gates and M4 datasets
+just mod-gametest  # run client game tests: the M2 environment, M3 gates, M4 datasets and M5 panorama gate
 ```
 
 ### Dataset worlds and the environment
@@ -73,6 +75,8 @@ use:
 /honeyfactory_env reset <fixture>                         build a fixture scene, e.g. open, partial, fence
 /honeyfactory_env viewpoint fixture | <x> <y> <z> <yaw> <pitch>
 /honeyfactory_env observe <label> <width> <height>        capture into honey-factory-debug/<label>/
+/honeyfactory_env observe <label> <width> <height> panorama <face size>
+                                                          the same as a panorama, with each cube face in faces/
 /honeyfactory_env status
 ```
 
@@ -120,8 +124,9 @@ Check any dataset outside the game with
 `build/run/clientGameTest/`. The M3 mask gate writes RGB, masks and overlays for every
 fixture to `build/m3-review/`, and the dataset test writes two regenerated datasets to
 `build/m3-datasets/`. The M4 gate writes level 1–3 smoke datasets and a cancelled run to
-`build/m4-datasets/`. Golden visible masks live in
-`tests/honey-factory/gametest/resources/golden/m3/`. A missing golden fails the gate and is
+`build/m4-datasets/`. The M5 gate writes panoramas, overlays and raw faces to
+`build/m5-review/` and panorama datasets to `build/m5-datasets/`. Golden visible masks
+live in `tests/honey-factory/gametest/resources/golden/m3/` and `golden/m5/`. A missing golden fails the gate and is
 written for review. After a reviewed change, rewrite them all with
 `./gradlew runClientGameTest -Dhoneyfactory.regenerateGolden=true`.
 

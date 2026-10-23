@@ -3,6 +3,7 @@ package io.github.thedeadbolt.honeyfactory.gametest;
 import io.github.thedeadbolt.honeyfactory.capture.CameraFrame;
 import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
+import io.github.thedeadbolt.honeyfactory.capture.PanoramicProjection;
 import io.github.thedeadbolt.honeyfactory.scene.ArenaLayout;
 import io.github.thedeadbolt.honeyfactory.scene.Placement;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
@@ -15,7 +16,9 @@ import java.util.List;
  *
  * <p>Only robust pixels are judged: a pixel counts when the rays through its centre and
  * four points 0.75 pixels away all agree. Rasterisation may differ from rays at edges,
- * never inside a region.
+ * never inside a region. In a panorama the horizontal offsets widen by 1 / cos(elevation),
+ * up to tenfold, so they span the same angle as the vertical ones even near the poles,
+ * where a pixel is horizontally tiny.
  */
 final class RayCheck {
 	private static final double[][] OFFSETS = {{0, 0}, {0.75, 0}, {-0.75, 0}, {0, 0.75}, {0, -0.75}};
@@ -55,11 +58,12 @@ final class RayCheck {
 		int visibleMismatches = 0;
 		int definitelyOccluded = 0;
 		for (int y = 0; y < images.height(); y++) {
+			double widen = projection instanceof PanoramicProjection panorama ? 1.0 / Math.max(Math.cos(Math.toRadians(panorama.elevationDegrees(y + 0.5))), 0.1) : 1.0;
 			for (int x = 0; x < images.width(); x++) {
 				int hitCount = 0;
 				int visibleCount = 0;
 				for (double[] offset : OFFSETS) {
-					double[] direction = projection.direction(camera, x + 0.5 + offset[0], y + 0.5 + offset[1]);
+					double[] direction = projection.direction(camera, x + 0.5 + offset[0] * widen, y + 0.5 + offset[1]);
 					double targetT = intersect(camera.eye(), direction, targetBox);
 					if (targetT < Double.POSITIVE_INFINITY) {
 						hitCount++;

@@ -4,7 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
-import io.github.thedeadbolt.honeyfactory.capture.PerspectiveProjection;
+import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.contract.Algorithms;
 import io.github.thedeadbolt.honeyfactory.contract.CanonicalJson;
 import io.github.thedeadbolt.honeyfactory.contract.CaptureMode;
@@ -41,9 +41,6 @@ public record ResolvedConfig(
 	Splits splits,
 	Output output
 ) {
-	public static final String PANORAMA_PROJECTION = "equirectangular-310x160-v1";
-	public static final String CUBE_FACE_ORIENTATION = "cube-faces-v1";
-
 	public record Target(String blockId, List<String> allowedBlockStates, double presentFraction) {
 	}
 
@@ -193,21 +190,7 @@ public record ResolvedConfig(
 	}
 
 	private JsonObject projectionJson() {
-		JsonObject projection;
-		if (this.capture.mode() == CaptureMode.PERSPECTIVE_90) {
-			projection = new PerspectiveProjection(this.capture.width(), this.capture.height()).metadata();
-		} else {
-			projection = new JsonObject();
-			projection.addProperty("projection", PANORAMA_PROJECTION);
-			projection.addProperty("longitude_min_degrees", -155.0);
-			projection.addProperty("longitude_max_degrees", 155.0);
-			projection.addProperty("elevation_min_degrees", -70.0);
-			projection.addProperty("elevation_max_degrees", 90.0);
-			projection.addProperty("blind_sector_degrees", 50.0);
-			projection.addProperty("cube_face_size", this.capture.cubeFaceSize());
-			projection.addProperty("cube_face_orientation", CUBE_FACE_ORIENTATION);
-		}
-
+		JsonObject projection = CaptureProjection.of(this.capture.mode(), this.capture.width(), this.capture.height(), this.capture.cubeFaceSize()).metadata();
 		projection.addProperty("pixel_centre", "half-pixel");
 		return projection;
 	}

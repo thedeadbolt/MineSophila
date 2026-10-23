@@ -1,6 +1,7 @@
 package io.github.thedeadbolt.honeyfactory.config;
 
 import com.google.gson.JsonObject;
+import io.github.thedeadbolt.honeyfactory.capture.PanoramicProjection;
 import io.github.thedeadbolt.honeyfactory.contract.CaptureMode;
 import io.github.thedeadbolt.honeyfactory.contract.ContractException;
 import io.github.thedeadbolt.honeyfactory.contract.Ids;
@@ -229,7 +230,10 @@ public final class ConfigResolver {
 		int height = capture.integer32("height", 16, 16_384, 1280);
 		Integer face = null;
 		if (panorama) {
-			face = capture.integer32("cube_face_size", 16, 8192, 1024);
+			face = capture.integer32("cube_face_size", PanoramicProjection.MIN_SIZE, PanoramicProjection.MAX_FACE_SIZE, 1024);
+			if ((long) width * height > PanoramicProjection.MAX_PIXELS) {
+				throw capture.error("width", "a panorama may have at most " + PanoramicProjection.MAX_PIXELS + " pixels, got " + width + "x" + height);
+			}
 		} else if (capture.has("cube_face_size")) {
 			throw capture.error("cube_face_size", "applies only to PANORAMA_310");
 		}
