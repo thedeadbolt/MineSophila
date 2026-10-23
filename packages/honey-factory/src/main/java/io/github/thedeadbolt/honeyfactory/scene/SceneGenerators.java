@@ -1,0 +1,17 @@
+package io.github.thedeadbolt.honeyfactory.scene;
+
+import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
+
+/** Selects the scene generator for a resolved configuration's difficulty level. */
+public final class SceneGenerators {
+	private SceneGenerators() {
+	}
+
+	/** @throws UnsupportedOperationException for a level whose generator is not implemented yet */
+	public static SceneGenerator forConfig(ResolvedConfig config) {
+		return switch (config.difficulty()) {
+			case 1 -> new Level1Generator(config);
+			default -> throw new UnsupportedOperationException("level " + config.difficulty() + " has no scene generator yet");
+		};
+	}
+}

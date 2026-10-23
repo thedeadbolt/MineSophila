@@ -105,4 +105,21 @@ class ConfigResolverTest {
 		ContractException error = assertThrows(ContractException.class, () -> ConfigResolver.resolve(json));
 		assertEquals(path, error.path(), error.getMessage());
 	}
+
+	@Test
+	void visibilityRatioBoundsDefaultFromTheM3Evidence() {
+		ResolvedConfig.Visibility level3 = ConfigResolver.resolve("""
+			{"dataset": {"name": "a", "seed": 1, "difficulty": 3}, "output": {"root": "/x"}}
+			""").visibility();
+		assertEquals(new ResolvedConfig.Visibility(VisibilityRule.PARTIALLY_VISIBLE, 0.2, 0.8), level3);
+		ResolvedConfig.Visibility level4 = ConfigResolver.resolve("""
+			{"dataset": {"name": "a", "seed": 1, "difficulty": 4}, "output": {"root": "/x"}, "visibility": {"max_ratio": 0.9}}
+			""").visibility();
+		assertEquals(new ResolvedConfig.Visibility(VisibilityRule.AT_LEAST_PARTLY_VISIBLE, 0.1, 0.9), level4);
+		ResolvedConfig.Visibility unbounded = ConfigResolver.resolve("""
+			{"dataset": {"name": "a", "seed": 1, "difficulty": 3}, "output": {"root": "/x"}, "visibility": {"min_ratio": null, "max_ratio": null}}
+			""").visibility();
+		assertNull(unbounded.minRatio());
+		assertNull(unbounded.maxRatio());
+	}
 }

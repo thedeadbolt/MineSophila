@@ -1,5 +1,6 @@
 package io.github.thedeadbolt.honeyfactory.world;
 
+import com.google.gson.JsonObject;
 import io.github.thedeadbolt.honeyfactory.contract.Weather;
 import java.util.HashMap;
 import java.util.List;
@@ -58,6 +59,20 @@ public final class Baseline {
 	public static final Set<String> RULE_IDS = Set.copyOf(RULES.stream().map(value -> value.rule().id()).toList());
 
 	private Baseline() {
+	}
+
+	/** The enforced rule values by rule ID, as a scene record's {@code environment.gamerules}. */
+	public static JsonObject ruleValues() {
+		JsonObject values = new JsonObject();
+		for (RuleValue<?> value : RULES) {
+			if (value.value() instanceof Boolean flag) {
+				values.addProperty(value.rule().id(), flag);
+			} else {
+				values.addProperty(value.rule().id(), (Number) value.value());
+			}
+		}
+
+		return values;
 	}
 
 	/** Snapshots world settings once per run, then applies the baseline rules. */

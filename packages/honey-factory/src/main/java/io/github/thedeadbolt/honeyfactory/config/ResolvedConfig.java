@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
+import io.github.thedeadbolt.honeyfactory.capture.PerspectiveProjection;
 import io.github.thedeadbolt.honeyfactory.contract.Algorithms;
 import io.github.thedeadbolt.honeyfactory.contract.CanonicalJson;
 import io.github.thedeadbolt.honeyfactory.contract.CaptureMode;
@@ -67,7 +68,7 @@ public record ResolvedConfig(
 	public record Lighting(int timeOfDayTicks, Weather weather) {
 	}
 
-	/** The selected level's visibility rule; ratio bounds stay null until chosen from M3 data. */
+	/** The selected level's visibility rule; ratio bounds are inclusive and null where unbounded. */
 	public record Visibility(VisibilityRule rule, @Nullable Double minRatio, @Nullable Double maxRatio) {
 	}
 
@@ -147,6 +148,10 @@ public record ResolvedConfig(
 		algorithms.addProperty("ids", Algorithms.IDS);
 		algorithms.addProperty("scene_slots", Algorithms.SCENE_SLOTS);
 		algorithms.addProperty("layout", Algorithms.LAYOUT);
+		String sceneGenerator = Algorithms.sceneGenerator(this.difficulty);
+		if (sceneGenerator != null) {
+			algorithms.addProperty("scene_generator", sceneGenerator);
+		}
 		generator.add("algorithms", algorithms);
 		return generator;
 	}
@@ -177,23 +182,11 @@ public record ResolvedConfig(
 	}
 
 	private JsonObject projectionJson() {
-		JsonObject projection = new JsonObject();
-		int width = this.capture.width();
-		int height = this.capture.height();
+		JsonObject projection;
 		if (this.capture.mode() == CaptureMode.PERSPECTIVE_90) {
-			// 90-degree horizontal FOV with square pixels: f = (W / 2) / tan(45 degrees).
-			double focal = width / 2.0;
-			projection.addProperty("horizontal_fov_degrees", 90.0);
-			projection.addProperty("vertical_fov_degrees", Math.toDegrees(2.0 * Math.atan(height / (double) width)));
-			JsonArray principal = new JsonArray();
-			principal.add(width / 2.0);
-			principal.add(height / 2.0);
-			projection.add("principal_point_px", principal);
-			JsonArray focalLength = new JsonArray();
-			focalLength.add(focal);
-			focalLength.add(focal);
-			projection.add("focal_length_px", focalLength);
+			projection = new PerspectiveProjection(this.capture.width(), this.capture.height()).metadata();
 		} else {
+			projection = new JsonObject();
 			projection.addProperty("projection", PANORAMA_PROJECTION);
 			projection.addProperty("longitude_min_degrees", -155.0);
 			projection.addProperty("longitude_max_degrees", 155.0);

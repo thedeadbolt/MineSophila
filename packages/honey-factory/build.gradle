@@ -32,6 +32,16 @@ fabricApi {
 	}
 }
 
+// Game tests read golden masks and write review output under the repository.
+loom {
+	runs {
+		clientGameTest {
+			property("honeyfactory.repoRoot", file('../..').canonicalPath)
+			property("honeyfactory.regenerateGolden", providers.systemProperty("honeyfactory.regenerateGolden").getOrElse("false"))
+		}
+	}
+}
+
 sourceSets {
 	gametest {
 		java.setSrcDirs(['../../tests/honey-factory/gametest/java'])
@@ -49,6 +59,31 @@ dependencies {
 	testImplementation "org.junit.jupiter:junit-jupiter"
 	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
+
+// The Git state recorded in every dataset manifest's software section.
+def gitCommit = providers.exec {
+	commandLine 'git', 'rev-parse', 'HEAD'
+	ignoreExitValue = true
+}.standardOutput.asText.map { it.trim() }
+def gitDirty = providers.exec {
+	commandLine 'git', 'status', '--porcelain'
+	ignoreExitValue = true
+}.standardOutput.asText.map { !it.trim().isEmpty() }
+def buildInfo = tasks.register('buildInfo') {
+	def output = layout.buildDirectory.dir('generated/build-info')
+	def commit = gitCommit
+	def dirty = gitDirty
+	inputs.property('gitCommit', commit)
+	inputs.property('gitDirty', dirty)
+	outputs.dir(output)
+	doLast {
+		def file = output.get().file('honey_factory/build-info.json').asFile
+		file.parentFile.mkdirs()
+		def hash = commit.get() ==~ /[0-9a-f]{40}/ ? "\"${commit.get()}\"" : 'null'
+		file.text = "{\"git_commit\": ${hash}, \"git_dirty\": ${dirty.get()}}\n"
+	}
+}
+sourceSets.main.resources.srcDir(buildInfo)
 
 processResources {
 	def version = project.version

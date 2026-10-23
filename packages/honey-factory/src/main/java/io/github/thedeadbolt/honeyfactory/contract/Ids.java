@@ -19,6 +19,8 @@ public final class Ids {
 	public static final Pattern DATASET_NAME = Pattern.compile("[a-z0-9][a-z0-9-]{0,47}");
 	public static final Pattern DATASET_ID = Pattern.compile("[a-z0-9][a-z0-9-]{0,47}-[0-9a-f]{12}");
 	public static final Pattern SCENE_ID = Pattern.compile("s[0-9]{6}");
+	/** A namespaced resource ID, for example a block or dimension. */
+	public static final Pattern NAMESPACED_ID = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
 	public static final Pattern SAMPLE_ID = Pattern.compile("s[0-9]{6}-v[0-9]{2}");
 	public static final int MAX_SCENES = 999_999;
 	public static final int MAX_VIEWPOINTS = 99;

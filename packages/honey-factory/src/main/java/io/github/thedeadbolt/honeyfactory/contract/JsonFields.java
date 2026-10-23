@@ -112,6 +112,26 @@ public final class JsonFields {
 		return has(name) ? string(name) : defaultValue;
 	}
 
+	/** A lowercase hexadecimal SHA-256 string. */
+	public String sha256(String name) {
+		String value = string(name);
+		if (!Sha256.isHex(value)) {
+			throw error(name, "must be 64 lowercase hexadecimal characters");
+		}
+
+		return value;
+	}
+
+	/** A namespaced ID such as {@code minecraft:overworld}. */
+	public String namespacedId(String name) {
+		String value = string(name);
+		if (!Ids.NAMESPACED_ID.matcher(value).matches()) {
+			throw error(name, "must be a namespaced ID such as minecraft:overworld");
+		}
+
+		return value;
+	}
+
 	public @Nullable String nullableString(String name) {
 		return isNull(name) ? null : string(name);
 	}

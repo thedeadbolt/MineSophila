@@ -6,11 +6,13 @@ The [package specification](docs/spec.md) records the agreed behaviour and accep
 criteria. The [implementation roadmap](docs/roadmap.md) orders the work into gated,
 reviewable milestones.
 
-Implemented so far: the temporary
-[M0 rendering-feasibility fixture](docs/m0-rendering-feasibility.md); M1's
-configuration resolver, data contract records and deterministic ID, seed and split
-rules; and M2's owned dataset worlds, arena resets and environment coordinator
-([ADR 0007](../../docs/adr/0007-dataset-world-and-environment-coordinator.md)). Datasets follow the language-neutral [data contract](../../schemas/honey-factory/).
+Implemented so far: the [M0 rendering-feasibility](docs/m0-rendering-feasibility.md)
+findings; M1's configuration resolver, data contract records and deterministic ID, seed
+and split rules; M2's owned dataset worlds, arena resets and environment coordinator
+([ADR 0007](../../docs/adr/0007-dataset-world-and-environment-coordinator.md)); and M3's
+capture service, level-1 generator and validated dataset writing
+([findings](docs/m3-level1-vertical-slice.md),
+[ADR 0008](../../docs/adr/0008-capture-service-and-level1-generation.md)). Datasets follow the language-neutral [data contract](../../schemas/honey-factory/).
 See the proposed scenario generation and frame capture in the
 [architecture](../../docs/architecture.md).
 
@@ -26,11 +28,14 @@ The mod id is `honey_factory`; Java packages use `io.github.thedeadbolt.honeyfac
 - `src/main/`: common code and mod resources. `contract/` holds the dataset record types and
   the published canonical-JSON, ID, seed and layout algorithms; `config/` resolves and
   validates generation settings; `dataset/` plans scene slots and checks records against
-  each other; `scene/` builds immutable scene plans; `environment/` holds the operation
-  state machine. Dependencies point toward `contract/`, and none of these import
-  Minecraft. `world/` applies plans to owned worlds on the logical server.
-- `src/client/`: client entrypoint, the environment runtime (`client/runtime/`) and the M0
-  capture fixture (`client/m0/`).
+  each other, writes dataset directories and validates them; `scene/` builds immutable
+  scene plans and holds the level generators; `capture/` holds the capture projections;
+  `environment/` holds the operation state machine; `generation/` runs a dataset through
+  an environment interface. Dependencies point toward `contract/`, and none of these
+  import Minecraft. `world/` applies plans to owned worlds on the logical server.
+- `src/client/`: client entrypoint, the capture service and mask renderer
+  (`client/capture/`), the environment runtime (`client/runtime/`), dataset runs
+  (`client/generation/`) and two capture mixins (`client/mixin/`).
 - [`tests/honey-factory/`](../../tests/honey-factory/): repository-level JUnit sources,
   configured by this project's `build.gradle`.
 - `version.txt`: mod version, managed by release-please.
@@ -43,7 +48,7 @@ Run from the repository root:
 just mod-test      # JUnit tests
 just mod-build     # compile, test and package the mod
 just mod-client    # launch a development Minecraft client
-just mod-gametest  # run client game tests, including the M0 fixtures
+just mod-gametest  # run client game tests: the M2 environment, M3 mask gate and dataset
 ```
 
 ### Dataset worlds and the environment
@@ -60,9 +65,9 @@ The environment commands drive the same runtime that tests and the future datase
 use:
 
 ```text
-/honeyfactory_env reset <empty|platform|open|partial|full>   build a fixture scene
+/honeyfactory_env reset <fixture>                         build a fixture scene, e.g. open, partial, fence
 /honeyfactory_env viewpoint fixture | <x> <y> <z> <yaw> <pitch>
-/honeyfactory_env observe <label> <size>                     capture RGB and masks
+/honeyfactory_env observe <label> <width> <height>        capture into honey-factory-debug/<label>/
 /honeyfactory_env status
 ```
 
@@ -70,15 +75,38 @@ use:
 scenes changed. Every reset only clears the arena in the void `honey_factory:arena`
 dimension, inside the bounds the claim recorded.
 
-### M0 fixture
+### Generating a dataset
 
-`mod-gametest` opens a Minecraft window, creates a fresh world under
-`build/run/clientGameTest/` and writes M0 captures and `report.json` to its
-`honey-factory-m0/` directory. To run the fixture by hand, enable *Improved Transparency* in the video settings (capture
-refuses classic transparency; see ADR 0005), create a world named `honey-factory-m0` in
-the development client, then run
-`/honeyfactory m0 fixture <open|partial|full> @s` followed by
-`/honeyfactory_capture <label> <width> <height> <repeats>`. The fixture command refuses
-any other world.
+Enable *Improved Transparency* in the video settings (ADR 0005), claim a dataset world as
+above, then write a configuration (see `ConfigResolver` for every setting) and start it.
+Paths are relative to the game directory; `output.root` must be absolute.
+
+```json
+{
+  "dataset": {"name": "honey-l1-smoke", "seed": 1, "difficulty": 1},
+  "quotas": {"accepted_scenes": 10},
+  "output": {"root": "/mnt/fastvault/minesophila/datasets"}
+}
+```
+
+```text
+/honeyfactory_dataset generate honey-l1-smoke.json
+/honeyfactory_dataset status
+/honeyfactory_dataset cancel
+```
+
+The dataset is written to `<output root>/<dataset id>/`. It is marked `complete` only
+after validation passes; otherwise it is kept as `failed` for diagnosis. Only level 1 has
+a generator so far.
+
+### Game tests and golden masks
+
+`mod-gametest` opens a Minecraft window and creates fresh worlds under
+`build/run/clientGameTest/`. The M3 mask gate writes RGB, masks and overlays for every
+fixture to `build/m3-review/`, and the dataset test writes two regenerated datasets to
+`build/m3-datasets/`. Golden visible masks live in
+`tests/honey-factory/gametest/resources/golden/m3/`. A missing golden fails the gate and is
+written for review. After a reviewed change, rewrite them all with
+`./gradlew runClientGameTest -Dhoneyfactory.regenerateGolden=true`.
 
 See the [test guide](../../tests/README.md) and [Fabric decision](../../docs/adr/0002-fabric-mod-loader.md).

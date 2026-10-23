@@ -8,7 +8,8 @@
 	"entrypoints": {
 		"fabric-client-gametest": [
 			"io.github.thedeadbolt.honeyfactory.gametest.M2EnvironmentTest",
-			"io.github.thedeadbolt.honeyfactory.gametest.M0RenderingFeasibilityTest"
+			"io.github.thedeadbolt.honeyfactory.gametest.M3MaskGateTest",
+			"io.github.thedeadbolt.honeyfactory.gametest.M3DatasetTest"
 		]
 	},
 	"depends": {

@@ -39,29 +39,13 @@ public record DatasetManifest(
 	public static final String UNASSIGNED = "unassigned";
 	public static final String RGB_ENCODING = "png-rgb8";
 
-	public enum Lifecycle {
-		GENERATING("generating"),
-		COMPLETE("complete"),
-		FAILED("failed");
-
-		private final String jsonName;
-
-		Lifecycle(String jsonName) {
-			this.jsonName = jsonName;
-		}
-
-		public String jsonName() {
-			return this.jsonName;
-		}
+	public enum Lifecycle implements JsonEnum {
+		GENERATING,
+		COMPLETE,
+		FAILED;
 
 		public static Lifecycle fromJson(String name) {
-			for (Lifecycle lifecycle : values()) {
-				if (lifecycle.jsonName.equals(name)) {
-					return lifecycle;
-				}
-			}
-
-			throw new IllegalArgumentException("unknown lifecycle '" + name + "'; expected generating, complete or failed");
+			return JsonEnum.parse(Lifecycle.class, name);
 		}
 	}
 
@@ -135,6 +119,34 @@ public record DatasetManifest(
 			null,
 			UNASSIGNED,
 			UNASSIGNED
+		);
+	}
+
+	/** This manifest in a terminal or updated state; identity, configuration and environment are unchanged. */
+	public DatasetManifest withState(
+		Lifecycle lifecycle,
+		@Nullable Instant completedAt,
+		@Nullable Map<Split, SplitCount> splitCounts,
+		Counts counts,
+		@Nullable Integrity integrity
+	) {
+		return new DatasetManifest(
+			this.schemaVersion,
+			this.datasetId,
+			this.contentVersion,
+			lifecycle,
+			this.createdAtUtc,
+			completedAt,
+			this.resolvedConfigSha256,
+			this.configuration,
+			splitCounts,
+			this.software,
+			this.renderEnvironment,
+			counts,
+			this.provenance,
+			integrity,
+			this.licence,
+			this.intendedUse
 		);
 	}
 
@@ -589,11 +601,7 @@ public record DatasetManifest(
 	}
 
 	private static IndexDigest digest(JsonFields digest) {
-		String sha = digest.string("sha256");
-		if (!Sha256.isHex(sha)) {
-			throw digest.error("sha256", "must be 64 lowercase hexadecimal characters");
-		}
-
+		String sha = digest.sha256("sha256");
 		return new IndexDigest(digest.integer("bytes", 0, Long.MAX_VALUE), sha);
 	}
 

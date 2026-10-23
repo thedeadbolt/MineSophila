@@ -82,7 +82,8 @@
             "seeds": {"const": "seed-v1"},
             "ids": {"const": "ids-v1"},
             "scene_slots": {"const": "scene-slots-v1"},
-            "layout": {"const": "layout-v1"}
+            "layout": {"const": "layout-v1"},
+            "scene_generator": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*-v[0-9]+$"}
           }
         }
       }
