@@ -18,6 +18,8 @@ public final class Algorithms {
 	public static final String LEVEL2_GENERATOR = "level2-clutter-v1";
 	/** Level-3 partial-hiding generation. */
 	public static final String LEVEL3_GENERATOR = "level3-partial-hiding-v1";
+	/** Level-4 constructed-environment generation. */
+	public static final String LEVEL4_GENERATOR = "level4-constructed-v1";
 
 	private Algorithms() {
 	}
@@ -28,6 +30,7 @@ public final class Algorithms {
 			case 1 -> LEVEL1_GENERATOR;
 			case 2 -> LEVEL2_GENERATOR;
 			case 3 -> LEVEL3_GENERATOR;
+			case 4 -> LEVEL4_GENERATOR;
 			default -> null;
 		};
 	}

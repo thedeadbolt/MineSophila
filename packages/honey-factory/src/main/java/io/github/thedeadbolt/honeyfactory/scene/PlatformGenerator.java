@@ -8,7 +8,7 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Shared base of the platform levels 1–3: a neutral concrete floor over the arena
+ * Shared base of the platform levels 1–4: a neutral concrete floor over the arena
  * footprint, one target cell standing on it, level-specific blocks around it, and
  * viewpoints standing on the floor and aimed at the target cell.
  *
@@ -32,7 +32,7 @@ import org.jspecify.annotations.Nullable;
  * <p>Every stream is keyed by the generator's version, so levels never share draws.
  */
 public abstract class PlatformGenerator implements SceneGenerator {
-	/** The floor template, named for the level that introduced it; levels 1–3 share it. */
+	/** The floor template, named for the level that introduced it; levels 1–4 share it. */
 	public static final String TEMPLATE_ID = "level1-platform";
 	public static final int TEMPLATE_VERSION = 1;
 	public static final String FLOOR = "minecraft:light_gray_concrete";

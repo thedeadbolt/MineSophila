@@ -13,6 +13,7 @@ public final class SceneGenerators {
 			case 1 -> new Level1Generator(config);
 			case 2 -> new Level2Generator(config);
 			case 3 -> new Level3Generator(config);
+			case 4 -> new Level4Generator(config);
 			default -> throw new UnsupportedOperationException("level " + config.difficulty() + " has no scene generator yet");
 		};
 	}

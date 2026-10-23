@@ -38,6 +38,8 @@ loom {
 		clientGameTest {
 			property("honeyfactory.repoRoot", file('../..').canonicalPath)
 			property("honeyfactory.regenerateGolden", providers.systemProperty("honeyfactory.regenerateGolden").getOrElse("false"))
+			// Comma-separated test name prefixes, such as M6; empty runs every test.
+			property("honeyfactory.gametests", providers.systemProperty("honeyfactory.gametests").getOrElse(""))
 		}
 	}
 }

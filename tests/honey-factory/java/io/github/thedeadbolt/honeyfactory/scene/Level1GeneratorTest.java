@@ -30,8 +30,6 @@ class Level1GeneratorTest {
 		ResolvedConfig level4 = ConfigResolver.resolve("""
 			{"dataset": {"name": "level4-test", "seed": 42, "difficulty": 4}, "output": {"root": "/tmp/honey"}}
 			""");
-		assertTrue(!level4.toJson().getAsJsonObject("generator").getAsJsonObject("algorithms").has("scene_generator"));
-		assertThrows(UnsupportedOperationException.class, () -> SceneGenerators.forConfig(level4));
 		assertThrows(IllegalArgumentException.class, () -> new Level1Generator(level4));
 	}
 
