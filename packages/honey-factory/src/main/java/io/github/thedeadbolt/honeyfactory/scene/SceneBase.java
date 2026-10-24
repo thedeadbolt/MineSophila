@@ -34,7 +34,7 @@ public sealed interface SceneBase {
 	record NaturalTerrain(int coreWidth, int coreLength, int height, int contextPadding, int scenesPerPatch, int regionSeparationBlocks) implements SceneBase {
 		public static final String TYPE = "natural_patch";
 		/** Initial defaults from the M6 benchmark; see the M6 findings. */
-		public static final NaturalTerrain DEFAULT = new NaturalTerrain(32, 32, 128, 192, 4, 256);
+		public static final NaturalTerrain DEFAULT = new NaturalTerrain(32, 32, 128, 192, 8, 256);
 		public static final int MAX_CORE = 256;
 		public static final int MAX_PADDING = 512;
 

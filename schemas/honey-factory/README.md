@@ -28,8 +28,9 @@ belong to the validators:
 - rules needing arithmetic across members: status versus counts, ratio, bounding-box
   placement, path versus ID and shard, camera basis, configuration hash, and one viewpoint
   draw per accepted sample;
-- rules across records: references, inheritance, the `scene-slots-v1` class and split of
-  every scene, the level's visibility rule, quotas and split leakage.
+- rules across records: references, inheritance, the `scene-slots-v1` or `patch-slots-v1`
+  class and split of every scene, the level's visibility rule, quotas and split leakage,
+  including source patches kept apart across splits.
 
 The mod's Java validator and the independent `honey-factory-tools validate-dataset` both
 enforce them. The [shared fixtures](../../tests/integration/fixtures/honey-factory/) mark
@@ -91,7 +92,35 @@ Every accepted-scene slot `0 … N-1` receives its class and split before genera
 3. Sort each class by `SHA-256(".../split/<dataset seed>/<index>")`, ties by index, and
    assign train, then validation, then test.
 
-Level-5 grouping by source world is defined when M6 introduces natural patches.
+### `patch-slots-v1`: target class and split per scene on a natural base
+
+Used with the `source_region` grouping. Classes are assigned exactly as in step 1 of
+`scene-slots-v1`. Slot `i` belongs to source patch `⌊i / scenes_per_patch⌋`. The `P` patches
+are apportioned to train, validation and test by the requested ratios with the
+largest-remainder method, sorted by
+`SHA-256("honey-factory/patch-slots-v1/split/<dataset seed>/<patch>")`, ties by patch, and
+assigned train, then validation, then test. Every slot takes its patch's split.
+
+### `source-patches-v1`: where natural patches come from
+
+With `W` and `L` the copied width and length (core plus twice the context padding) and `S`
+the region separation, the source is divided into cells of `W + S` by `L + S` blocks, cell
+`(i, j)` starting at block `(i (W + S), j (L + S))` for `i, j` in `−500 … 500`. Candidate
+`d` (0–31) of patch `p` is number `n = 32 p + d`; with `M = 1001²`, `A = 1000003` and `B` the
+first 8 bytes, big-endian and signed, of
+`SHA-256("honey-factory/source-patches-v1/offset/<dataset seed>")` reduced modulo `M`, it
+lies in cell `m = (n A + B) mod M`, so `i = m mod 1001 − 500` and `j = ⌊m / 1001⌋ − 500`.
+Its copied region starts `16 ⌊S / 32⌋` blocks into the cell on both axes. Its vertical
+window ends on the first multiple of 16 at least 9 blocks above the highest non-air block
+of the region, kept within the world, and spans the configured height. The first candidate
+that passes the mod's checks (ADR 0012) is the patch.
+
+A scene record's `source_patch` holds that region's inclusive bounds, the world seed, the
+dimension, the terrain generator version (`minecraft-<version>`) and
+`patch_id = <world seed>/<dimension>/<min x,y,z>/<max x,y,z>/<generator version>`. World
+seeds are 64-bit and may exceed 2^53; no hash or seed derivation reads them. The scene's
+`template.sha256` is the `layout-v1` hash of the copy over the whole reset volume before
+the scene changes it.
 
 ### `layout-v1`: block-layout hash
 
@@ -103,8 +132,10 @@ bounds <min x> <min y> <min z> <max x> <max y> <max z>
 <x> <y> <z> <block state>
 ```
 
-Bounds are inclusive; for scenes they are the arena's reset volume, recorded as the scene
-record's `arena.bounds`. Each non-air block inside them appears once, ordered by y, then z,
+Bounds are inclusive; for scenes on a platform they are the arena's reset volume, recorded
+as the scene record's `arena.bounds`. For scenes on a natural patch they are the core,
+from `arena.origin` over `arena.core_size`, the only part a scene changes; the template checksum
+covers the rest of the copy. Each non-air block inside them appears once, ordered by y, then z,
 then x. Block states are `namespace:path` with properties sorted by name, for example
 `minecraft:oak_stairs[facing=north,half=bottom]`.
 

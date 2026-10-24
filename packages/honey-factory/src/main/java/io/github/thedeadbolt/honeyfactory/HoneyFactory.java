@@ -1,5 +1,6 @@
 package io.github.thedeadbolt.honeyfactory;
 
+import io.github.thedeadbolt.honeyfactory.world.NaturalPatches;
 import io.github.thedeadbolt.honeyfactory.world.WorldCommands;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -17,7 +18,7 @@ public class HoneyFactory implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		LOGGER.info("Honey Factory loaded");
+		LOGGER.info("Honey Factory loaded, source patch ticket {}", NaturalPatches.SOURCE_TICKET);
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> WorldCommands.register(dispatcher));
 	}
 

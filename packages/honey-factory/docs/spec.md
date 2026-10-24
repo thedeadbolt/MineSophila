@@ -137,9 +137,24 @@ applying target and other scene-specific changes block by block.
   distinct and reproducible.
 
 All dimensions in one save use its world seed. Multiple level-5 world seeds therefore
-require multiple dataset-owned saves or later launch orchestration. Source-region
-defaults, copy height, padding and patch reuse count remain configurable and must be
-benchmarked before production generation.
+require multiple dataset-owned saves or later launch orchestration.
+
+Agreed 2026-10-24, implemented in M6 ([ADR 0012](../../../docs/adr/0012-natural-source-patches.md)):
+
+- The source dimension is the dataset world's own normal Overworld; the copy goes to a
+  separate owned region of the void arena dimension, far from the platform arena.
+- A natural patch is a recipe base (`natural_patch`) usable by any level; the level-5
+  preset uses it. Its defaults, set from the M6 benchmark, are a 32 × 32 core, a
+  128-block window, 192 blocks of context padding (render distance 12), 8 scenes per
+  patch and 256 blocks of region separation. A run refuses padding smaller than 16
+  blocks per chunk of render distance.
+- Patches whose window would show void beneath their lowest ground, or whose window
+  holds a naturally occurring target block, are rejected and the next candidate tried;
+  natural target blocks are therefore never present, so absent scenes stay absent.
+- One save has one world seed, so splits are grouped by source region: every patch is its
+  own group, and patches of different splits lie at least the region separation apart.
+- Each scene verifies the core it changed; the whole copy is verified once, against the
+  patch's content hash, when it is copied.
 
 ## Initial capture outputs
 
@@ -767,8 +782,8 @@ smoke run may override it with only a few scenes.
   has a valid RGB/mask pair satisfying that level's visibility rule. Re-sample failed
   viewpoints up to the configured limit; then reject the scene and try a new one.
 - Target-absent scenes must contain no target block within the defined scene region.
-  Whether naturally occurring honey outside or inside a level-5 sampled region is
-  removed, rejected or retained remains to be specified.
+  On a natural base, a patch whose copied window holds a target block is rejected
+  before use (agreed 2026-10-24), so no natural target block is ever present.
 - Fully hidden or out-of-view observations from target-present scenes are optional
   variants for levels 1–5 and are disabled by default. If enabled, give them a separate
   quota so they do not silently alter the visible-positive balance.

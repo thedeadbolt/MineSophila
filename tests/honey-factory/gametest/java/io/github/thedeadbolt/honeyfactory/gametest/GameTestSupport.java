@@ -136,8 +136,12 @@ final class GameTestSupport {
 	}
 
 	static <T> T await(ClientGameTestContext context, Function<EnvironmentRuntime, CompletableFuture<T>> request) {
+		return await(context, request, 1200);
+	}
+
+	static <T> T await(ClientGameTestContext context, Function<EnvironmentRuntime, CompletableFuture<T>> request, int timeoutTicks) {
 		CompletableFuture<T> future = context.computeOnClient(minecraft -> request.apply(EnvironmentRuntime.get()));
-		context.waitFor(minecraft -> future.isDone(), 1200);
+		context.waitFor(minecraft -> future.isDone(), timeoutTicks);
 		return future.join();
 	}
 

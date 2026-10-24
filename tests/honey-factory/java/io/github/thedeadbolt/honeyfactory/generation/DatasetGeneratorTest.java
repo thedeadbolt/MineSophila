@@ -3,6 +3,7 @@ package io.github.thedeadbolt.honeyfactory.generation;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -58,6 +59,21 @@ class DatasetGeneratorTest {
 			  "output": {"root": "%s", "free_space_reserve_bytes": 1000000}
 			}
 			""").formatted(level, width, height, scenes, root.toString().replace("\\", "\\\\"));
+	}
+
+	private static ResolvedConfig naturalConfig(Path root, int scenes, int padding) {
+		return ConfigResolver.resolve(("""
+			{
+			  "dataset": {"name": "m6-unit", "seed": 11, "difficulty": 5},
+			  "scene": {"base": {"type": "natural_patch", "context_padding": %d, "scenes_per_patch": 2}},
+			  "viewpoints": {"count": 2},
+			  "capture": {"width": 48, "height": 32},
+			  "quotas": {"accepted_scenes": %d, "scene_attempts_per_accepted_scene": 3},
+			  "splits": {"train": 0.6, "validation": 0.2, "test": 0.2},
+			  "target": {"present_fraction": 0.75},
+			  "output": {"root": "%s", "free_space_reserve_bytes": 1000000}
+			}
+			""").formatted(padding, scenes, root.toString().replace("\\", "\\\\")));
 	}
 
 	private static DatasetGenerator.Result run(DatasetGenerator generator, ScriptedEnvironment environment) throws IOException {
@@ -171,7 +187,10 @@ class DatasetGeneratorTest {
 	void cancellingMidSceneAbandonsOnlyTheRunningAttempt() throws IOException {
 		ScriptedEnvironment environment = new ScriptedEnvironment();
 		DatasetGenerator generator = new DatasetGenerator(config(this.temp, 3), environment, CLOCK, DISK);
-		// Observations 4-6 belong to the second scene; cancel while its second view is captured.
+		// Observations 4-6 are the second scene's first batch. Its middle view sees no target, so
+		// the scene needs a second round; cancelling during the batch abandons the attempt after
+		// the batch, with the two accepted images already written.
+		environment.hideOn = observation -> observation == 5;
 		environment.onObserve = observation -> {
 			if (observation == 5) {
 				generator.cancel();
@@ -179,7 +198,7 @@ class DatasetGeneratorTest {
 		};
 		DatasetGenerator.Result result = run(generator, environment);
 		assertEquals(DatasetGenerator.CANCELLED, result.failure());
-		assertEquals(5, environment.observations(), "the running capture finishes; nothing new starts");
+		assertEquals(6, environment.observations(), "the running batch finishes; nothing new starts");
 		DatasetManifest manifest = result.manifest();
 		assertEquals(DatasetManifest.Lifecycle.FAILED, manifest.lifecycle());
 		assertEquals(1, manifest.counts().acceptedScenes());
@@ -291,5 +310,51 @@ class DatasetGeneratorTest {
 			assertEquals(310, other.rgb().width());
 			assertEquals(io.github.thedeadbolt.honeyfactory.contract.CaptureMode.PANORAMA_310, other.mode());
 		}
+	}
+
+	@Test
+	void naturalScenesShareEachPreparedPatchAndItsSplit() throws IOException {
+		ScriptedEnvironment environment = new ScriptedEnvironment();
+		DatasetGenerator.Result result = run(new DatasetGenerator(naturalConfig(this.temp, 9, 192), environment, CLOCK, DISK), environment);
+		assertNull(result.failure(), () -> result.failure() + " " + result.validationErrors());
+		assertEquals(java.util.List.of(0, 1, 2, 3, 4), environment.preparedPatches, "each patch is prepared once, in order");
+		DatasetValidator.Report report = DatasetValidator.validate(result.directory());
+		assertEquals(java.util.List.of(), report.errors());
+		java.util.Map<String, java.util.Set<io.github.thedeadbolt.honeyfactory.contract.Split>> splitsByPatch = new java.util.HashMap<>();
+		for (io.github.thedeadbolt.honeyfactory.contract.SceneRecord scene : report.scenes()) {
+			assertNotNull(scene.sourcePatch());
+			assertEquals(5, scene.difficulty());
+			assertEquals(192, scene.arena().margin());
+			assertEquals(io.github.thedeadbolt.honeyfactory.scene.NaturalGenerator.TEMPLATE_ID, scene.template().id());
+			assertTrue(scene.environment().timeOfDayTicks() >= 1000 && scene.environment().timeOfDayTicks() <= 11000);
+			int[] min = scene.sourcePatch().boundsMin();
+			int[] max = scene.sourcePatch().boundsMax();
+			assertEquals(32 + 2 * 192, max[0] - min[0] + 1);
+			splitsByPatch.computeIfAbsent(scene.sourcePatch().patchId(), key -> new java.util.HashSet<>()).add(scene.split());
+		}
+
+		assertEquals(5, splitsByPatch.size());
+		splitsByPatch.forEach((patch, splits) -> assertEquals(1, splits.size(), patch + " reaches " + splits));
+	}
+
+	@Test
+	void aPatchWithoutAnAcceptableCandidateFailsTheRun() throws IOException {
+		ScriptedEnvironment environment = new ScriptedEnvironment();
+		environment.rejectPatch = patch -> patch == 1;
+		DatasetGenerator.Result result = run(new DatasetGenerator(naturalConfig(this.temp, 6, 192), environment, CLOCK, DISK), environment);
+		assertNotNull(result.failure());
+		assertTrue(result.failure().contains("no acceptable source patch for patch 1"), result.failure());
+		DatasetManifest.Counts counts = result.manifest().counts();
+		assertEquals(2, counts.acceptedScenes());
+		assertEquals(counts.attemptedScenes(), counts.acceptedScenes() + counts.rejectedScenes() + counts.failedScenes());
+		assertTrue(result.manifest().integrity().validationPassed(), "what was kept still validates");
+	}
+
+	@Test
+	void paddingThatLeavesTheVoidVisibleIsRefused() {
+		ResolvedConfig config = naturalConfig(this.temp, 2, 64);
+		IllegalStateException error = assertThrows(IllegalStateException.class, () -> new DatasetGenerator(config, new ScriptedEnvironment(), CLOCK, DISK).start());
+		assertTrue(error.getMessage().contains("render distance 8"), error.getMessage());
+		assertFalse(Files.exists(this.temp.resolve(config.datasetId())));
 	}
 }

@@ -12,8 +12,10 @@ import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import io.github.thedeadbolt.honeyfactory.generation.GenerationEnvironment;
 import io.github.thedeadbolt.honeyfactory.scene.ArenaLayout;
+import io.github.thedeadbolt.honeyfactory.scene.PreparedPatch;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
 import io.github.thedeadbolt.honeyfactory.world.Baseline;
+import io.github.thedeadbolt.honeyfactory.world.NaturalPatches;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -21,14 +23,31 @@ import java.util.concurrent.CompletableFuture;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
+import net.minecraft.client.server.IntegratedServer;
 import org.jspecify.annotations.Nullable;
 
 /** Dataset generation through the client environment runtime of the running game. */
 public final class RuntimeGenerationEnvironment implements GenerationEnvironment {
 	private final EnvironmentRuntime runtime;
+	/** Captures so far and their summed render, readback and reprojection nanoseconds. */
+	private final long[] captureTotals = new long[4];
 
 	public RuntimeGenerationEnvironment(EnvironmentRuntime runtime) {
 		this.runtime = runtime;
+	}
+
+	/** Generates terrain off the server thread and checks it on it; the result, or failure, arrives on the client thread. */
+	@Override
+	public CompletableFuture<PreparedPatch> preparePatch(PatchRequest request) {
+		Minecraft minecraft = Minecraft.getInstance();
+		IntegratedServer server = minecraft.getSingleplayerServer();
+		if (server == null) {
+			return CompletableFuture.failedFuture(new EnvironmentException(EnvironmentException.Reason.NO_LOCAL_RUNTIME, "source patches need a local client with an integrated server"));
+		}
+
+		return NaturalPatches.prepareAsync(server, new NaturalPatches.Request(request.datasetSeed(), request.base(), request.patchIndex(), request.targetBlockId()))
+			.handleAsync((patch, error) -> error == null ? CompletableFuture.completedFuture(patch) : CompletableFuture.<PreparedPatch>failedFuture(error), minecraft)
+			.thenCompose(result -> result);
 	}
 
 	@Override
@@ -43,22 +62,33 @@ public final class RuntimeGenerationEnvironment implements GenerationEnvironment
 	}
 
 	@Override
-	public CompletableFuture<Observation> observe(CaptureProjection projection, int @Nullable [] target) {
+	public CompletableFuture<List<Observation>> observeAll(CaptureProjection projection, int @Nullable [] target, List<CameraPose> poses) {
 		int[] sceneTarget = this.runtime.scene() == null ? null : this.runtime.scene().targetPosition(this.runtime.arena());
 		if (!Arrays.equals(target, sceneTarget)) {
 			return CompletableFuture.failedFuture(new EnvironmentException(EnvironmentException.Reason.WORLD_MISMATCH,
 				"requested target " + Arrays.toString(target) + " is not the current scene's " + Arrays.toString(sceneTarget)));
 		}
 
-		return this.runtime.observe(projection).thenApply(observation -> new Observation(
-			observation.operationId(),
-			observation.capture().worldTick(),
-			observation.capture().partialTick(),
-			observation.capture().images(),
-			observation.biome(),
-			observation.skyLight(),
-			observation.blockLight()
-		));
+		return this.runtime.observeAll(projection, poses).thenApply(observations -> observations.stream().map(observation -> {
+			this.captureTotals[0]++;
+			this.captureTotals[1] += observation.capture().renderNanos();
+			this.captureTotals[2] += observation.capture().readbackNanos();
+			this.captureTotals[3] += observation.capture().assembleNanos();
+			return new Observation(
+				observation.operationId(),
+				observation.capture().worldTick(),
+				observation.capture().partialTick(),
+				observation.capture().images(),
+				observation.biome(),
+				observation.skyLight(),
+				observation.blockLight()
+			);
+		}).toList());
+	}
+
+	/** Captures so far, then their total render, readback and reprojection seconds. */
+	public double[] captureTotals() {
+		return new double[] {this.captureTotals[0], this.captureTotals[1] / 1e9, this.captureTotals[2] / 1e9, this.captureTotals[3] / 1e9};
 	}
 
 	@Override

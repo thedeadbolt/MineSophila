@@ -5,10 +5,16 @@ import io.github.thedeadbolt.honeyfactory.capture.CameraFrame;
 import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
 import io.github.thedeadbolt.honeyfactory.contract.DatasetManifest;
+import io.github.thedeadbolt.honeyfactory.contract.Sha256;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import io.github.thedeadbolt.honeyfactory.scene.ArenaLayout;
+import io.github.thedeadbolt.honeyfactory.scene.PatchTerrain;
+import io.github.thedeadbolt.honeyfactory.scene.PreparedPatch;
+import io.github.thedeadbolt.honeyfactory.scene.SceneBase;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
+import io.github.thedeadbolt.honeyfactory.scene.SourcePatch;
+import io.github.thedeadbolt.honeyfactory.scene.SourcePatches;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
@@ -40,6 +46,8 @@ final class ScriptedEnvironment implements GenerationEnvironment {
 	};
 	/** Returns empty masks, as if the target were never visible. */
 	boolean hideTarget;
+	/** Observations (counted from 1) whose masks are empty, as if the target were hidden from that view. */
+	IntPredicate hideOn = observation -> false;
 
 	/** Runs queued requests, including any they queue, until none remain. */
 	void pump() {
@@ -48,8 +56,51 @@ final class ScriptedEnvironment implements GenerationEnvironment {
 		}
 	}
 
+	/** Patches whose index this rejects outright, as if no candidate passed. */
+	IntPredicate rejectPatch = patch -> false;
+	/** Patch indices prepared so far, in request order. */
+	final List<Integer> preparedPatches = new java.util.ArrayList<>();
+
+	/** Flat synthetic terrain: solid ground below y = 10 and air above; every column is a target site. */
+	@Override
+	public CompletableFuture<PreparedPatch> preparePatch(PatchRequest request) {
+		return later(() -> {
+			this.preparedPatches.add(request.patchIndex());
+			if (this.rejectPatch.test(request.patchIndex())) {
+				throw new EnvironmentException(EnvironmentException.Reason.INVALID_REQUEST, "no acceptable source patch for patch " + request.patchIndex());
+			}
+
+			SceneBase.NaturalTerrain base = request.base();
+			int[] corner = SourcePatches.corner(request.datasetSeed(), base, request.patchIndex(), 0);
+			int[] min = {corner[0], 0, corner[1]};
+			int[] max = {corner[0] + base.copyWidth() - 1, base.height() - 1, corner[1] + base.copyLength() - 1};
+			byte[] flags = new byte[base.coreWidth() * base.height() * base.coreLength()];
+			int[] surface = new int[base.coreWidth() * base.coreLength()];
+			java.util.Arrays.fill(surface, 10);
+			for (int y = 0; y < base.height(); y++) {
+				int value = y < 10 ? PatchTerrain.OCCUPIED | PatchTerrain.OCCLUDES | PatchTerrain.COLLIDES | PatchTerrain.STURDY_TOP : PatchTerrain.REPLACEABLE;
+				java.util.Arrays.fill(flags, y * base.coreWidth() * base.coreLength(), (y + 1) * base.coreWidth() * base.coreLength(), (byte) value);
+			}
+
+			String id = SourcePatch.id(12345L, "minecraft:overworld", min, max, "minecraft-test");
+			return new PreparedPatch(new SourcePatch(id, 12345L, "minecraft:overworld", min, max, "minecraft-test", request.patchIndex(), 0, Sha256.hex(id.getBytes(java.nio.charset.StandardCharsets.UTF_8)), java.util.Map.of()),
+				new PatchTerrain(base.coreWidth(), base.height(), base.coreLength(), flags, surface));
+		});
+	}
+
 	@Override
 	public CompletableFuture<SceneReady> reset(ArenaLayout arena, ScenePlan plan, CameraPose firstViewpoint) {
+		if (plan.patch() != null) {
+			return later(() -> {
+				this.pose = firstViewpoint;
+				this.occluders = List.of();
+				JsonObject rules = new JsonObject();
+				rules.addProperty("advance_time", false);
+				String layout = Sha256.hex((plan.patch().contentSha256() + plan.delta()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+				return new SceneReady(nextOperation(), layout, 5, rules);
+			});
+		}
+
 		return later(() -> {
 			this.pose = firstViewpoint;
 			this.occluders = plan.layoutBlocks(arena).stream()
@@ -71,31 +122,37 @@ final class ScriptedEnvironment implements GenerationEnvironment {
 		});
 	}
 
+	/** One operation; each pose counts as one observation, and a failing one fails the whole batch. */
 	@Override
-	public CompletableFuture<Observation> observe(CaptureProjection projection, int @Nullable [] target) {
+	public CompletableFuture<List<Observation>> observeAll(CaptureProjection projection, int @Nullable [] target, List<CameraPose> poses) {
 		return later(() -> {
 			String operation = nextOperation();
-			this.onObserve.accept(++this.observations);
-			if (this.failCapture.test(this.observations)) {
-				throw new EnvironmentException(EnvironmentException.Reason.CAPTURE_FAILED, "scripted readback failure");
+			List<Observation> observations = new java.util.ArrayList<>();
+			for (CameraPose pose : poses) {
+				this.onObserve.accept(++this.observations);
+				if (this.failCapture.test(this.observations)) {
+					throw new EnvironmentException(EnvironmentException.Reason.CAPTURE_FAILED, "scripted readback failure");
+				}
+
+				observations.add(new Observation(operation, 1000 + this.observations, 1.0, render(projection, target, pose), "honey_factory:arena", 15, 0));
 			}
 
-			return new Observation(operation, 1000 + this.observations, 1.0, render(projection, target), "honey_factory:arena", 15, 0);
+			return List.copyOf(observations);
 		});
 	}
 
-	private CapturedImages render(CaptureProjection projection, int @Nullable [] target) {
+	private CapturedImages render(CaptureProjection projection, int @Nullable [] target, CameraPose pose) {
 		int width = projection.width();
 		int height = projection.height();
 		byte[] rgb = new byte[width * height * 3];
 		byte[] mask = new byte[width * height];
 		byte[] unoccluded = new byte[width * height];
-		CameraFrame camera = CameraFrame.of(this.pose, EYE_HEIGHT);
+		CameraFrame camera = CameraFrame.of(pose, EYE_HEIGHT);
 		for (int y = 0; y < height; y++) {
 			for (int x = 0; x < width; x++) {
 				int p = y * width + x;
 				double[] direction = projection.direction(camera, x + 0.5, y + 0.5);
-				double distance = target == null || this.hideTarget ? Double.NaN : distance(camera.eye(), direction, target);
+				double distance = target == null || this.hideTarget || this.hideOn.test(this.observations) ? Double.NaN : distance(camera.eye(), direction, target);
 				boolean inView = !Double.isNaN(distance);
 				boolean hit = inView && this.occluders.stream().noneMatch(block -> distance(camera.eye(), direction, block) < distance);
 				unoccluded[p] = inView ? (byte) 255 : 0;

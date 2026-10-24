@@ -63,7 +63,11 @@ public final class WorldOwnership extends SavedData {
 		}
 	}
 
-	/** The claim itself: which world, which bounds, and any pending baseline snapshot. */
+	/**
+	 * The claim itself: which world, which bounds, any pending baseline snapshot, and the
+	 * box of the natural region the last source-patch copy wrote, so the next copy can clear
+	 * what lies outside its own. Records from before natural copies simply lack it.
+	 */
 	public record Record(
 		int formatVersion,
 		String worldId,
@@ -71,7 +75,8 @@ public final class WorldOwnership extends SavedData {
 		long claimedAtEpochMillis,
 		BlockBox ownedArena,
 		BlockBox stagingPlatform,
-		Optional<WorldSnapshot> baseline
+		Optional<WorldSnapshot> baseline,
+		Optional<BlockBox> naturalWritten
 	) {
 		// Kept inside Record so static initialization never depends on the enclosing class.
 		private static final Codec<BlockBox> BOX_CODEC = Codec.INT.listOf(6, 6).xmap(
@@ -86,11 +91,16 @@ public final class WorldOwnership extends SavedData {
 			Codec.LONG.fieldOf("claimed_at_epoch_millis").forGetter(Record::claimedAtEpochMillis),
 			BOX_CODEC.fieldOf("owned_arena").forGetter(Record::ownedArena),
 			BOX_CODEC.fieldOf("staging_platform").forGetter(Record::stagingPlatform),
-			WorldSnapshot.CODEC.optionalFieldOf("baseline").forGetter(Record::baseline)
+			WorldSnapshot.CODEC.optionalFieldOf("baseline").forGetter(Record::baseline),
+			BOX_CODEC.optionalFieldOf("natural_written").forGetter(Record::naturalWritten)
 		).apply(instance, Record::new));
 
 		public Record withBaseline(@Nullable WorldSnapshot snapshot) {
-			return new Record(this.formatVersion, this.worldId, this.levelName, this.claimedAtEpochMillis, this.ownedArena, this.stagingPlatform, Optional.ofNullable(snapshot));
+			return new Record(this.formatVersion, this.worldId, this.levelName, this.claimedAtEpochMillis, this.ownedArena, this.stagingPlatform, Optional.ofNullable(snapshot), this.naturalWritten);
+		}
+
+		public Record withNaturalWritten(BlockBox written) {
+			return new Record(this.formatVersion, this.worldId, this.levelName, this.claimedAtEpochMillis, this.ownedArena, this.stagingPlatform, this.baseline, Optional.of(written));
 		}
 	}
 

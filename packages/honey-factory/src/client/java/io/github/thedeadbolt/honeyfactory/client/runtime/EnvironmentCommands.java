@@ -26,9 +26,11 @@ import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import io.github.thedeadbolt.honeyfactory.environment.Futures;
 import io.github.thedeadbolt.honeyfactory.environment.OperationCoordinator;
 import io.github.thedeadbolt.honeyfactory.scene.FixturePlans;
+import io.github.thedeadbolt.honeyfactory.scene.SceneBase;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePresets;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePreview;
 import io.github.thedeadbolt.honeyfactory.scene.SceneSpec;
+import io.github.thedeadbolt.honeyfactory.world.NaturalPatches;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -41,6 +43,7 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.network.chat.Component;
 
 /**
@@ -178,14 +181,34 @@ public final class EnvironmentCommands {
 			return 0;
 		}
 
-		ScenePreview preview = ScenePreview.of(spec, seed, index);
-		if (preview.viewpoint() == null) {
-			context.getSource().sendError(Component.literal("Scene " + index + " of " + name + " has no placeable first viewpoint; try another index"));
-			return 0;
+		if (spec.base() instanceof SceneBase.NaturalTerrain natural) {
+			IntegratedServer server = context.getSource().getClient().getSingleplayerServer();
+			if (server == null) {
+				context.getSource().sendError(Component.literal("Natural previews need a local world"));
+				return 0;
+			}
+
+			context.getSource().sendFeedback(Component.literal("Preparing source patch " + ScenePreview.patchIndex(spec, index) + "; new terrain takes a while to generate"));
+			NaturalPatches.Request request = new NaturalPatches.Request(seed, natural, ScenePreview.patchIndex(spec, index), ScenePreview.targetBlockId());
+			CompletableFuture<?> done = NaturalPatches.prepareAsync(server, request)
+				.thenComposeAsync(patch -> showPreview(context, ScenePreview.of(spec, patch, seed, index), name, seed, index), context.getSource().getClient());
+			report(context, done, ignored -> "Prepared");
+			return 1;
 		}
 
-		return report(context, EnvironmentRuntime.get().reset(preview.arena(), preview.scene().plan(), preview.viewpoint().pose()),
-			scene -> "Reset " + name + " seed " + seed + " scene " + index + " (" + scene.operationId() + "): " + preview.scene().layoutParameters());
+		showPreview(context, ScenePreview.of(spec, seed, index), name, seed, index);
+		return 1;
+	}
+
+	private static CompletableFuture<?> showPreview(CommandContext<FabricClientCommandSource> context, ScenePreview preview, String name, long seed, int index) {
+		if (preview.viewpoint() == null) {
+			context.getSource().sendError(Component.literal("Scene " + index + " of " + name + " has no placeable first viewpoint; try another index"));
+			return CompletableFuture.completedFuture(null);
+		}
+
+		CompletableFuture<EnvironmentRuntime.SceneState> reset = EnvironmentRuntime.get().reset(preview.arena(), preview.scene().plan(), preview.viewpoint().pose(preview.arena()));
+		report(context, reset, scene -> "Reset " + name + " seed " + seed + " scene " + index + " (" + scene.operationId() + "): " + preview.scene().layoutParameters());
+		return reset;
 	}
 
 	private static boolean has(CommandContext<FabricClientCommandSource> context, String argument) {

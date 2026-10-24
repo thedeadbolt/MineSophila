@@ -106,7 +106,7 @@ Paths are relative to the game directory; `output.root` must be absolute.
 /honeyfactory_dataset cancel
 ```
 
-The dataset is written to `<output root>/<dataset id>/`. Levels 1–4 have generators.
+The dataset is written to `<output root>/<dataset id>/`. Levels 1–5 have generators.
 Without `dataset.seed` a random seed is drawn and recorded in the manifest.
 
 ### Scene recipes
@@ -129,8 +129,8 @@ dataset adds level-4 vegetation and draws each scene's time and weather:
 
 | Setting | Values |
 |---|---|
-| `preset` | `level1` … `level4` |
-| `base` | `{"type": "platform", "floor": <full-cube block state>}` |
+| `preset` | `level1` … `level5` |
+| `base` | `{"type": "platform", "floor": <full-cube block state>}` or a `natural_patch` (below) |
 | `parts` | `clutter`, `hiding_structure`, `background_structures`, `scattered_blocks`, `constructed_setting`, `near_aim_blocks`, `scattered_items`, each with its own settings (see its class) |
 | `sight` | `any`, `all_clear`, `partly_hidden`, `some_clear`, `clear_and_obstructed` |
 | `lighting` | `time_of_day_ticks` as a number or `[min, max]`; `weather` or `weathers` |
@@ -147,6 +147,33 @@ RecipeGenerator generator = new RecipeGenerator(spec, arena, targetStates, viewp
 
 Rain and thunder images are not byte-reproducible; masks are. Write a `scene` section to a
 file and run `/honeyfactory_env reset recipe <file>` to look at it before generating.
+
+### Natural terrain (level 5)
+
+A `natural_patch` base copies a patch of the dataset world's own Overworld into a separate
+region of the arena (ADR 0012). Targets and cameras stay in the core; the padding around it
+is scenery, so the copy reaches past the render distance and no void edge shows. All sizes
+are whole chunks or sections:
+
+```json
+"scene": {"base": {"type": "natural_patch", "core_width": 32, "core_length": 32, "height": 128,
+                   "context_padding": 192, "scenes_per_patch": 8, "region_separation_blocks": 256}}
+```
+
+These are the defaults, and `level5` uses them with daylight times from 1000 to 11000 ticks
+in clear weather or rain. A run refuses padding below 16 blocks per chunk of render
+distance: lower the render distance and the padding together to generate faster. Patches
+that would show void below their ground, contain a natural target block or offer fewer than
+16 places for a target are skipped. Every patch is its own split group, and patches are at
+least the region separation apart. New terrain is generated on first use and stays in the
+save, tens of megabytes per patch. `/honeyfactory_env reset preset level5 <seed> <index>`
+prepares the patch a dataset with that seed would use and shows one of its scenes.
+
+### Throughput
+
+A run logs where its time went when it ends (`Dataset timings: …`). On the reference machine
+at the default sizes, one image takes about 0.09 s on a platform in perspective mode, 0.21 s
+as a panorama, and 0.26 s and 0.40 s on natural terrain (ADR 0013).
 
 - **Before starting:** the run refuses to start unless the output file system holds the
   whole dataset uncompressed plus the free-space reserve.
@@ -168,7 +195,10 @@ fixture to `build/m3-review/`, and the dataset test writes two regenerated datas
 `build/m3-datasets/`. The M4 gate writes level 1–3 smoke datasets and a cancelled run to
 `build/m4-datasets/`. The M5 gate writes panoramas, overlays and raw faces to
 `build/m5-review/` and panorama datasets to `build/m5-datasets/`. Golden visible masks
-live in `tests/honey-factory/gametest/resources/golden/m3/` and `golden/m5/`. A missing golden fails the gate and is
+live in `tests/honey-factory/gametest/resources/golden/m3/` and `golden/m5/`. The M6 tests write
+level-4 and mixed-recipe datasets to `build/m6-datasets/`, level-5 datasets, a review
+panorama and a padding benchmark to `build/m6-natural/`, and the throughput profile to
+`build/m6-throughput/`. A missing golden fails the gate and is
 written for review. After a reviewed change, rewrite them all with
 `./gradlew runClientGameTest -Dhoneyfactory.regenerateGolden=true`.
 
