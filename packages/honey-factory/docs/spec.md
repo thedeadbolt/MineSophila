@@ -873,8 +873,8 @@ place is not supported; regenerate it instead.
 
 | Action | Configurable parameter | Meaning |
 |---|---|---|
-| `TURN` | yaw degrees | Turn in place. Positive/negative convention must be documented. |
-| `LOOK` | pitch degrees | Change look pitch within Minecraft limits. |
+| `TURN` | yaw degrees | Turn in place. Positive turns right (clockwise seen from above). |
+| `LOOK` | pitch degrees | Change look pitch within Minecraft limits. Positive looks down. |
 | `MOVE_FORWARD` | game ticks | Apply forward player movement for the requested duration. |
 | `WAIT` | game ticks | Advance without commanded movement. |
 | `STOP` | none | Release all movement inputs. |
@@ -883,11 +883,33 @@ place is not supported; regenerate it instead.
 Action ranges and optional discrete presets remain configurable. Degree/tick actions
 are the environment contract; keyboard press duration is not the public abstraction.
 
+Agreed with M7 ([ADR 0014](../../../docs/adr/0014-movement-actions.md)):
+
+- Turns and looks apply at once. Yaw wraps to [-180, 180) and pitch is clamped to
+  [-90, 90]; the completed value is the change actually made, so a look may complete
+  less than it requested.
+- Ticks are player ticks. MOVE_FORWARD holds forward for exactly its ticks and WAIT holds
+  nothing for its ticks; STOP advances none. Momentum left after an action decays in
+  later ticks; it is not cancelled.
+- Default limits are ±180° for turns and looks and 1–200 ticks for moves and waits.
+  Requests outside the limits, and MINE, are rejected without changing state. Discrete
+  presets are not implemented.
+- Steps act on the player's body: the first step after a reset or viewpoint switches the
+  spectator camera to invulnerable adventure mode where it stands, so gravity and
+  collisions apply but blocks cannot change. A viewpoint makes it a camera again.
+- A step completes once the client has rendered the result and the server reports every
+  input released, then captures. Its result carries the operation, the scene's reset
+  operation, its index in the scene, requested and completed values, client and server
+  ticks, auto-jump presses, collision state and the observation.
+- Leaving the arena's reset volume fails the step with `OUT_OF_ARENA`.
+
 Use Minecraft Java Edition's existing auto-jump setting as the first movement helper.
 Make it configurable per environment run, initially enabled for assisted movement,
 and record its resolved value in episode metadata. Test that programmatic forward
 movement invokes the same vanilla behaviour in Minecraft 26.3. If the mod temporarily
-changes a user's option, restore the previous value when the run ends.
+changes a user's option, restore the previous value when the run ends. The
+implementation borrows the option only while each step runs, and every step result
+records the resolved value.
 
 Vanilla auto-jump is movement assistance, not navigation: it does not choose turns,
 targets or routes. Do not add custom jump/pathfinding logic unless tests show vanilla

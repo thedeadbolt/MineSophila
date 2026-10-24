@@ -17,7 +17,11 @@ runner with level-2 clutter and level-3 partial-hiding generators
 ([findings](docs/m4-dataset-runner.md),
 [ADR 0009](../../docs/adr/0009-dataset-runner-and-levels-2-3.md)); and M5's 310-degree
 panoramic capture ([findings](docs/m5-panoramic-capture.md),
-[ADR 0010](../../docs/adr/0010-panoramic-capture.md)). Datasets follow the
+[ADR 0010](../../docs/adr/0010-panoramic-capture.md)); M6's constructed and natural scenes
+built from scene recipes ([findings](docs/m6-constructed-natural.md), ADRs
+[0011](../../docs/adr/0011-scene-recipes.md)–[0013](../../docs/adr/0013-dataset-throughput.md));
+and M7's movement actions ([findings](docs/m7-movement-actions.md),
+[ADR 0014](../../docs/adr/0014-movement-actions.md)). Datasets follow the
 language-neutral [data contract](../../schemas/honey-factory/), and
 [`honey-factory-tools`](../honey-factory-tools/) validates them outside Minecraft.
 See the proposed scenario generation and frame capture in the
@@ -37,7 +41,7 @@ The mod id is `honey_factory`; Java packages use `io.github.thedeadbolt.honeyfac
   validates generation settings; `dataset/` plans scene slots and checks records against
   each other, writes dataset directories and validates them; `scene/` builds immutable
   scene plans and holds the level generators; `capture/` holds the capture projections;
-  `environment/` holds the operation state machine; `generation/` runs a dataset through
+  `environment/` holds the operation state machine, movement actions and their limits; `generation/` runs a dataset through
   an environment interface. Dependencies point toward `contract/`, and none of these
   import Minecraft. `world/` applies plans to owned worlds on the logical server.
 - `src/client/`: client entrypoint, the capture service and mask renderer
@@ -55,7 +59,7 @@ Run from the repository root:
 just mod-test      # JUnit tests
 just mod-build     # compile, test and package the mod
 just mod-client    # launch a development Minecraft client
-just mod-gametest  # run client game tests: the M2 environment, M3 gates, M4 datasets and M5 panorama gate
+just mod-gametest  # run client game tests: the M2 and M7 environment, M3 gates, M4–M6 datasets and M5 panorama gate
 ```
 
 ### Dataset worlds and the environment
@@ -68,19 +72,33 @@ world with **World Type: Honey Factory Dataset**, then claim it by typing its ex
 /honeyfactory world status
 ```
 
-The environment commands drive the same runtime that tests and the future dataset runner
-use:
+The environment commands drive the same runtime that tests and the dataset runner use:
 
 ```text
 /honeyfactory_env reset <fixture>                         build a fixture scene, e.g. open, partial, fence
 /honeyfactory_env reset preset <name> [seed [index]]      build one scene of a preset, e.g. level4 7 2
 /honeyfactory_env reset recipe <file> [seed [index]]      the same for a recipe file in the game directory
+/honeyfactory_env reset course                            build the movement course
 /honeyfactory_env viewpoint fixture | <x> <y> <z> <yaw> <pitch>
+/honeyfactory_env viewpoint course <lane>                 stand at a course lane: step, wall, slab, stairs, fence
 /honeyfactory_env observe <label> <width> <height>        capture into honey-factory-debug/<label>/
 /honeyfactory_env observe <label> <width> <height> panorama <face size>
                                                           the same as a panorama, with each cube face in faces/
+/honeyfactory_env step turn|look <degrees>                turn right / look down (negative: left / up)
+/honeyfactory_env step move_forward|wait <ticks>          walk forward / stand still for player ticks
+/honeyfactory_env step stop                               release every input
+/honeyfactory_env settings [autojump <true|false>]        show settings, or set auto-jump for later steps
+/honeyfactory_env history                                 the last ten finished operations, in order
 /honeyfactory_env status
 ```
+
+A step moves the player's body with gravity and collisions: the first step after a reset
+or viewpoint turns the camera into an invulnerable adventure-mode player where it stands.
+Movement goes through Minecraft's own input and auto-jump, which is on by default; your
+auto-jump option and keyboard are borrowed only while a step runs. Each step reports the
+requested and completed values and ticks, auto-jump presses, collisions and the server
+tick, and captures a 320 × 240 view. Mining is rejected. In Java, `EnvironmentRuntime.step`
+takes an `Action` and a projection, and `configure` sets the action limits and auto-jump.
 
 `/honeyfactory world release` restores the game rules, time, weather and player state the
 scenes changed. Every reset only clears the arena in the void `honey_factory:arena`
@@ -198,7 +216,8 @@ fixture to `build/m3-review/`, and the dataset test writes two regenerated datas
 live in `tests/honey-factory/gametest/resources/golden/m3/` and `golden/m5/`. The M6 tests write
 level-4 and mixed-recipe datasets to `build/m6-datasets/`, level-5 datasets, a review
 panorama and a padding benchmark to `build/m6-natural/`, and the throughput profile to
-`build/m6-throughput/`. A missing golden fails the gate and is
+`build/m6-throughput/`. The M7 test writes the movement-course results to
+`build/m7-environment/`. A missing golden fails the gate and is
 written for review. After a reviewed change, rewrite them all with
 `./gradlew runClientGameTest -Dhoneyfactory.regenerateGolden=true`.
 

@@ -27,7 +27,8 @@ import net.minecraft.world.phys.Vec3;
  *
  * <p>World baseline: no daylight or weather cycle, no mob spawning or griefing, no random
  * block ticks, and spectators still load chunks. Player baseline: spectator mode (no
- * collision, held item or rendered hand), zero velocity, placed by the arena executor.
+ * collision, held item or rendered hand), zero velocity, placed by the arena executor;
+ * movement actions use invulnerable adventure mode instead.
  */
 public final class Baseline {
 	private static final int WEATHER_DURATION_TICKS = 1_000_000;
@@ -111,6 +112,24 @@ public final class Baseline {
 
 	/** Snapshots a player once per run and puts them in spectator mode without velocity. */
 	public static void preparePlayer(MinecraftServer server, ServerPlayer player) {
+		snapshotPlayer(server, player);
+		player.setGameMode(GameType.SPECTATOR);
+		player.setDeltaMovement(Vec3.ZERO);
+	}
+
+	/**
+	 * Snapshots a player once per run and gives them a body for movement actions: adventure
+	 * mode, so they collide and fall but cannot break or place blocks, and invulnerable, so a
+	 * fall or a fluid cannot end the episode. Velocity is kept.
+	 */
+	public static void prepareBody(MinecraftServer server, ServerPlayer player) {
+		snapshotPlayer(server, player);
+		player.setGameMode(GameType.ADVENTURE);
+		player.getAbilities().invulnerable = true;
+		player.onUpdateAbilities();
+	}
+
+	private static void snapshotPlayer(MinecraftServer server, ServerPlayer player) {
 		WorldOwnership ownership = WorldOwnership.of(server);
 		WorldOwnership.Record record = WorldGuard.requireOwned(server);
 		WorldOwnership.WorldSnapshot snapshot = record.baseline().orElseThrow(() -> new IllegalStateException("Apply the world baseline first"));
@@ -126,9 +145,6 @@ public final class Baseline {
 				player.getXRot()
 			))));
 		}
-
-		player.setGameMode(GameType.SPECTATOR);
-		player.setDeltaMovement(Vec3.ZERO);
 	}
 
 	/**

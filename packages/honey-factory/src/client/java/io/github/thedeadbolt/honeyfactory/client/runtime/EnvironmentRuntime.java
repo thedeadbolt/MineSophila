@@ -4,8 +4,10 @@ import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
 import io.github.thedeadbolt.honeyfactory.config.ConfigResolver;
 import io.github.thedeadbolt.honeyfactory.contract.BlockBox;
+import io.github.thedeadbolt.honeyfactory.environment.Action;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
+import io.github.thedeadbolt.honeyfactory.environment.EnvironmentSettings;
 import io.github.thedeadbolt.honeyfactory.environment.Operation;
 import io.github.thedeadbolt.honeyfactory.environment.OperationCoordinator;
 import io.github.thedeadbolt.honeyfactory.environment.OperationKind;
@@ -18,6 +20,7 @@ import io.github.thedeadbolt.honeyfactory.world.ArenaExecutor;
 import io.github.thedeadbolt.honeyfactory.world.BlockStates;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -27,19 +30,24 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.ClientInput;
+import net.minecraft.client.player.KeyboardInput;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.server.level.ChunkTrackingView;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Input;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The client-side environment coordinator: the single implementation of
  * {@code reset}, {@code setViewpoint}, {@code observe}, {@code status} and {@code step}
- * that commands, tests and later the dataset runner all call.
+ * that commands, tests and the dataset runner all call.
  *
  * <p>Requests return futures completed on the client thread. Server work runs on the
  * integrated server thread. Once it finishes, readiness is polled every client tick
@@ -57,6 +65,42 @@ public final class EnvironmentRuntime {
 	}
 
 	public record ViewpointState(String operationId, CameraPose pose, long settledTicks) {
+	}
+
+	/**
+	 * The outcome of one step, ordered within its scene by {@code index} from 1. Values are in
+	 * the action's unit; {@code completedTicks} counts player ticks the action held inputs
+	 * for. {@code startTick} and {@code endTick} are client ticks when the action began and
+	 * ended, and {@code serverTick} is when the server confirmed every input released. The
+	 * flags describe the player when the action ended; {@code collided} is whether it hit
+	 * anything sideways during it. The observation, and so the resulting pose, follows
+	 * settling.
+	 */
+	public record StepResult(
+		String operationId,
+		String sceneOperationId,
+		int index,
+		Action action,
+		double completed,
+		int completedTicks,
+		long startTick,
+		long endTick,
+		long serverTick,
+		boolean autoJump,
+		int autoJumps,
+		boolean collided,
+		boolean onGround,
+		boolean horizontalCollision,
+		CameraPose before,
+		Observation observation
+	) {
+		public double requested() {
+			return this.action.requested();
+		}
+
+		public CameraPose after() {
+			return this.observation.pose();
+		}
 	}
 
 	/** One capture and the camera it was taken from; light levels and biome are at the eye. */
@@ -80,13 +124,17 @@ public final class EnvironmentRuntime {
 	private static final int STABLE_FRAMES = 2;
 
 	private OperationCoordinator coordinator = new OperationCoordinator();
-	private final Timing timing;
+	private Timing timing;
+	private EnvironmentSettings settings = EnvironmentSettings.DEFAULT;
 	private long tick;
 	private long frames;
 	private @Nullable Pending<?, ?> pending;
 	private @Nullable ArenaLayout arena;
 	private @Nullable ScenePlan scene;
 	private @Nullable String layoutSha256;
+	private @Nullable String sceneOperationId;
+	private int stepsInScene;
+	private @Nullable StepDriver stepDriver;
 	private ArenaExecutor.@Nullable ResetResult lastReset;
 	private @Nullable Runnable deferredCapture;
 	private @Nullable PoseSequence poseSequence;
@@ -134,16 +182,58 @@ public final class EnvironmentRuntime {
 			running.fail(new EnvironmentException(EnvironmentException.Reason.NO_LOCAL_RUNTIME, "disconnected from the world"));
 		}
 
+		endStep();
 		this.coordinator = new OperationCoordinator();
 		this.deferredCapture = null;
 		this.poseSequence = null;
 		this.arena = null;
 		this.scene = null;
 		this.layoutSha256 = null;
+		this.sceneOperationId = null;
 	}
 
 	public OperationCoordinator.Status status() {
 		return this.coordinator.status();
+	}
+
+	/** Finished operations in order, oldest first; see {@link OperationCoordinator#history}. */
+	public List<OperationCoordinator.Finished> history() {
+		return this.coordinator.history();
+	}
+
+	public EnvironmentSettings settings() {
+		return this.settings;
+	}
+
+	/**
+	 * Sets action limits and auto-jump for later steps.
+	 *
+	 * @throws EnvironmentException {@link EnvironmentException.Reason#BUSY} while an operation runs
+	 */
+	public void configure(EnvironmentSettings settings) {
+		requireIdle("settings");
+		this.settings = Objects.requireNonNull(settings);
+	}
+
+	public Timing timing() {
+		return this.timing;
+	}
+
+	/**
+	 * Sets settling minimums and timeouts for later operations.
+	 *
+	 * @throws EnvironmentException {@link EnvironmentException.Reason#BUSY} while an operation runs
+	 */
+	public void configureTiming(Timing timing) {
+		requireIdle("timing");
+		this.timing = Objects.requireNonNull(timing);
+	}
+
+	private void requireIdle(String what) {
+		Operation running = this.coordinator.status().current();
+		if (running != null) {
+			throw new EnvironmentException(EnvironmentException.Reason.BUSY, "cannot change " + what + " while " + running.id() + " (" + running.kind() + ") runs");
+		}
 	}
 
 	/** The scene of the last successful reset, or null. */
@@ -184,6 +274,8 @@ public final class EnvironmentRuntime {
 			return new Pending<>(operation, work, this.timing.resetSettleTicks(), this.timing.resetTimeoutTicks(), result -> readiness.ready(Minecraft.getInstance(), result), (result, settled) -> {
 				this.scene = plan;
 				this.layoutSha256 = result.layoutSha256();
+				this.sceneOperationId = operation.id();
+				this.stepsInScene = 0;
 				this.lastReset = result;
 				return new SceneState(operation.id(), result.layoutSha256(), result.serverTick(), settled, clientPose(Minecraft.getInstance()));
 			});
@@ -216,19 +308,8 @@ public final class EnvironmentRuntime {
 			BlockPos targetPos = target == null ? null : new BlockPos(target[0], target[1], target[2]);
 			CompletableFuture<Observation> work = new CompletableFuture<>();
 			this.deferredCapture = () -> {
-				Minecraft minecraft = Minecraft.getInstance();
 				try {
-					CaptureService.Capture capture = CaptureService.capture(minecraft, projection, targetPos);
-					LocalPlayer player = minecraft.player;
-					BlockPos eye = BlockPos.containing(player.getEyePosition());
-					work.complete(new Observation(
-						operation.id(),
-						capture,
-						clientPose(minecraft),
-						minecraft.level.getBiome(eye).unwrapKey().map(key -> key.identifier().toString()).orElse(null),
-						minecraft.level.getBrightness(LightLayer.SKY, eye),
-						minecraft.level.getBrightness(LightLayer.BLOCK, eye)
-					));
+					work.complete(capture(Minecraft.getInstance(), operation, projection, targetPos));
 				} catch (RuntimeException e) {
 					work.completeExceptionally(e);
 				}
@@ -280,7 +361,7 @@ public final class EnvironmentRuntime {
 				if (this.movedAtFrame < 0) {
 					LocalPlayer player = minecraft.player;
 					player.snapTo(pose.x(), pose.y(), pose.z(), pose.yawDegrees(), pose.pitchDegrees());
-					player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
+					player.setDeltaMovement(Vec3.ZERO);
 					this.movedAtFrame = EnvironmentRuntime.this.frames;
 					return false;
 				}
@@ -289,16 +370,7 @@ public final class EnvironmentRuntime {
 					return false;
 				}
 
-				CaptureService.Capture capture = CaptureService.capture(minecraft, this.projection, this.target);
-				BlockPos eye = BlockPos.containing(minecraft.player.getEyePosition());
-				this.observations.add(new Observation(
-					this.operation.id(),
-					capture,
-					clientPose(minecraft),
-					minecraft.level.getBiome(eye).unwrapKey().map(key -> key.identifier().toString()).orElse(null),
-					minecraft.level.getBrightness(LightLayer.SKY, eye),
-					minecraft.level.getBrightness(LightLayer.BLOCK, eye)
-				));
+				this.observations.add(capture(minecraft, this.operation, this.projection, this.target));
 				this.index++;
 				this.movedAtFrame = -1;
 				if (this.index == this.poses.size()) {
@@ -314,9 +386,247 @@ public final class EnvironmentRuntime {
 		}
 	}
 
-	/** Movement actions arrive in M7; until then every step is rejected without changing state. */
-	public CompletableFuture<Void> step(String action) {
-		return CompletableFuture.failedFuture(new EnvironmentException(EnvironmentException.Reason.UNSUPPORTED, "step actions are not implemented until M7: " + action));
+	/**
+	 * Applies {@code action} to the player's body in the current scene, then captures
+	 * through {@code projection}. The first step after a reset or viewpoint turns the
+	 * spectator camera into an invulnerable adventure-mode body where it stands, so gravity
+	 * and collisions apply and blocks cannot change. The step's own input replaces the
+	 * keyboard and the configured auto-jump replaces the user's option until the step ends;
+	 * both are restored however it ends. Turn, look and stop apply at once; move and wait
+	 * run for their ticks. Every input is released when the action ends, and the step
+	 * settles until the client has rendered the result and the server has seen the release.
+	 *
+	 * <p>A request outside the configured limits, or a mine request, is rejected without
+	 * changing state. Leaving the arena's reset volume fails the step with
+	 * {@link EnvironmentException.Reason#OUT_OF_ARENA}.
+	 */
+	public CompletableFuture<StepResult> step(Action action, CaptureProjection projection) {
+		try {
+			this.settings.limits().check(action);
+		} catch (EnvironmentException e) {
+			return CompletableFuture.failedFuture(e);
+		}
+
+		return start(OperationKind.STEP, (server, operation) -> {
+			Minecraft minecraft = Minecraft.getInstance();
+			ArenaLayout layout = this.arena;
+			StepDriver driver = new StepDriver(action, this.settings.autoJump(), layout, clientPose(minecraft));
+			this.stepDriver = driver;
+			driver.install(minecraft);
+			driver.embodied = server.submit(() -> ArenaExecutor.embody(server, player(server), layout));
+			RenderStability stability = new RenderStability();
+			int[] target = this.scene.targetPosition(layout);
+			BlockPos targetPos = target == null ? null : new BlockPos(target[0], target[1], target[2]);
+			Pending<StepDriver.End, StepResult> pending = new Pending<>(operation, driver.end, this.timing.viewpointSettleTicks(), this.timing.viewpointTimeoutTicks(), end -> {
+				driver.requireInArena(minecraft);
+				return stability.holds(inArena(minecraft) && sectionsCompiled(minecraft)) && driver.releaseConfirmed(server);
+			}, (end, settled) -> {
+				this.coordinator.advance(operation, OperationState.CAPTURING);
+				Observation observation = capture(minecraft, operation, projection, targetPos);
+				int autoJumps = driver.input.autoJumps();
+				endStep();
+				return new StepResult(
+					operation.id(), this.sceneOperationId, ++this.stepsInScene, action, end.completed(), end.ticks(),
+					end.startTick(), end.endTick(), driver.serverTick, driver.autoJump, autoJumps,
+					end.collided(), end.onGround(), end.horizontalCollision(), driver.before, observation
+				);
+			});
+			// The work is the action itself: waiting for the body, then its ticks.
+			pending.workTimeoutTicks = action.ticks() + this.timing.viewpointTimeoutTicks();
+			pending.afterWork = () -> this.coordinator.advance(operation, OperationState.SETTLING);
+			return pending;
+		});
+	}
+
+	/**
+	 * One step's action, advanced at the end of each client tick: it waits until the client
+	 * shows the body and the configured auto-jump, applies the action, then counts the
+	 * player ticks that poll its input until the action is done.
+	 */
+	private final class StepDriver {
+		/** How the action ended; ticks are client ticks. */
+		record End(double completed, int ticks, long startTick, long endTick, boolean collided, boolean onGround, boolean horizontalCollision) {
+		}
+
+		private final Action action;
+		private final boolean autoJump;
+		private final ArenaLayout arena;
+		private final CameraPose before;
+		private final ScriptedInput input = new ScriptedInput();
+		private final CompletableFuture<End> end = new CompletableFuture<>();
+		private CompletableFuture<Long> embodied = new CompletableFuture<>();
+		private @Nullable ClientInput savedInput;
+		private @Nullable Boolean savedAutoJump;
+		private @Nullable CompletableFuture<Long> release;
+		private long serverTick = -1;
+		private long startTick = -1;
+		private int startTicked;
+		private boolean collided;
+
+		StepDriver(Action action, boolean autoJump, ArenaLayout arena, CameraPose before) {
+			this.action = action;
+			this.autoJump = autoJump;
+			this.arena = arena;
+			this.before = before;
+		}
+
+		/** Replaces the keyboard with this step's input and the user's auto-jump option with the configured one. */
+		void install(Minecraft minecraft) {
+			this.savedInput = minecraft.player.input;
+			minecraft.player.input = this.input;
+			this.savedAutoJump = minecraft.options.autoJump().get();
+			minecraft.options.autoJump().set(this.autoJump);
+		}
+
+		/** Gives back the keyboard and the user's option. */
+		void restore(Minecraft minecraft) {
+			this.input.release();
+			if (minecraft.player != null && minecraft.player.input == this.input) {
+				minecraft.player.input = this.savedInput != null ? this.savedInput : new KeyboardInput(minecraft.options);
+			}
+
+			if (this.savedAutoJump != null) {
+				minecraft.options.autoJump().set(this.savedAutoJump);
+			}
+		}
+
+		void tick(Minecraft minecraft) {
+			if (this.end.isDone()) {
+				return;
+			}
+
+			try {
+				if (this.startTick < 0) {
+					if (this.embodied.isDone() && (this.embodied.isCompletedExceptionally() || bodyShown(minecraft))) {
+						this.embodied.join();
+						begin(minecraft);
+					}
+				} else {
+					progress(minecraft);
+				}
+			} catch (CompletionException e) {
+				this.input.release();
+				this.end.completeExceptionally(e.getCause() != null ? e.getCause() : e);
+			} catch (RuntimeException e) {
+				this.input.release();
+				this.end.completeExceptionally(e);
+			}
+		}
+
+		/** Whether the client has the body: adventure mode, not flying, and auto-jump as configured. */
+		private boolean bodyShown(Minecraft minecraft) {
+			LocalPlayer player = minecraft.player;
+			return minecraft.gameMode.getPlayerMode() == GameType.ADVENTURE && !player.getAbilities().flying && player.isAutoJumpEnabled() == this.autoJump;
+		}
+
+		private void begin(Minecraft minecraft) {
+			LocalPlayer player = minecraft.player;
+			this.startTick = EnvironmentRuntime.this.tick;
+			this.startTicked = this.input.ticked();
+			switch (this.action) {
+				case Action.Turn turn -> {
+					float from = Action.wrapDegrees(player.getYRot());
+					float yaw = turn.resultingYaw(player.getYRot());
+					float turned = Action.wrapDegrees(yaw - from);
+					rotate(player, yaw, player.getXRot());
+					// A half turn wraps to -180 either way; report it with the requested sign.
+					finish(player, turned == -180.0F && turn.degrees() > 0 ? 180.0F : turned, 0);
+				}
+				case Action.Look look -> {
+					float pitch = look.resultingPitch(player.getXRot());
+					float looked = pitch - player.getXRot();
+					rotate(player, player.getYRot(), pitch);
+					finish(player, looked, 0);
+				}
+				case Action.MoveForward move -> this.input.hold(move.ticks());
+				case Action.Wait wait -> {
+				}
+				case Action.Stop stop -> {
+					this.input.release();
+					finish(player, 0.0, 0);
+				}
+				case Action.Mine mine -> throw new EnvironmentException(EnvironmentException.Reason.UNSUPPORTED, "MINE is not supported");
+			}
+		}
+
+		private void progress(Minecraft minecraft) {
+			LocalPlayer player = minecraft.player;
+			this.collided |= player.horizontalCollision;
+			requireInArena(minecraft);
+			int ticks = this.action instanceof Action.MoveForward ? this.input.held() : this.input.ticked() - this.startTicked;
+			if (ticks >= this.action.ticks()) {
+				this.input.release();
+				finish(player, ticks, ticks);
+			}
+		}
+
+		private void finish(LocalPlayer player, double completed, int ticks) {
+			this.end.complete(new End(completed, ticks, this.startTick, EnvironmentRuntime.this.tick, this.collided, player.onGround(), player.horizontalCollision));
+		}
+
+		/** Throws once the player's feet or eye leave the arena's reset volume. */
+		void requireInArena(Minecraft minecraft) {
+			LocalPlayer player = minecraft.player;
+			BlockBox volume = this.arena.resetVolume();
+			BlockPos feet = player.blockPosition();
+			BlockPos eye = BlockPos.containing(player.getEyePosition());
+			if (!inArena(minecraft) || !volume.contains(feet.getX(), feet.getY(), feet.getZ()) || !volume.contains(eye.getX(), eye.getY(), eye.getZ())) {
+				throw new EnvironmentException(EnvironmentException.Reason.OUT_OF_ARENA, this.action.type() + " took the player to " + clientPose(minecraft) + ", outside the arena reset volume " + volume);
+			}
+		}
+
+		/** Whether the server has seen every input released; asks it again each tick until it has. */
+		boolean releaseConfirmed(IntegratedServer server) {
+			if (this.release == null) {
+				this.release = server.submit(() -> player(server).getLastClientInput().equals(Input.EMPTY) ? (long) server.getTickCount() : -1L);
+				return false;
+			}
+
+			if (!this.release.isDone()) {
+				return false;
+			}
+
+			long tick = this.release.join();
+			this.release = null;
+			if (tick < 0) {
+				return false;
+			}
+
+			this.serverTick = tick;
+			return true;
+		}
+	}
+
+	/** Sets the player's view without interpolating from the previous rotation. */
+	private static void rotate(LocalPlayer player, float yaw, float pitch) {
+		player.setYRot(yaw);
+		player.setXRot(pitch);
+		player.yRotO = yaw;
+		player.xRotO = pitch;
+		player.setYHeadRot(yaw);
+	}
+
+	/** Ends the running step, if any, giving back the keyboard and the user's auto-jump option. */
+	private void endStep() {
+		StepDriver driver = this.stepDriver;
+		this.stepDriver = null;
+		if (driver != null) {
+			driver.restore(Minecraft.getInstance());
+		}
+	}
+
+	/** Captures from the current camera; light levels and biome are read at the eye. */
+	private static Observation capture(Minecraft minecraft, Operation operation, CaptureProjection projection, @Nullable BlockPos target) {
+		CaptureService.Capture capture = CaptureService.capture(minecraft, projection, target);
+		BlockPos eye = BlockPos.containing(minecraft.player.getEyePosition());
+		return new Observation(
+			operation.id(),
+			capture,
+			clientPose(minecraft),
+			minecraft.level.getBiome(eye).unwrapKey().map(key -> key.identifier().toString()).orElse(null),
+			minecraft.level.getBrightness(LightLayer.SKY, eye),
+			minecraft.level.getBrightness(LightLayer.BLOCK, eye)
+		);
 	}
 
 	private <R> CompletableFuture<R> start(OperationKind kind, BiFunction<IntegratedServer, Operation, Pending<?, R>> launcher) {
@@ -352,6 +662,11 @@ public final class EnvironmentRuntime {
 		}
 
 
+		StepDriver driver = this.stepDriver;
+		if (driver != null) {
+			driver.tick(Minecraft.getInstance());
+		}
+
 		Pending<?, ?> running = this.pending;
 		// Completing an operation may start the caller's next one; keep that one pending.
 		if (running != null && running.poll(this.tick) && this.pending == running) {
@@ -360,10 +675,12 @@ public final class EnvironmentRuntime {
 	}
 
 	private void onFailure(Operation operation, RuntimeException error) {
-		this.coordinator.fail(operation, error.getMessage());
+		endStep();
+		this.coordinator.fail(operation, error.getMessage(), this.tick);
 		if (operation.kind() == OperationKind.RESET) {
 			this.scene = null;
 			this.layoutSha256 = null;
+			this.sceneOperationId = null;
 		}
 	}
 
@@ -482,6 +799,7 @@ public final class EnvironmentRuntime {
 		private final BiFunction<V, Long, R> complete;
 		private final CompletableFuture<R> result = new CompletableFuture<>();
 		private final long startTick = EnvironmentRuntime.this.tick;
+		private int workTimeoutTicks = EnvironmentRuntime.this.timing.serverTimeoutTicks();
 		private @Nullable ReadinessGate gate;
 		private @Nullable Runnable afterWork;
 
@@ -497,11 +815,11 @@ public final class EnvironmentRuntime {
 		/** Advances the operation; returns true once it has succeeded or failed. */
 		boolean poll(long tick) {
 			if (!this.work.isDone()) {
-				if (tick - this.startTick <= EnvironmentRuntime.this.timing.serverTimeoutTicks()) {
+				if (tick - this.startTick <= this.workTimeoutTicks) {
 					return false;
 				}
 
-				return fail(new EnvironmentException(EnvironmentException.Reason.TIMEOUT, this.operation.kind() + " work did not finish within " + EnvironmentRuntime.this.timing.serverTimeoutTicks() + " ticks"));
+				return fail(new EnvironmentException(EnvironmentException.Reason.TIMEOUT, this.operation.kind() + " work did not finish within " + this.workTimeoutTicks + " ticks"));
 			}
 
 			try {
@@ -519,7 +837,7 @@ public final class EnvironmentRuntime {
 					case TIMED_OUT -> fail(new EnvironmentException(EnvironmentException.Reason.TIMEOUT, this.operation.kind() + " was not ready within " + this.timeoutTicks + " ticks"));
 					case READY -> {
 						R built = this.complete.apply(value, this.gate.waited(tick));
-						EnvironmentRuntime.this.coordinator.complete(this.operation);
+						EnvironmentRuntime.this.coordinator.complete(this.operation, tick);
 						this.result.complete(built);
 						yield true;
 					}

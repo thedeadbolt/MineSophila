@@ -108,6 +108,81 @@ public final class FixturePlans {
 	}
 
 
+	/**
+	 * Lanes of the movement course, west to east: each obstacle is three blocks wide,
+	 * centred on {@code centreX}, and starts at z = {@value #COURSE_OBSTACLE_Z}, so a player
+	 * walking north from {@link #courseStart} meets it after about 3.2 blocks.
+	 */
+	public enum Lane {
+		/** A one-block step onto a raised floor eight blocks deep: auto-jump climbs it, walking alone does not. */
+		STEP(4),
+		/** A wall two blocks high: too high for auto-jump. */
+		WALL(10),
+		/** A floor of bottom slabs: walked up without jumping. */
+		SLAB(16),
+		/** One straight stair onto the raised floor: walked up without jumping. */
+		STAIRS(22),
+		/** A fence row, 1.5 blocks high: too high for auto-jump. */
+		FENCE(28);
+
+		private final int centreX;
+
+		Lane(int centreX) {
+			this.centreX = centreX;
+		}
+
+		public int centreX() {
+			return this.centreX;
+		}
+	}
+
+	/** Arena-relative z of each lane obstacle's south face; raised floors run north from it to z = 10. */
+	public static final int COURSE_OBSTACLE_Z = 18;
+
+	/**
+	 * The movement course on the platform arena: one lane per {@link Lane} and no target.
+	 * Floor top is y = 1, so a player on the floor stands at arena-relative y = 1, on a slab
+	 * at 1.5 and on the raised floor at 2.
+	 */
+	public static ScenePlan course() {
+		List<Placement> delta = new ArrayList<>();
+		for (Lane lane : Lane.values()) {
+			for (int x = lane.centreX() - 1; x <= lane.centreX() + 1; x++) {
+				int z = COURSE_OBSTACLE_Z;
+				switch (lane) {
+					case STEP -> raisedFloor(delta, x, z, "minecraft:stone");
+					case WALL -> {
+						delta.add(new Placement(x, 1, z, "minecraft:stone"));
+						delta.add(new Placement(x, 2, z, "minecraft:stone"));
+					}
+					case SLAB -> {
+						for (int row = 10; row <= z; row++) {
+							delta.add(new Placement(x, 1, row, "minecraft:stone_slab[type=bottom,waterlogged=false]"));
+						}
+					}
+					case STAIRS -> {
+						delta.add(new Placement(x, 1, z, "minecraft:stone_stairs[facing=north,half=bottom,shape=straight,waterlogged=false]"));
+						raisedFloor(delta, x, z - 1, "minecraft:stone");
+					}
+					case FENCE -> delta.add(new Placement(x, 1, z, "minecraft:oak_fence[east=" + (x < lane.centreX() + 1) + ",north=false,south=false,waterlogged=false,west=" + (x > lane.centreX() - 1) + "]"));
+				}
+			}
+		}
+
+		return new ScenePlan(Template.platform("platform", 1, SIZE, SIZE, HEIGHT, FLOOR), delta, null, 6000, Weather.CLEAR);
+	}
+
+	/** Feet position facing north, four and a half blocks south of {@code lane}'s obstacle. */
+	public static ViewpointPlan courseStart(Lane lane) {
+		return new ViewpointPlan(lane.centreX() + 0.5, 1.0, COURSE_OBSTACLE_Z + 4.5, 180.0F, 0.0F);
+	}
+
+	private static void raisedFloor(List<Placement> delta, int x, int fromZ, String state) {
+		for (int z = 10; z <= fromZ; z++) {
+			delta.add(new Placement(x, 1, z, state));
+		}
+	}
+
 	/** Three blocks of {@code state} centred in front of the target at z = 19. */
 	private static void row(List<Placement> delta, int y, IntFunction<String> state) {
 		for (int x = 15; x <= 17; x++) {

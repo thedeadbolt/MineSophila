@@ -3,6 +3,7 @@ package io.github.thedeadbolt.honeyfactory.client.runtime;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
+import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -21,8 +22,10 @@ import io.github.thedeadbolt.honeyfactory.contract.Ids;
 import io.github.thedeadbolt.honeyfactory.contract.JsonFields;
 import io.github.thedeadbolt.honeyfactory.contract.MaskStatistics;
 import io.github.thedeadbolt.honeyfactory.contract.SceneSeeds;
+import io.github.thedeadbolt.honeyfactory.environment.Action;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
+import io.github.thedeadbolt.honeyfactory.environment.EnvironmentSettings;
 import io.github.thedeadbolt.honeyfactory.environment.Futures;
 import io.github.thedeadbolt.honeyfactory.environment.OperationCoordinator;
 import io.github.thedeadbolt.honeyfactory.scene.FixturePlans;
@@ -56,11 +59,19 @@ import net.minecraft.network.chat.Component;
  *                                           move to its first viewpoint; seed defaults to 0
  * reset recipe &lt;file&gt; [seed [index]]        the same for a recipe file in the game directory,
  *                                           written like a configuration's scene section
+ * reset course                              build the movement course and stand at its step lane
  * viewpoint fixture | &lt;x y z yaw pitch&gt;      place the camera (feet position)
+ * viewpoint course &lt;lane&gt;                   stand at the start of a course lane, facing north
  * observe &lt;label&gt; &lt;width&gt; &lt;height&gt;          capture RGB and masks into honey-factory-debug/&lt;label&gt;
  * observe &lt;label&gt; &lt;width&gt; &lt;height&gt; panorama &lt;face size&gt;
  *                                           the same for PANORAMA_310, with each cube face in faces/
- * step &lt;action&gt;                             rejected until M7
+ * step turn|look &lt;degrees&gt;                 turn right / look down by degrees (negative for left / up)
+ * step move_forward|wait &lt;ticks&gt;           hold forward / hold nothing for player ticks
+ * step stop                                 release every input
+ * step mine &lt;ticks&gt;                         rejected: mining is unsupported
+ *                                           each step captures a 320 x 240 perspective view
+ * settings [autojump &lt;true|false&gt;]          show settings, or set auto-jump for later steps
+ * history                                   the last finished operations, in order
  * status
  * </pre>
  */
@@ -68,6 +79,8 @@ public final class EnvironmentCommands {
 	public static final String DEBUG_DIRECTORY = "honey-factory-debug";
 
 	private static final Pattern LABEL = Pattern.compile("[a-z0-9_-]{1,64}");
+	private static final PerspectiveProjection STEP_PROJECTION = new PerspectiveProjection(320, 240);
+	private static final int HISTORY_LINES = 10;
 
 	private EnvironmentCommands() {
 	}
@@ -80,6 +93,21 @@ public final class EnvironmentCommands {
 					FixturePlans.ARENA, FixturePlans.plan(fixture), FixturePlans.viewpoint(fixture).pose()
 				), scene -> "Reset " + fixture.commandName() + " (" + scene.operationId() + "), layout " + scene.layoutSha256())));
 			}
+
+			reset.then(literal("course").executes(context -> report(context, EnvironmentRuntime.get().reset(
+				FixturePlans.ARENA, FixturePlans.course(), FixturePlans.courseStart(FixturePlans.Lane.STEP).pose()
+			), scene -> "Reset course (" + scene.operationId() + "), layout " + scene.layoutSha256())));
+			LiteralArgumentBuilder<FabricClientCommandSource> courseLanes = literal("course");
+			for (FixturePlans.Lane lane : FixturePlans.Lane.values()) {
+				courseLanes.then(literal(lane.name().toLowerCase(Locale.ROOT)).executes(context -> viewpoint(context, FixturePlans.courseStart(lane).pose())));
+			}
+
+			LiteralArgumentBuilder<FabricClientCommandSource> step = literal("step");
+			for (String type : List.of("turn", "look", "move_forward", "wait", "mine")) {
+				step.then(literal(type).then(argument("value", DoubleArgumentType.doubleArg()).executes(context -> step(context, type, DoubleArgumentType.getDouble(context, "value")))));
+			}
+
+			step.then(literal("stop").executes(context -> step(context, "stop", 0.0)));
 
 			reset.then(literal("preset").then(argument("name", StringArgumentType.word())
 				.suggests((context, builder) -> {
@@ -98,6 +126,7 @@ public final class EnvironmentCommands {
 				.then(reset)
 				.then(literal("viewpoint")
 					.then(literal("fixture").executes(context -> viewpoint(context, FixturePlans.VIEWPOINT.pose())))
+					.then(courseLanes)
 					.then(argument("x", DoubleArgumentType.doubleArg()).then(argument("y", DoubleArgumentType.doubleArg()).then(argument("z", DoubleArgumentType.doubleArg())
 						.then(argument("yaw", FloatArgumentType.floatArg(-180.0F, 180.0F)).then(argument("pitch", FloatArgumentType.floatArg(-90.0F, 90.0F))
 							.executes(context -> viewpoint(context, new CameraPose(
@@ -111,8 +140,28 @@ public final class EnvironmentCommands {
 					.then(argument("height", IntegerArgumentType.integer(PerspectiveProjection.MIN_SIZE, 4096)).executes(EnvironmentCommands::observe)
 						.then(literal("panorama").then(argument("face", IntegerArgumentType.integer(PanoramicProjection.MIN_SIZE, PanoramicProjection.MAX_FACE_SIZE))
 							.executes(EnvironmentCommands::observe)))))))
-				.then(literal("step").then(argument("action", StringArgumentType.word())
-					.executes(context -> report(context, EnvironmentRuntime.get().step(StringArgumentType.getString(context, "action")), ignored -> "Stepped"))))
+				.then(step)
+				.then(literal("settings").executes(EnvironmentCommands::showSettings)
+					.then(literal("autojump").then(argument("enabled", BoolArgumentType.bool()).executes(context -> {
+						try {
+							EnvironmentRuntime runtime = EnvironmentRuntime.get();
+							runtime.configure(runtime.settings().withAutoJump(BoolArgumentType.getBool(context, "enabled")));
+						} catch (EnvironmentException e) {
+							context.getSource().sendError(Component.literal(e.toString()));
+							return 0;
+						}
+
+						return showSettings(context);
+					}))))
+				.then(literal("history").executes(context -> {
+					List<OperationCoordinator.Finished> history = EnvironmentRuntime.get().history();
+					for (OperationCoordinator.Finished finished : history.subList(Math.max(0, history.size() - HISTORY_LINES), history.size())) {
+						context.getSource().sendFeedback(Component.literal(finished.operation().id() + " " + finished.operation().kind()
+							+ " ticks " + finished.operation().startTick() + "-" + finished.endTick() + (finished.succeeded() ? " ok" : " failed: " + finished.error())));
+					}
+
+					return 1;
+				}))
 				.then(literal("status").executes(context -> {
 					OperationCoordinator.Status status = EnvironmentRuntime.get().status();
 					context.getSource().sendFeedback(Component.literal("State " + status.state()
@@ -121,6 +170,41 @@ public final class EnvironmentCommands {
 					return 1;
 				})));
 		});
+	}
+
+	private static int step(CommandContext<FabricClientCommandSource> context, String type, double value) {
+		Action action;
+		try {
+			action = Action.parse(type, value);
+		} catch (EnvironmentException e) {
+			context.getSource().sendError(Component.literal(e.toString()));
+			return 0;
+		}
+
+		return report(context, EnvironmentRuntime.get().step(action, STEP_PROJECTION), result -> {
+			CameraPose before = result.before();
+			CameraPose after = result.after();
+			return String.format(Locale.ROOT,
+				"Step %d (%s) %s: requested %s, completed %s %s in %d ticks; moved %.2f horizontally and %+.2f up, yaw %.1f, pitch %.1f; "
+					+ "auto-jump %s, %d jumps; collided %s, on ground %s; server tick %d",
+				result.index(), result.operationId(), action.type(), format(result.requested()), format(result.completed()), action.unit(), result.completedTicks(),
+				Math.hypot(after.x() - before.x(), after.z() - before.z()), after.y() - before.y(), after.yawDegrees(), after.pitchDegrees(),
+				result.autoJump() ? "on" : "off", result.autoJumps(), result.collided(), result.onGround(), result.serverTick()
+			);
+		});
+	}
+
+	private static String format(double value) {
+		return value == Math.rint(value) ? Long.toString((long) value) : String.format(Locale.ROOT, "%.2f", value);
+	}
+
+	private static int showSettings(CommandContext<FabricClientCommandSource> context) {
+		EnvironmentSettings settings = EnvironmentRuntime.get().settings();
+		context.getSource().sendFeedback(Component.literal(String.format(Locale.ROOT,
+			"Auto-jump %s; turn within ±%.0f°, look within ±%.0f°, move up to %d ticks, wait up to %d ticks",
+			settings.autoJump() ? "on" : "off", settings.limits().maxTurnDegrees(), settings.limits().maxLookDegrees(), settings.limits().maxMoveTicks(), settings.limits().maxWaitTicks()
+		)));
+		return 1;
 	}
 
 	private static int observe(CommandContext<FabricClientCommandSource> context) {

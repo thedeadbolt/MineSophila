@@ -191,6 +191,23 @@ public final class ArenaExecutor {
 	}
 
 	/**
+	 * Gives a player in the arena a body for movement actions where they stand (see
+	 * {@link Baseline#prepareBody}); returns the server tick.
+	 *
+	 * @throws EnvironmentException if the world is not owned, or the player is not in the arena's reset volume
+	 */
+	public static long embody(MinecraftServer server, ServerPlayer player, ArenaLayout arena) {
+		WorldGuard.requireOwned(server);
+		if (player.level() != WorldGuard.arena(server) || !arena.resetVolume().contains(player.getBlockX(), player.getBlockY(), player.getBlockZ())) {
+			throw new EnvironmentException(EnvironmentException.Reason.OUT_OF_ARENA, "the player is not in the arena reset volume " + arena.resetVolume());
+		}
+
+		Baseline.applyWorld(server);
+		Baseline.prepareBody(server, player);
+		return server.getTickCount();
+	}
+
+	/**
 	 * Sends every chunk of {@code box} again, light included, to the players tracking it. A
 	 * copy replaces whole sections without block updates, and a reset moves players to the
 	 * staging platform and back within one server task, so the server never sees those
