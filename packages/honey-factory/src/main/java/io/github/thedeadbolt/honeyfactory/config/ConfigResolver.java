@@ -106,6 +106,79 @@ public final class ConfigResolver {
 		return new ResolvedConfig(name, difficulty, seed, target, arena, viewpoints, scene, visibility, capture, quotas, splits, output);
 	}
 
+	/**
+	 * Resolves a manifest's recorded configuration members again, as this build would, with
+	 * {@code outputRoot} for the machine-specific output. The result's {@link ResolvedConfig#sha256()}
+	 * equals the manifest's {@code resolved_config_sha256} only when this build resolves every
+	 * setting and algorithm version the same way; callers must check that before relying on it.
+	 *
+	 * @throws ContractException if the members cannot be read as a configuration
+	 */
+	public static ResolvedConfig fromManifest(JsonObject configuration, Path outputRoot) {
+		JsonFields recorded = JsonFields.of(configuration);
+		JsonFields generator = recorded.object("generator");
+		JsonFields target = recorded.object("target");
+		JsonFields capture = recorded.object("capture");
+		JsonFields viewpoints = capture.object("viewpoints");
+		JsonFields visibility = generator.object("visibility");
+		JsonFields ratios = recorded.object("splits").object("ratios");
+
+		JsonObject input = new JsonObject();
+		JsonObject dataset = new JsonObject();
+		dataset.addProperty("name", generator.string("dataset_name"));
+		dataset.addProperty("seed", generator.integer("seed", 0, SceneSeeds.MAX_SEED));
+		dataset.addProperty("difficulty", recorded.integer32("difficulty", 1, 5));
+		input.add("dataset", dataset);
+
+		JsonObject targetInput = new JsonObject();
+		targetInput.add("block_id", target.raw().get("block_id"));
+		targetInput.add("allowed_block_states", target.raw().get("allowed_block_states"));
+		targetInput.add("present_fraction", target.raw().get("present_fraction"));
+		input.add("target", targetInput);
+
+		JsonObject scene = generator.object("scene").raw().deepCopy();
+		input.add("scene", scene);
+		if (!"natural_patch".equals(generator.object("scene").object("base").string("type"))) {
+			input.add("arena", generator.object("arena").raw().deepCopy());
+		}
+
+		JsonObject viewpointInput = viewpoints.raw().deepCopy();
+		viewpointInput.remove("eye_height_blocks");
+		input.add("viewpoints", viewpointInput);
+		if (recorded.integer32("difficulty", 1, 5) > 2) {
+			JsonObject visibilityInput = new JsonObject();
+			visibilityInput.add("min_ratio", visibility.raw().get("min_ratio"));
+			visibilityInput.add("max_ratio", visibility.raw().get("max_ratio"));
+			input.add("visibility", visibilityInput);
+		}
+
+		JsonObject captureInput = new JsonObject();
+		captureInput.add("mode", capture.raw().get("mode"));
+		captureInput.add("width", capture.raw().get("width"));
+		captureInput.add("height", capture.raw().get("height"));
+		JsonObject projection = capture.object("projection").raw();
+		if (projection.has("cube_face_size")) {
+			captureInput.add("cube_face_size", projection.get("cube_face_size"));
+		}
+		input.add("capture", captureInput);
+
+		int accepted = generator.integer32("accepted_scenes", 1, Ids.MAX_SCENES);
+		int limit = generator.integer32("scene_attempt_limit", 1, Integer.MAX_VALUE);
+		if (limit % accepted != 0) {
+			throw generator.error("scene_attempt_limit", "is not a whole number of attempts per accepted scene");
+		}
+		JsonObject quotas = new JsonObject();
+		quotas.addProperty("accepted_scenes", accepted);
+		quotas.addProperty("scene_attempts_per_accepted_scene", limit / accepted);
+		input.add("quotas", quotas);
+		input.add("splits", ratios.raw().deepCopy());
+
+		JsonObject output = new JsonObject();
+		output.addProperty("root", outputRoot.toAbsolutePath().toString());
+		input.add("output", output);
+		return resolve(input);
+	}
+
 	private static ResolvedConfig.Target target(JsonFields target) {
 		target.rejectUnknown(Set.of("block_id", "allowed_block_states", "present_fraction"));
 		String blockId = target.string("block_id", "minecraft:honey_block");

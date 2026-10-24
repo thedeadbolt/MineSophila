@@ -20,8 +20,12 @@ panoramic capture ([findings](docs/m5-panoramic-capture.md),
 [ADR 0010](../../docs/adr/0010-panoramic-capture.md)); M6's constructed and natural scenes
 built from scene recipes ([findings](docs/m6-constructed-natural.md), ADRs
 [0011](../../docs/adr/0011-scene-recipes.md)–[0013](../../docs/adr/0013-dataset-throughput.md));
-and M7's movement actions ([findings](docs/m7-movement-actions.md),
-[ADR 0014](../../docs/adr/0014-movement-actions.md)). Datasets follow the
+M7's movement actions ([findings](docs/m7-movement-actions.md),
+[ADR 0014](../../docs/adr/0014-movement-actions.md)); and M8's dataset inspector, sidecar
+reviews and in-game replay ([findings](docs/m8-inspector-and-replay.md),
+[ADR 0015](../../docs/adr/0015-inspector-and-replay.md)). The
+[operator guide](docs/operating.md) walks through generating, validating, inspecting and
+replaying a dataset. Datasets follow the
 language-neutral [data contract](../../schemas/honey-factory/), and
 [`honey-factory-tools`](../honey-factory-tools/) validates them outside Minecraft.
 See the proposed scenario generation and frame capture in the
@@ -59,7 +63,7 @@ Run from the repository root:
 just mod-test      # JUnit tests
 just mod-build     # compile, test and package the mod
 just mod-client    # launch a development Minecraft client
-just mod-gametest  # run client game tests: the M2 and M7 environment, M3 gates, M4–M6 datasets and M5 panorama gate
+just mod-gametest  # run client game tests: the M2 and M7 environment, M3 gates, M4–M6 datasets, M5 panorama gate and M8 replay
 ```
 
 ### Dataset worlds and the environment
@@ -205,6 +209,26 @@ as a panorama, and 0.26 s and 0.40 s on natural terrain (ADR 0013).
 Check any dataset outside the game with
 `uv run honey-factory-tools validate-dataset <dataset directory>`.
 
+### Inspecting and replaying
+
+`uv run honey-factory-tools inspect <dataset directory> --reviews <review root>` opens the
+dataset in a local browser page; see [`honey-factory-tools`](../honey-factory-tools/).
+Each sample page shows the command that rebuilds its scene in the game:
+
+```text
+/honeyfactory_replay load <scene or sample id> <dataset directory>
+/honeyfactory_replay viewpoint <index> | next | previous
+/honeyfactory_replay capture        compare a fresh capture of this viewpoint with the stored one
+/honeyfactory_replay verify         compare every viewpoint of the scene
+/honeyfactory_replay status
+```
+
+Replay needs a claimed dataset world, and refuses any other. It rebuilds the scene from
+the dataset's recorded configuration and seeds, reporting any version this build lacks,
+and checks the layout hash. Level-5 scenes replay only in the dataset world that
+generated them, or a copy of it. Fresh images go to `honey-factory-replay/` in the game
+directory; the dataset itself is never written.
+
 ### Game tests and golden masks
 
 `mod-gametest` opens a Minecraft window and creates fresh worlds under
@@ -217,7 +241,8 @@ live in `tests/honey-factory/gametest/resources/golden/m3/` and `golden/m5/`. Th
 level-4 and mixed-recipe datasets to `build/m6-datasets/`, level-5 datasets, a review
 panorama and a padding benchmark to `build/m6-natural/`, and the throughput profile to
 `build/m6-throughput/`. The M7 test writes the movement-course results to
-`build/m7-environment/`. A missing golden fails the gate and is
+`build/m7-environment/`, and the M8 test writes its reference datasets and replay
+results to `build/m8-replay/`. A missing golden fails the gate and is
 written for review. After a reviewed change, rewrite them all with
 `./gradlew runClientGameTest -Dhoneyfactory.regenerateGolden=true`.
 

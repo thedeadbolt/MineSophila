@@ -55,8 +55,17 @@ final class GameTestSupport {
 
 	/** Creates a world of the Honey Factory Dataset type named {@code name}; it is not claimed yet. */
 	static TestSingleplayerContext datasetWorld(ClientGameTestContext context, String name) {
+		return datasetWorld(context, name, null);
+	}
+
+	/** The same, with world seed {@code seed}, or the test default when null. */
+	static TestSingleplayerContext datasetWorld(ClientGameTestContext context, String name, @Nullable Long seed) {
 		return context.worldBuilder().adjustSettings(settings -> {
 			settings.setName(name);
+			if (seed != null) {
+				settings.setSeed(Long.toString(seed));
+			}
+
 			settings.setWorldType(new WorldCreationUiState.WorldTypeEntry(
 				settings.getSettings().worldgenLoadContext().lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(ArenaDimension.PRESET)
 			));

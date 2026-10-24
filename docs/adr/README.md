@@ -20,3 +20,4 @@ Preserve accepted decisions. To change one, write a new ADR that supersedes it.
 | [0012](0012-natural-source-patches.md) | Natural source patches for level 5 | Accepted |
 | [0013](0013-dataset-throughput.md) | Dataset throughput: batched viewpoints, parallel writes and patch preparation | Accepted |
 | [0014](0014-movement-actions.md) | Movement actions through the player's own input and auto-jump | Accepted |
+| [0015](0015-inspector-and-replay.md) | Local inspector, sidecar reviews and in-game replay | Accepted |

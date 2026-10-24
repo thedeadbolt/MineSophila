@@ -83,6 +83,30 @@ public record DatasetManifest(
 		public JsonObject settings() {
 			return this.settings.deepCopy();
 		}
+
+		/** The manifest's {@code render_environment} member. */
+		public JsonObject toJson() {
+			JsonObject render = new JsonObject();
+			render.addProperty("graphics_backend", this.graphicsBackend);
+			render.addProperty("gpu", this.gpu);
+			render.addProperty("driver", this.driver);
+			render.addProperty("improved_transparency", this.improvedTransparency);
+			render.addProperty("render_distance_chunks", this.renderDistanceChunks);
+			render.addProperty("gamma", this.gamma);
+			render.addProperty("cloud_status", this.cloudStatus);
+			render.add("shader_pack", JsonWrite.nullable(this.shaderPack));
+			JsonArray packs = new JsonArray();
+			for (ResourcePack pack : this.resourcePacks) {
+				JsonObject entry = new JsonObject();
+				entry.addProperty("id", pack.id());
+				entry.add("sha256", JsonWrite.nullable(pack.sha256()));
+				packs.add(entry);
+			}
+
+			render.add("resource_packs", packs);
+			render.add("settings", this.settings());
+			return render;
+		}
 	}
 
 	public record Counts(
@@ -277,7 +301,7 @@ public record DatasetManifest(
 		software.add("git_commit", JsonWrite.nullable(this.software.gitCommit()));
 		software.addProperty("git_dirty", this.software.gitDirty());
 		json.add("software", software);
-		json.add("render_environment", renderJson());
+		json.add("render_environment", this.renderEnvironment.toJson());
 		json.add("storage", storageJson());
 		JsonObject counts = new JsonObject();
 		counts.addProperty("requested_scenes", this.counts.requestedScenes());
@@ -312,29 +336,6 @@ public record DatasetManifest(
 		json.addProperty("licence", this.licence);
 		json.addProperty("intended_use", this.intendedUse);
 		return json;
-	}
-
-	private JsonObject renderJson() {
-		JsonObject render = new JsonObject();
-		render.addProperty("graphics_backend", this.renderEnvironment.graphicsBackend());
-		render.addProperty("gpu", this.renderEnvironment.gpu());
-		render.addProperty("driver", this.renderEnvironment.driver());
-		render.addProperty("improved_transparency", this.renderEnvironment.improvedTransparency());
-		render.addProperty("render_distance_chunks", this.renderEnvironment.renderDistanceChunks());
-		render.addProperty("gamma", this.renderEnvironment.gamma());
-		render.addProperty("cloud_status", this.renderEnvironment.cloudStatus());
-		render.add("shader_pack", JsonWrite.nullable(this.renderEnvironment.shaderPack()));
-		JsonArray packs = new JsonArray();
-		for (ResourcePack pack : this.renderEnvironment.resourcePacks()) {
-			JsonObject entry = new JsonObject();
-			entry.addProperty("id", pack.id());
-			entry.add("sha256", JsonWrite.nullable(pack.sha256()));
-			packs.add(entry);
-		}
-
-		render.add("resource_packs", packs);
-		render.add("settings", this.renderEnvironment.settings());
-		return render;
 	}
 
 	/** The fixed layout of contract 1.x; readers derive paths from it, never from host paths. */

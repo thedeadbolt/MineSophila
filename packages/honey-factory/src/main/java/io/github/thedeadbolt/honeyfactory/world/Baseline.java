@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.function.Function;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.protocol.game.ClientboundGameEventPacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
@@ -100,7 +101,12 @@ public final class Baseline {
 		RULES.forEach(value -> value.apply(server.getGameRules(), server));
 	}
 
-	/** Sets the scene's time of day and weather; the baseline keeps them from changing. */
+	/**
+	 * Sets the scene's time of day and weather; the baseline keeps them from changing.
+	 * Minecraft fades rain and thunder in and out over about 100 ticks, so their levels are
+	 * set at once in every dimension and sent to its players; {@link #rainLevel} and
+	 * {@link #thunderLevel} are what clients then show.
+	 */
 	public static void applyEnvironment(MinecraftServer server, int timeOfDayTicks, Weather weather) {
 		server.clockManager().setTotalTicks(clock(server), timeOfDayTicks);
 		switch (weather) {
@@ -108,6 +114,23 @@ public final class Baseline {
 			case RAIN -> server.setWeatherParameters(0, WEATHER_DURATION_TICKS, true, false);
 			case THUNDER -> server.setWeatherParameters(0, WEATHER_DURATION_TICKS, true, true);
 		}
+
+		for (ServerLevel level : server.getAllLevels()) {
+			level.setRainLevel(rainLevel(weather));
+			level.setThunderLevel(thunderLevel(weather));
+			server.getPlayerList().broadcastAll(new ClientboundGameEventPacket(ClientboundGameEventPacket.RAIN_LEVEL_CHANGE, rainLevel(weather)), level.dimension());
+			server.getPlayerList().broadcastAll(new ClientboundGameEventPacket(ClientboundGameEventPacket.THUNDER_LEVEL_CHANGE, thunderLevel(weather)), level.dimension());
+		}
+	}
+
+	/** The rain level of {@code weather}, from 0 to 1. */
+	public static float rainLevel(Weather weather) {
+		return weather == Weather.CLEAR ? 0.0F : 1.0F;
+	}
+
+	/** The thunder level of {@code weather}, from 0 to 1, before Minecraft scales it by the rain level. */
+	public static float thunderLevel(Weather weather) {
+		return weather == Weather.THUNDER ? 1.0F : 0.0F;
 	}
 
 	/** Snapshots a player once per run and puts them in spectator mode without velocity. */

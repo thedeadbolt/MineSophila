@@ -43,6 +43,25 @@ class ConfigResolverTest {
 		assertEquals(10L << 30, config.output().freeSpaceReserveBytes());
 	}
 
+	@ParameterizedTest
+	@CsvSource(delimiter = '|', value = {
+		"{}",
+		"{\"capture\": {\"mode\": \"PANORAMA_310\", \"width\": 1240, \"height\": 640, \"cube_face_size\": 512}}",
+		"{\"dataset\": {\"name\": \"honey-l3\", \"seed\": 9, \"difficulty\": 3}, \"visibility\": {\"min_ratio\": 0.3, \"max_ratio\": null}, \"arena\": {\"width\": 24}}",
+		"{\"dataset\": {\"name\": \"honey-l4\", \"seed\": 9, \"difficulty\": 4}, \"viewpoints\": {\"count\": 3, \"yaw_jitter_degrees\": 5}, \"quotas\": {\"accepted_scenes\": 12, \"scene_attempts_per_accepted_scene\": 4}}",
+		"{\"dataset\": {\"name\": \"honey-l5\", \"seed\": 9, \"difficulty\": 5}, \"scene\": {\"base\": {\"type\": \"natural_patch\", \"scenes_per_patch\": 4}}, \"splits\": {\"train\": 0.6, \"validation\": 0.2, \"test\": 0.2}}"
+	})
+	void manifestConfigurationsResolveToTheSameHash(String overrides) {
+		com.google.gson.JsonObject input = io.github.thedeadbolt.honeyfactory.contract.JsonFields.parseObject(MINIMAL);
+		io.github.thedeadbolt.honeyfactory.contract.JsonFields.parseObject(overrides).entrySet().forEach(entry -> input.add(entry.getKey(), entry.getValue()));
+		ResolvedConfig config = ConfigResolver.resolve(input);
+		ResolvedConfig again = ConfigResolver.fromManifest(config.toJson(), Path.of("/mnt/elsewhere"));
+		assertEquals(config.sha256(), again.sha256());
+		assertEquals(config.scene(), again.scene());
+		assertEquals(config.quotas(), again.quotas());
+		assertEquals(Path.of("/mnt/elsewhere"), again.outputRoot());
+	}
+
 	@Test
 	void panoramaDefaults() {
 		ResolvedConfig config = ConfigResolver.resolve(with("capture", "{\"mode\": \"PANORAMA_310\"}"));

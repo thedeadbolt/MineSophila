@@ -31,7 +31,7 @@ import org.jspecify.annotations.Nullable;
  * per pixel centre against the target's block cell; the scene's other blocks above the
  * floor occlude it.
  */
-final class ScriptedEnvironment implements GenerationEnvironment {
+public final class ScriptedEnvironment implements GenerationEnvironment {
 	static final double EYE_HEIGHT = 1.62;
 
 	private final Deque<Runnable> queue = new ArrayDeque<>();
@@ -50,7 +50,7 @@ final class ScriptedEnvironment implements GenerationEnvironment {
 	IntPredicate hideOn = observation -> false;
 
 	/** Runs queued requests, including any they queue, until none remain. */
-	void pump() {
+	public void pump() {
 		while (!this.queue.isEmpty()) {
 			this.queue.removeFirst().run();
 		}
