@@ -5,6 +5,7 @@ import io.github.thedeadbolt.honeyfactory.capture.PerspectiveProjection;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
 import io.github.thedeadbolt.honeyfactory.contract.BlockBox;
 import io.github.thedeadbolt.honeyfactory.contract.MaskStatistics;
+import io.github.thedeadbolt.honeyfactory.environment.Action;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import io.github.thedeadbolt.honeyfactory.environment.OperationState;
@@ -74,7 +75,7 @@ public class M2EnvironmentTest implements FabricClientGameTest {
 			expect(failures, "claim with the world's name", null, world.getServer().computeOnServer(server -> claimReason(server, WORLD_NAME)));
 
 			expect(failures, "viewpoint after a failed reset", EnvironmentException.Reason.INVALID_STATE, rejection(context, runtime -> runtime.setViewpoint(FixturePlans.VIEWPOINT.pose())));
-			expect(failures, "step", EnvironmentException.Reason.UNSUPPORTED, rejection(context, runtime -> runtime.step("move_forward")));
+			expect(failures, "step after a failed reset", EnvironmentException.Reason.INVALID_STATE, rejection(context, runtime -> runtime.step(new Action.Wait(1), new PerspectiveProjection(64, 64))));
 
 			Map<BlockPos, BlockState> sentinels = placeSentinels(context, world);
 

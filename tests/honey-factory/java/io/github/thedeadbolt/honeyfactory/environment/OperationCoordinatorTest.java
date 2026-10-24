@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class OperationCoordinatorTest {
@@ -14,7 +15,7 @@ class OperationCoordinatorTest {
 			coordinator.advance(operation, next);
 		}
 
-		coordinator.complete(operation);
+		coordinator.complete(operation, 1);
 	}
 
 	private static EnvironmentException.Reason rejection(OperationCoordinator coordinator, OperationKind kind) {
@@ -53,7 +54,7 @@ class OperationCoordinatorTest {
 		OperationCoordinator coordinator = new OperationCoordinator();
 		run(coordinator, OperationKind.RESET);
 		Operation view = coordinator.begin(OperationKind.SET_VIEWPOINT, 3);
-		coordinator.fail(view, "timed out");
+		coordinator.fail(view, "timed out", 4);
 		OperationCoordinator.Status status = coordinator.status();
 		assertEquals(OperationState.FAILED, status.state());
 		assertNull(status.current());
@@ -69,9 +70,30 @@ class OperationCoordinatorTest {
 		run(coordinator, OperationKind.RESET);
 		Operation view = coordinator.begin(OperationKind.SET_VIEWPOINT, 0);
 		assertThrows(IllegalStateException.class, () -> coordinator.advance(view, OperationState.CAPTURING));
-		assertThrows(IllegalStateException.class, () -> coordinator.complete(view));
+		assertThrows(IllegalStateException.class, () -> coordinator.complete(view, 0));
 		Operation stale = new Operation("op-999999", OperationKind.SET_VIEWPOINT, 0);
 		assertThrows(IllegalStateException.class, () -> coordinator.advance(stale, OperationState.SETTLING));
+	}
+
+	@Test
+	void finishedOperationsAreKeptInOrder() {
+		OperationCoordinator coordinator = new OperationCoordinator();
+		run(coordinator, OperationKind.RESET);
+		Operation view = coordinator.begin(OperationKind.SET_VIEWPOINT, 2);
+		coordinator.fail(view, "timed out", 9);
+		run(coordinator, OperationKind.RESET);
+		List<OperationCoordinator.Finished> history = coordinator.history();
+		assertEquals(List.of("op-000001", "op-000002", "op-000003"), history.stream().map(finished -> finished.operation().id()).toList());
+		assertEquals(List.of(true, false, true), history.stream().map(OperationCoordinator.Finished::succeeded).toList());
+		assertEquals(9, history.get(1).endTick());
+		assertEquals("timed out", history.get(1).error());
+
+		for (int i = 0; i < OperationCoordinator.HISTORY_SIZE; i++) {
+			run(coordinator, OperationKind.OBSERVE);
+		}
+
+		assertEquals(OperationCoordinator.HISTORY_SIZE, coordinator.history().size());
+		assertEquals("op-000004", coordinator.history().getFirst().operation().id());
 	}
 
 	@Test

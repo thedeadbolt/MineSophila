@@ -14,7 +14,8 @@
 			"io.github.thedeadbolt.honeyfactory.gametest.M5PanoramaGateTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M6DatasetTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M6NaturalTest",
-			"io.github.thedeadbolt.honeyfactory.gametest.M6ThroughputTest"
+			"io.github.thedeadbolt.honeyfactory.gametest.M6ThroughputTest",
+			"io.github.thedeadbolt.honeyfactory.gametest.M7EnvironmentTest"
 		]
 	},
 	"depends": {

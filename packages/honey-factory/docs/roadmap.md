@@ -1,12 +1,13 @@
 # honey-factory implementation roadmap
 
-Updated 2026-10-23. M0–M5 are implemented: the rendering-feasibility spike;
+Updated 2026-10-24. M0–M7 are implemented: the rendering-feasibility spike;
 configuration, data contract and deterministic ID/seed/split rules; owned dataset
 worlds with arena resets and the synchronous environment coordinator; the level-1
 perspective vertical slice from scene generation to a validated dataset; and the dataset
 runner with level-2 and level-3 generators, storage and cancellation handling and an
-independent outside validator; 310-degree panoramic capture; and M6, constructed and
-natural scenes, built on editable scene recipes. Later features are not implemented. The accepted behaviour and
+independent outside validator; 310-degree panoramic capture; M6, constructed and
+natural scenes, built on editable scene recipes; and M7, movement actions completing the
+environment API. Later features are not implemented. The accepted behaviour and
 success criteria live in the [package specification](spec.md).
 
 ## Scope
@@ -45,7 +46,7 @@ external TCP adapter. Those remain separate integrations or extensions.
 | M4 | Dataset runner and levels 1–3 | M3 | Exit gate passed; [findings](m4-dataset-runner.md), ADR 0009 |
 | M5 | 310-degree panoramic capture | M3–M4 | Exit gate passed; [findings](m5-panoramic-capture.md), ADR 0010 |
 | M6 | Constructed and natural scenes | M4–M5 | Exit gate passed; [findings](m6-constructed-natural.md), ADRs 0011–0013 |
-| M7 | Movement actions and environment completion | M2–M6 | Planned |
+| M7 | Movement actions and environment completion | M2–M6 | Exit gate passed; [findings](m7-movement-actions.md), ADR 0014 |
 | M8 | Dataset inspector and exact replay | M4–M7 | Planned |
 | M9 | Acceptance matrix and production pilot | M0–M8 | Planned |
 

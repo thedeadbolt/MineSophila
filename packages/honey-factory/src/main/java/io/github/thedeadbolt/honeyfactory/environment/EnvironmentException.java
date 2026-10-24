@@ -20,7 +20,9 @@ public class EnvironmentException extends RuntimeException {
 		/** Rendering, readback or capture output failed. */
 		CAPTURE_FAILED,
 		/** The operation needs a local client and integrated server. */
-		NO_LOCAL_RUNTIME
+		NO_LOCAL_RUNTIME,
+		/** The player left the arena's reset volume during a step; reset or place a viewpoint. */
+		OUT_OF_ARENA
 	}
 
 	private final Reason reason;
