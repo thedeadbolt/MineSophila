@@ -7,6 +7,10 @@ package; it does not describe implemented features.
 
 Agreed 2026-10-22. Levels 1–5 cover image-based honey localisation, the core project
 task. Level 6 adds optional active search through sequences of observations and actions.
+Agreed 2026-10-24: each level is a named preset of one scene-recipe generator (a base,
+layout parts, a viewpoint sight rule and lighting) that a configuration may edit or
+combine with parts of other levels; the level still sets the visibility rule
+([ADR 0011](../../../docs/adr/0011-scene-recipes.md)).
 
 | Level | Task | Scene | Blocks and distractions | How honey is hidden | Visibility rule |
 |---|---|---|---|---|---|
@@ -98,7 +102,9 @@ worlds remain required because a crash can interrupt restoration.
 
 ### Deterministic seeds and validation
 
-Derive layout, target and viewpoint seeds independently from the dataset seed, scene
+The dataset seed is a setting; a configuration without one gets a random seed, which
+the resolved configuration records (agreed 2026-10-24). Derive layout, target and
+viewpoint seeds independently from the dataset seed, scene
 index and generation-attempt index using a documented, versioned algorithm (`seed-v1`
 in the [data contract](../../../schemas/honey-factory/README.md)). Do not consume one shared random stream whose later
 results change when an earlier scene is rejected.
@@ -131,9 +137,24 @@ applying target and other scene-specific changes block by block.
   distinct and reproducible.
 
 All dimensions in one save use its world seed. Multiple level-5 world seeds therefore
-require multiple dataset-owned saves or later launch orchestration. Source-region
-defaults, copy height, padding and patch reuse count remain configurable and must be
-benchmarked before production generation.
+require multiple dataset-owned saves or later launch orchestration.
+
+Agreed 2026-10-24, implemented in M6 ([ADR 0012](../../../docs/adr/0012-natural-source-patches.md)):
+
+- The source dimension is the dataset world's own normal Overworld; the copy goes to a
+  separate owned region of the void arena dimension, far from the platform arena.
+- A natural patch is a recipe base (`natural_patch`) usable by any level; the level-5
+  preset uses it. Its defaults, set from the M6 benchmark, are a 32 × 32 core, a
+  128-block window, 192 blocks of context padding (render distance 12), 8 scenes per
+  patch and 256 blocks of region separation. A run refuses padding smaller than 16
+  blocks per chunk of render distance.
+- Patches whose window would show void beneath their lowest ground, or whose window
+  holds a naturally occurring target block, are rejected and the next candidate tried;
+  natural target blocks are therefore never present, so absent scenes stay absent.
+- One save has one world seed, so splits are grouped by source region: every patch is its
+  own group, and patches of different splits lie at least the region separation apart.
+- Each scene verifies the core it changed; the whole copy is verified once, against the
+  patch's content hash, when it is copied.
 
 ## Initial capture outputs
 
@@ -181,9 +202,12 @@ optional derivation step.
 
 - Configure time of day and weather. Record their resolved values with the scene or
   capture, depending on whether they remain constant across its viewpoints.
-- Begin level 1 with fixed clear daylight as stated in the difficulty table. Add
-  configured daylight/time variants progressively; do not let an undocumented
-  lighting change redefine a difficulty level.
+- Begin level 1 with fixed clear daylight as stated in the difficulty table. Agreed
+  2026-10-24: every level may be configured with other lighting, fixed or drawn per
+  scene from a time range and a list of weathers; the level presets keep fixed noon
+  and clear weather, and the manifest records the configured lighting, so no
+  undocumented lighting change redefines a level. Rain and thunder images are not
+  byte-reproducible because of their random particles.
 - Keep client visual settings that affect pixels—gamma/brightness, clouds, render
   distance, graphics mode, resource pack and relevant shader settings—fixed within
   a dataset configuration and record them in its manifest.
@@ -758,8 +782,8 @@ smoke run may override it with only a few scenes.
   has a valid RGB/mask pair satisfying that level's visibility rule. Re-sample failed
   viewpoints up to the configured limit; then reject the scene and try a new one.
 - Target-absent scenes must contain no target block within the defined scene region.
-  Whether naturally occurring honey outside or inside a level-5 sampled region is
-  removed, rejected or retained remains to be specified.
+  On a natural base, a patch whose copied window holds a target block is rejected
+  before use (agreed 2026-10-24), so no natural target block is ever present.
 - Fully hidden or out-of-view observations from target-present scenes are optional
   variants for levels 1–5 and are disabled by default. If enabled, give them a separate
   quota so they do not silently alter the visible-positive balance.

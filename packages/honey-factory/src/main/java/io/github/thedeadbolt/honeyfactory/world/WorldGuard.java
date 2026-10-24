@@ -34,7 +34,8 @@ public final class WorldGuard {
 			previous == null ? System.currentTimeMillis() : previous.claimedAtEpochMillis(),
 			ArenaLayout.OWNED,
 			ArenaLayout.STAGING_PLATFORM,
-			previous == null ? Optional.empty() : previous.baseline()
+			previous == null ? Optional.empty() : previous.baseline(),
+			previous == null ? Optional.empty() : previous.naturalWritten()
 		);
 		ownership.set(record);
 		return record;
@@ -64,9 +65,9 @@ public final class WorldGuard {
 		return record;
 	}
 
-	/** @throws EnvironmentException unless {@code box} lies inside the claimed arena or staging platform */
+	/** @throws EnvironmentException unless {@code box} lies inside the claimed arena, the natural region or the staging platform */
 	public static void requireWritable(WorldOwnership.Record record, BlockBox box) {
-		if (!record.ownedArena().contains(box) && !record.stagingPlatform().contains(box)) {
+		if (!record.ownedArena().contains(box) && !ArenaLayout.NATURAL_OWNED.contains(box) && !record.stagingPlatform().contains(box)) {
 			throw refuse("refusing to change " + box + " outside the owned arena " + record.ownedArena());
 		}
 	}

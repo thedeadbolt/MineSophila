@@ -5,8 +5,8 @@ configuration, data contract and deterministic ID/seed/split rules; owned datase
 worlds with arena resets and the synchronous environment coordinator; the level-1
 perspective vertical slice from scene generation to a validated dataset; and the dataset
 runner with level-2 and level-3 generators, storage and cancellation handling and an
-independent outside validator; and 310-degree panoramic capture. Later features are not
-implemented. The accepted behaviour and
+independent outside validator; 310-degree panoramic capture; and M6, constructed and
+natural scenes, built on editable scene recipes. Later features are not implemented. The accepted behaviour and
 success criteria live in the [package specification](spec.md).
 
 ## Scope
@@ -44,7 +44,7 @@ external TCP adapter. Those remain separate integrations or extensions.
 | M3 | Level-1 perspective vertical slice | M0–M2 | Exit gate passed; [findings](m3-level1-vertical-slice.md), ADR 0008 |
 | M4 | Dataset runner and levels 1–3 | M3 | Exit gate passed; [findings](m4-dataset-runner.md), ADR 0009 |
 | M5 | 310-degree panoramic capture | M3–M4 | Exit gate passed; [findings](m5-panoramic-capture.md), ADR 0010 |
-| M6 | Constructed and natural scenes | M4–M5 | Planned |
+| M6 | Constructed and natural scenes | M4–M5 | Exit gate passed; [findings](m6-constructed-natural.md), ADRs 0011–0013 |
 | M7 | Movement actions and environment completion | M2–M6 | Planned |
 | M8 | Dataset inspector and exact replay | M4–M7 | Planned |
 | M9 | Acceptance matrix and production pilot | M0–M8 | Planned |
@@ -470,7 +470,7 @@ reference client-only Minecraft classes from `src/main`.
 | After M0 | Depth sharing, target-model rendering, OIT and readback results | Final annotation-pass integration and any required mixins/access widening |
 | After M3 | Pixel-count distributions across distance/occlusion fixtures | Initial level 3–5 visibility-ratio ranges |
 | After M5 | Panorama quality, capture time and VRAM at configured resolutions | Final default face size and raw-face retention policy |
-| After M6 | Patch-copy time, lighting time, boundary visibility and disk impact | Initial level-5 region, padding and reuse defaults |
+| After M6 (done) | Patch-copy time, lighting time, boundary visibility and disk impact | Initial level-5 region, padding and reuse defaults: 32 × 32 core, 128 high, 192 padding, 8 scenes per patch ([findings](m6-constructed-natural.md)) |
 | After M9 | End-to-end throughput, storage and rejection measurements | Production batch sizing and any justified optimization/Rust work |
 
 ## First implementation task

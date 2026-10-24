@@ -13,12 +13,17 @@ import io.github.thedeadbolt.honeyfactory.dataset.DatasetWriter;
 import io.github.thedeadbolt.honeyfactory.dataset.SampleDescriptor;
 import io.github.thedeadbolt.honeyfactory.dataset.SceneDescriptor;
 import io.github.thedeadbolt.honeyfactory.dataset.SceneSlots;
+import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import io.github.thedeadbolt.honeyfactory.environment.Futures;
 import io.github.thedeadbolt.honeyfactory.scene.ArenaLayout;
 import io.github.thedeadbolt.honeyfactory.scene.GeneratedScene;
+import io.github.thedeadbolt.honeyfactory.scene.NaturalGenerator;
+import io.github.thedeadbolt.honeyfactory.scene.PreparedPatch;
+import io.github.thedeadbolt.honeyfactory.scene.SceneBase;
 import io.github.thedeadbolt.honeyfactory.scene.SceneGenerator;
 import io.github.thedeadbolt.honeyfactory.scene.SceneGenerators;
+import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
 import io.github.thedeadbolt.honeyfactory.scene.ViewpointCandidate;
 import io.github.thedeadbolt.honeyfactory.scene.ViewpointPlan;
 import java.io.IOException;
@@ -31,7 +36,10 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -42,7 +50,12 @@ import org.jspecify.annotations.Nullable;
  *
  * <ul>
  *   <li>Before the dataset directory is created, the output file system must hold the whole
- *       dataset uncompressed plus the free-space reserve ({@link StorageBudget}).</li>
+ *       dataset uncompressed plus the free-space reserve ({@link StorageBudget}), and a
+ *       natural base's context padding must cover the render distance.</li>
+ *   <li>On a natural base, each slot's source patch is prepared when its first slot runs
+ *       and serves every attempt of the slots that share it, while the next patch is
+ *       prepared ahead in the background; a patch with no acceptable candidate fails the
+ *       run.</li>
  *   <li>A scene attempt is accepted once every viewpoint has an accepted capture. A
  *       viewpoint is re-drawn up to the configured attempts; when they run out, or a capture
  *       fails, the attempt is rejected, its images deleted and the slot retried with the
@@ -64,7 +77,8 @@ import org.jspecify.annotations.Nullable;
  * scene completes the dataset normally; otherwise the dataset is marked {@code failed}
  * with the failure {@value #CANCELLED} and never presented as complete.
  *
- * <p>Not thread-safe: run it on the thread the environment completes its futures on.
+ * <p>Not thread-safe: run it on the thread the environment completes its futures on. Only
+ * image encoding and writing run elsewhere, on its own worker threads.
  */
 public final class DatasetGenerator {
 	public static final String TOOL = "honey-factory";
@@ -129,6 +143,15 @@ public final class DatasetGenerator {
 	private @Nullable SceneAttempt running;
 	private boolean cancelled;
 	private @Nullable Instant started;
+	private final GenerationTimings timings = new GenerationTimings();
+	/** Encodes and writes accepted images off the generator's thread. */
+	private final ExecutorService writers = Executors.newFixedThreadPool(Math.clamp(Runtime.getRuntime().availableProcessors() / 2, 1, 8), runnable -> {
+		Thread thread = new Thread(runnable, "Honey Factory image writer");
+		thread.setDaemon(true);
+		return thread;
+	});
+	/** Requested source patches by index: the current one and the next, prepared ahead. */
+	private final Map<Integer, CompletableFuture<PreparedPatch>> patches = new TreeMap<>();
 
 	public DatasetGenerator(ResolvedConfig config, GenerationEnvironment environment, Clock clock) {
 		this(config, environment, clock, StorageBudget.DiskSpace.SYSTEM);
@@ -139,7 +162,7 @@ public final class DatasetGenerator {
 		this.environment = environment;
 		this.clock = clock;
 		this.generator = SceneGenerators.forConfig(config);
-		this.arena = ArenaLayout.of(config.arena());
+		this.arena = ArenaLayout.of(config.scene().base(), config.arena());
 		ResolvedConfig.Capture capture = config.capture();
 		this.projection = CaptureProjection.of(capture.mode(), capture.width(), capture.height(), capture.cubeFaceSize());
 		this.records = new RecordFactory(config, this.arena, this.projection.mode());
@@ -159,6 +182,14 @@ public final class DatasetGenerator {
 		}
 
 		this.storage.preflight();
+		if (this.config.scene().base() instanceof SceneBase.NaturalTerrain natural) {
+			int distance = this.environment.renderEnvironment().renderDistanceChunks();
+			if (natural.contextPadding() < 16 * distance) {
+				throw new IllegalStateException("context_padding " + natural.contextPadding() + " leaves the void visible at render distance " + distance
+					+ "; use at least " + 16 * distance + " blocks or lower the render distance");
+			}
+		}
+
 		this.started = this.clock.instant();
 		this.manifest = DatasetManifest.generating(
 			this.config.toJson(),
@@ -199,7 +230,44 @@ public final class DatasetGenerator {
 
 		this.tally.attempt();
 		SceneDescriptor descriptor = SceneDescriptor.of(this.config, slot, attemptIndex);
-		SceneAttempt attempt = new SceneAttempt(descriptor, this.generator.scene(descriptor.seeds(), slot.targetPresent()));
+		return scene(slot, descriptor)
+			.exceptionallyCompose(error -> {
+				// No attempt is running yet, so finish() would not count this one.
+				this.tally.fail();
+				return CompletableFuture.failedFuture(error);
+			})
+			.thenCompose(scene -> runAttempt(slot, attemptIndex, new SceneAttempt(descriptor, scene)));
+	}
+
+	/** The attempt's scene; on a natural base, once its slot's source patch is prepared. */
+	private CompletableFuture<GeneratedScene> scene(SceneSlots.Slot slot, SceneDescriptor descriptor) {
+		if (!(this.generator instanceof NaturalGenerator natural)) {
+			return CompletableFuture.completedFuture(this.generator.scene(descriptor.seeds(), slot.targetPresent()));
+		}
+
+		int patches = Math.ceilDiv(this.config.quotas().acceptedScenes(), natural.base().scenesPerPatch());
+		this.patches.keySet().removeIf(index -> index < slot.group());
+		CompletableFuture<PreparedPatch> patch = patch(natural, slot.group());
+		if (slot.group() + 1 < patches) {
+			// Generate the next patch's terrain while this one's scenes capture.
+			patch(natural, slot.group() + 1);
+		}
+
+		long waiting = System.nanoTime();
+		return patch.thenApply(prepared -> {
+			this.timings.add(GenerationTimings.Phase.PATCH_WAIT, System.nanoTime() - waiting);
+			return natural.scene(descriptor.seeds(), slot.targetPresent(), prepared);
+		});
+	}
+
+	/** Patch {@code index}, requested on first use; requests are cancelled with the run. */
+	private CompletableFuture<PreparedPatch> patch(NaturalGenerator natural, int index) {
+		return this.patches.computeIfAbsent(index, key -> request(GenerationTimings.Phase.PREPARE_PATCH, () -> this.environment.preparePatch(
+			new GenerationEnvironment.PatchRequest(this.config.seed(), natural.base(), key, this.config.target().blockId())
+		)));
+	}
+
+	private CompletableFuture<Void> runAttempt(SceneSlots.Slot slot, int attemptIndex, SceneAttempt attempt) {
 		this.running = attempt;
 		return attempt.run().thenCompose(outcome -> switch (outcome) {
 			case SceneOutcome.Accepted accepted -> {
@@ -237,11 +305,32 @@ public final class DatasetGenerator {
 	}
 
 	/** Issues an environment operation, unless cancellation was requested since the last one. */
-	private <T> CompletableFuture<T> request(Supplier<CompletableFuture<T>> operation) {
-		return this.cancelled ? CompletableFuture.failedFuture(new Stop(CANCELLED)) : operation.get();
+	private <T> CompletableFuture<T> request(GenerationTimings.Phase phase, Supplier<CompletableFuture<T>> operation) {
+		if (this.cancelled) {
+			return CompletableFuture.failedFuture(new Stop(CANCELLED));
+		}
+
+		long started = System.nanoTime();
+		return operation.get().whenComplete((value, error) -> this.timings.add(phase, System.nanoTime() - started));
+	}
+
+	/** Where the run's time went so far. */
+	public GenerationTimings timings() {
+		return this.timings;
 	}
 
 	private Result finish(@Nullable Throwable error) {
+		long validating = System.nanoTime();
+		try {
+			return finishAndValidate(error);
+		} finally {
+			this.timings.add(GenerationTimings.Phase.VALIDATE, System.nanoTime() - validating);
+			this.writers.shutdown();
+			HoneyFactory.LOGGER.info("Dataset timings: {}", this.timings);
+		}
+	}
+
+	private Result finishAndValidate(@Nullable Throwable error) {
 		String failure = failureMessage(error);
 		abandonRunningAttempt();
 		DatasetManifest.Counts counts = this.tally.counts();
@@ -276,6 +365,7 @@ public final class DatasetGenerator {
 		SceneAttempt attempt = this.running;
 		if (attempt != null) {
 			this.tally.fail();
+			attempt.awaitWritesQuietly();
 			io(() -> this.writer.deleteImages(attempt.files));
 			this.running = null;
 		}
@@ -319,16 +409,21 @@ public final class DatasetGenerator {
 		}
 	}
 
-	/** One attempt at one scene slot: build it, then capture every viewpoint in order. */
+	/**
+	 * One attempt at one scene slot: build it at viewpoint 0's first placeable draw, then
+	 * capture every viewpoint's current draw together in one batch, the camera moving on the
+	 * client only. Each rejected viewpoint moves on to its next placeable draw and the round
+	 * repeats with those, so every viewpoint ends on the same draw as if captured alone.
+	 * Accepted images are encoded on worker threads while later rounds capture.
+	 */
 	private final class SceneAttempt {
 		private final SceneDescriptor descriptor;
 		private final GeneratedScene scene;
 		private final int @Nullable [] target;
 		private final @Nullable BlockBox targetCell;
-		private final List<SampleRecord> samples = new ArrayList<>();
-		private final List<String> files = new ArrayList<>();
-		private final List<Integer> draws = new ArrayList<>();
-		private GenerationEnvironment.@Nullable ViewReady current;
+		private final Map<Integer, CompletableFuture<SampleRecord>> samples = new TreeMap<>();
+		private final List<String> files = java.util.Collections.synchronizedList(new ArrayList<>());
+		private final Map<Integer, Integer> draws = new TreeMap<>();
 		private String lastRejection = VIEWPOINT_PLACEMENT;
 
 		SceneAttempt(SceneDescriptor descriptor, GeneratedScene scene) {
@@ -340,38 +435,68 @@ public final class DatasetGenerator {
 
 		/** Builds the scene at the first placeable viewpoint, then captures every viewpoint. */
 		CompletableFuture<SceneOutcome> run() {
-			Draw first = nextPlaceable(0, 0);
-			if (first == null) {
-				return CompletableFuture.completedFuture(new SceneOutcome.Rejected(VIEWPOINT_PLACEMENT));
+			Map<Integer, Draw> pending = new TreeMap<>();
+			for (int index = 0; index < DatasetGenerator.this.config.viewpoints().count(); index++) {
+				Draw draw = nextPlaceable(index, 0);
+				if (draw == null) {
+					return CompletableFuture.completedFuture(new SceneOutcome.Rejected(VIEWPOINT_PLACEMENT));
+				}
+
+				pending.put(index, draw);
 			}
 
-			return request(() -> DatasetGenerator.this.environment.reset(DatasetGenerator.this.arena, this.scene.plan(), first.plan().pose()))
-				.thenCompose(ready -> {
-					this.current = new GenerationEnvironment.ViewReady(ready.operationId(), first.plan().pose(), ready.settledTicks());
-					return capture(0, first, ready);
-				})
+			CameraPose pose = pending.get(0).plan().pose(DatasetGenerator.this.arena);
+			return request(GenerationTimings.Phase.RESET, () -> DatasetGenerator.this.environment.reset(DatasetGenerator.this.arena, this.scene.plan(), pose))
+				.thenCompose(ready -> round(pending, ready))
 				.exceptionallyCompose(this::rejectOnCaptureFailure);
 		}
 
-		/** Captures viewpoint {@code index} from {@code draw}, then moves on or re-draws. */
-		private CompletableFuture<SceneOutcome> capture(int index, Draw draw, GenerationEnvironment.SceneReady ready) {
-			return place(draw.plan())
-				.thenCompose(view -> request(() -> DatasetGenerator.this.environment.observe(DatasetGenerator.this.projection, this.target))
-					.thenCompose(observation -> accept(index, draw, view, observation)
-						? nextViewpoint(index + 1, 0, ready)
-						: nextViewpoint(index, draw.attempt() + 1, ready)));
+		/** Captures every pending viewpoint at once, then repeats with the re-drawn ones. */
+		private CompletableFuture<SceneOutcome> round(Map<Integer, Draw> pending, GenerationEnvironment.SceneReady ready) {
+			List<Integer> indices = List.copyOf(pending.keySet());
+			List<CameraPose> poses = indices.stream().map(index -> pending.get(index).plan().pose(DatasetGenerator.this.arena)).toList();
+			return request(GenerationTimings.Phase.OBSERVE, () -> DatasetGenerator.this.environment.observeAll(DatasetGenerator.this.projection, this.target, poses))
+				.thenCompose(observations -> {
+					Map<Integer, Draw> next = new TreeMap<>();
+					for (int i = 0; i < indices.size(); i++) {
+						int index = indices.get(i);
+						Draw draw = pending.get(index);
+						GenerationEnvironment.ViewReady view = new GenerationEnvironment.ViewReady(observations.get(i).operationId(), poses.get(i), ready.settledTicks());
+						if (accept(index, draw, view, observations.get(i))) {
+							continue;
+						}
+
+						Draw redraw = nextPlaceable(index, draw.attempt() + 1);
+						if (redraw == null) {
+							awaitWrites();
+							return CompletableFuture.completedFuture(new SceneOutcome.Rejected(this.lastRejection));
+						}
+
+						next.put(index, redraw);
+					}
+
+					return next.isEmpty() ? CompletableFuture.completedFuture(finish(ready)) : round(next, ready);
+				});
 		}
 
-		private CompletableFuture<SceneOutcome> nextViewpoint(int index, int fromAttempt, GenerationEnvironment.SceneReady ready) {
-			if (index == DatasetGenerator.this.config.viewpoints().count()) {
-				SceneRecord scene = DatasetGenerator.this.records.scene(this.descriptor, this.scene, this.draws, ready, this.samples.size());
-				return CompletableFuture.completedFuture(new SceneOutcome.Accepted(scene, List.copyOf(this.samples)));
-			}
+		/** The accepted scene, once every image is written. */
+		private SceneOutcome finish(GenerationEnvironment.SceneReady ready) {
+			List<SampleRecord> records = awaitWrites();
+			List<Integer> accepted = List.copyOf(this.draws.values());
+			SceneRecord scene = DatasetGenerator.this.records.scene(this.descriptor, this.scene, accepted, ready, records.size());
+			return new SceneOutcome.Accepted(scene, records);
+		}
 
-			Draw draw = nextPlaceable(index, fromAttempt);
-			return draw == null
-				? CompletableFuture.completedFuture(new SceneOutcome.Rejected(this.lastRejection))
-				: capture(index, draw, ready);
+		/** Waits for every image write so far and returns their samples in viewpoint order. */
+		private List<SampleRecord> awaitWrites() {
+			long waiting = System.nanoTime();
+			try {
+				return this.samples.values().stream().map(CompletableFuture::join).toList();
+			} catch (java.util.concurrent.CompletionException e) {
+				throw e.getCause() instanceof UncheckedIOException io ? io : e;
+			} finally {
+				DatasetGenerator.this.timings.add(GenerationTimings.Phase.WRITE_WAIT, System.nanoTime() - waiting);
+			}
 		}
 
 		/** The first placeable draw of viewpoint {@code index} from {@code fromAttempt} on, or null once the attempts run out. */
@@ -385,16 +510,7 @@ public final class DatasetGenerator {
 			return null;
 		}
 
-		/** Moves the camera unless it is already at the plan's pose. */
-		private CompletableFuture<GenerationEnvironment.ViewReady> place(ViewpointPlan plan) {
-			if (this.current != null && this.current.pose().equals(plan.pose())) {
-				return CompletableFuture.completedFuture(this.current);
-			}
-
-			return request(() -> DatasetGenerator.this.environment.setViewpoint(plan.pose())).thenApply(view -> this.current = view);
-		}
-
-		/** Writes the images and records the sample when the capture is acceptable. */
+		/** Starts writing the images and recording the sample when the capture is acceptable. */
 		private boolean accept(int index, Draw draw, GenerationEnvironment.ViewReady view, GenerationEnvironment.Observation observation) {
 			CameraFrame camera = CameraFrame.of(view.pose(), DatasetGenerator.this.config.viewpoints().eyeHeightBlocks());
 			ObservationCheck.Outcome outcome = ObservationCheck.check(DatasetGenerator.this.config.visibility(), DatasetGenerator.this.projection, camera, this.targetCell, observation.images());
@@ -406,12 +522,20 @@ public final class DatasetGenerator {
 				}
 				case ObservationCheck.Outcome.Accepted accepted -> {
 					SampleDescriptor sample = this.descriptor.sample(index);
-					io(() -> {
-						DatasetWriter.SampleFiles written = DatasetGenerator.this.writer.writeSample(sample, observation.images());
-						this.files.addAll(written.paths());
-						this.samples.add(DatasetGenerator.this.records.sample(sample, written, view, observation, accepted.target(), this.scene.plan()));
-					});
-					this.draws.add(draw.attempt());
+					ScenePlan plan = this.scene.plan();
+					this.samples.put(index, CompletableFuture.supplyAsync(() -> {
+						long writing = System.nanoTime();
+						try {
+							DatasetWriter.SampleFiles written = DatasetGenerator.this.writer.writeSample(sample, observation.images());
+							this.files.addAll(written.paths());
+							return DatasetGenerator.this.records.sample(sample, written, view, observation, accepted.target(), plan);
+						} catch (IOException e) {
+							throw new UncheckedIOException(e);
+						} finally {
+							DatasetGenerator.this.timings.add(GenerationTimings.Phase.WRITE, System.nanoTime() - writing);
+						}
+					}, DatasetGenerator.this.writers));
+					this.draws.put(index, draw.attempt());
 					yield true;
 				}
 			};
@@ -421,11 +545,24 @@ public final class DatasetGenerator {
 		private CompletableFuture<SceneOutcome> rejectOnCaptureFailure(Throwable error) {
 			Throwable cause = Futures.cause(error);
 			if (cause instanceof EnvironmentException environmentError && environmentError.reason() == EnvironmentException.Reason.CAPTURE_FAILED) {
+				awaitWritesQuietly();
 				HoneyFactory.LOGGER.warn("Capture failed in {}: {}", this.descriptor.sceneId(), environmentError.getMessage());
 				return CompletableFuture.completedFuture(new SceneOutcome.Rejected(CAPTURE_FAILED));
 			}
 
+			awaitWritesQuietly();
 			return CompletableFuture.failedFuture(cause);
+		}
+
+		/** Waits for writes in flight before their files are deleted, ignoring their failures. */
+		void awaitWritesQuietly() {
+			for (CompletableFuture<SampleRecord> write : this.samples.values()) {
+				try {
+					write.join();
+				} catch (RuntimeException ignored) {
+					// The attempt is abandoned; its files are deleted whatever their state.
+				}
+			}
 		}
 	}
 }

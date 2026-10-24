@@ -59,6 +59,10 @@ public class M3MaskGateTest implements FabricClientGameTest {
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
+		if (GameTestSupport.skipped(this)) {
+			return;
+		}
+
 		List<String> failures = new ArrayList<>();
 		Path root = GameTestSupport.repoRoot();
 		Path golden = root.resolve("tests/honey-factory/gametest/resources/golden/m3");

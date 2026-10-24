@@ -12,7 +12,7 @@ import io.github.thedeadbolt.honeyfactory.contract.Ids;
 import io.github.thedeadbolt.honeyfactory.contract.MaskStatistics;
 import io.github.thedeadbolt.honeyfactory.contract.SplitGrouping;
 import io.github.thedeadbolt.honeyfactory.contract.VisibilityRule;
-import io.github.thedeadbolt.honeyfactory.contract.Weather;
+import io.github.thedeadbolt.honeyfactory.scene.SceneSpec;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -32,9 +32,8 @@ public record ResolvedConfig(
 	long seed,
 	Target target,
 	Arena arena,
-	@Nullable NaturalRegion naturalRegion,
 	Viewpoints viewpoints,
-	Lighting lighting,
+	SceneSpec scene,
 	Visibility visibility,
 	Capture capture,
 	Quotas quotas,
@@ -47,10 +46,6 @@ public record ResolvedConfig(
 	public record Arena(int width, int length, int height, int margin) {
 	}
 
-	/** Level-5 sampled region; no defaults until M6 benchmarks them. */
-	public record NaturalRegion(int coreWidth, int coreLength, int height, int contextPadding) {
-	}
-
 	public record Viewpoints(
 		int count,
 		double distanceMinBlocks,
@@ -60,9 +55,6 @@ public record ResolvedConfig(
 		int attemptsPerViewpoint,
 		double eyeHeightBlocks
 	) {
-	}
-
-	public record Lighting(int timeOfDayTicks, Weather weather) {
 	}
 
 	/** The selected level's visibility rule; ratio bounds are inclusive and null where unbounded. */
@@ -132,19 +124,8 @@ public record ResolvedConfig(
 		arena.addProperty("height", this.arena.height());
 		arena.addProperty("margin", this.arena.margin());
 		generator.add("arena", arena);
-		if (this.naturalRegion != null) {
-			JsonObject region = new JsonObject();
-			region.addProperty("core_width", this.naturalRegion.coreWidth());
-			region.addProperty("core_length", this.naturalRegion.coreLength());
-			region.addProperty("height", this.naturalRegion.height());
-			region.addProperty("context_padding", this.naturalRegion.contextPadding());
-			generator.add("natural_region", region);
-		}
+		generator.add("scene", this.scene.toJson());
 
-		JsonObject lighting = new JsonObject();
-		lighting.addProperty("time_of_day_ticks", this.lighting.timeOfDayTicks());
-		lighting.addProperty("weather", this.lighting.weather().jsonName());
-		generator.add("lighting", lighting);
 		JsonObject visibility = new JsonObject();
 		visibility.addProperty("rule", this.visibility.rule().jsonName());
 		visibility.add("min_ratio", this.visibility.minRatio() == null ? JsonNull.INSTANCE : new JsonPrimitive(this.visibility.minRatio()));
@@ -156,10 +137,7 @@ public record ResolvedConfig(
 		algorithms.addProperty("ids", Algorithms.IDS);
 		algorithms.addProperty("scene_slots", Algorithms.SCENE_SLOTS);
 		algorithms.addProperty("layout", Algorithms.LAYOUT);
-		String sceneGenerator = Algorithms.sceneGenerator(this.difficulty);
-		if (sceneGenerator != null) {
-			algorithms.addProperty("scene_generator", sceneGenerator);
-		}
+		algorithms.addProperty("scene_generator", Algorithms.sceneGenerator(this.difficulty));
 		generator.add("algorithms", algorithms);
 		return generator;
 	}
@@ -203,7 +181,7 @@ public record ResolvedConfig(
 		ratios.addProperty("test", this.splits.test());
 		splits.add("ratios", ratios);
 		splits.addProperty("grouping", this.splits.grouping().jsonName());
-		splits.addProperty("algorithm", Algorithms.SCENE_SLOTS);
+		splits.addProperty("algorithm", Algorithms.slotsFor(this.splits.grouping()));
 		return splits;
 	}
 }

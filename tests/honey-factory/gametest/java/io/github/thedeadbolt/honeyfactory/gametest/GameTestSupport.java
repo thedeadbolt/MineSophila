@@ -32,6 +32,27 @@ final class GameTestSupport {
 	private GameTestSupport() {
 	}
 
+	/**
+	 * Whether {@code test} is left out of this run: {@code -Dhoneyfactory.gametests} lists
+	 * class-name prefixes to run, such as {@code M6}, and an empty list runs every test.
+	 */
+	static boolean skipped(Object test) {
+		String selected = System.getProperty("honeyfactory.gametests", "");
+		if (selected.isBlank()) {
+			return false;
+		}
+
+		String name = test.getClass().getSimpleName();
+		for (String prefix : selected.split(",")) {
+			if (name.startsWith(prefix.trim())) {
+				return false;
+			}
+		}
+
+		HoneyFactory.LOGGER.info("Skipping {}; honeyfactory.gametests={}", name, selected);
+		return true;
+	}
+
 	/** Creates a world of the Honey Factory Dataset type named {@code name}; it is not claimed yet. */
 	static TestSingleplayerContext datasetWorld(ClientGameTestContext context, String name) {
 		return context.worldBuilder().adjustSettings(settings -> {
@@ -115,8 +136,12 @@ final class GameTestSupport {
 	}
 
 	static <T> T await(ClientGameTestContext context, Function<EnvironmentRuntime, CompletableFuture<T>> request) {
+		return await(context, request, 1200);
+	}
+
+	static <T> T await(ClientGameTestContext context, Function<EnvironmentRuntime, CompletableFuture<T>> request, int timeoutTicks) {
 		CompletableFuture<T> future = context.computeOnClient(minecraft -> request.apply(EnvironmentRuntime.get()));
-		context.waitFor(minecraft -> future.isDone(), 1200);
+		context.waitFor(minecraft -> future.isDone(), timeoutTicks);
 		return future.join();
 	}
 

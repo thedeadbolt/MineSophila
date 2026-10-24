@@ -1,7 +1,8 @@
 """Seed, identifier, shard and scene-slot algorithms of contract 1.x.
 
-These mirror the Java mod's ``seed-v1``, ``ids-v1`` and ``scene-slots-v1`` definitions but
-are implemented independently, so shared golden vectors check both.
+These mirror the Java mod's ``seed-v1``, ``ids-v1``, ``scene-slots-v1`` and
+``patch-slots-v1`` definitions but are implemented independently, so shared golden vectors
+check both.
 """
 
 import hashlib
@@ -12,6 +13,7 @@ from typing import Literal
 SEEDS_ALGORITHM = "seed-v1"
 IDS_ALGORITHM = "ids-v1"
 SLOTS_ALGORITHM = "scene-slots-v1"
+PATCH_SLOTS_ALGORITHM = "patch-slots-v1"
 MAX_SEED = 2**53 - 1
 
 type Split = Literal["train", "validation", "test"]
@@ -55,6 +57,7 @@ class Slot:
     scene_index: int
     target_present: bool
     split: Split
+    group: int
 
 
 def plan_slots(
@@ -75,7 +78,31 @@ def plan_slots(
         ]
         for index, name in zip(_ordered(dataset_seed, "split", members), names, strict=True):
             splits[index] = name
-    return [Slot(i, i in present, splits[i]) for i in range(accepted_scenes)]
+    return [Slot(i, i in present, splits[i], i) for i in range(accepted_scenes)]
+
+
+def plan_patch_slots(
+    dataset_seed: int,
+    accepted_scenes: int,
+    target_present_scenes: int,
+    scenes_per_patch: int,
+    ratios: tuple[float, float, float],
+) -> list[Slot]:
+    """``patch-slots-v1``: classes as in ``scene-slots-v1``, splits per source patch."""
+    by_class = _ordered(dataset_seed, "class", list(range(accepted_scenes)))
+    present = set(by_class[:target_present_scenes])
+    patches = -(-accepted_scenes // scenes_per_patch)
+    names: list[Split] = [
+        split
+        for split, count in zip(SPLITS, split_counts(patches, ratios), strict=True)
+        for _ in range(count)
+    ]
+    ordered = _ordered(dataset_seed, "split", list(range(patches)), PATCH_SLOTS_ALGORITHM)
+    patch_splits = dict(zip(ordered, names, strict=True))
+    return [
+        Slot(i, i in present, patch_splits[i // scenes_per_patch], i // scenes_per_patch)
+        for i in range(accepted_scenes)
+    ]
 
 
 def split_counts(total: int, ratios: tuple[float, float, float]) -> list[int]:
@@ -88,8 +115,10 @@ def split_counts(total: int, ratios: tuple[float, float, float]) -> list[int]:
     return counts
 
 
-def _ordered(dataset_seed: int, purpose: str, indices: list[int]) -> list[int]:
+def _ordered(
+    dataset_seed: int, purpose: str, indices: list[int], algorithm: str = SLOTS_ALGORITHM
+) -> list[int]:
     def key(index: int) -> tuple[str, int]:
-        return (_sha256(f"honey-factory/{SLOTS_ALGORITHM}/{purpose}/{dataset_seed}/{index}"), index)
+        return (_sha256(f"honey-factory/{algorithm}/{purpose}/{dataset_seed}/{index}"), index)
 
     return sorted(indices, key=key)

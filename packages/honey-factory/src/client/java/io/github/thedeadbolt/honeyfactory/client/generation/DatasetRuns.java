@@ -5,6 +5,7 @@ import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
 import io.github.thedeadbolt.honeyfactory.generation.DatasetGenerator;
+import io.github.thedeadbolt.honeyfactory.generation.GenerationTimings;
 import java.io.IOException;
 import java.time.Clock;
 import java.util.concurrent.CompletableFuture;
@@ -15,6 +16,8 @@ import org.jspecify.annotations.Nullable;
 public final class DatasetRuns {
 	private static @Nullable DatasetGenerator running;
 	private static DatasetGenerator.@Nullable Result last;
+	private static @Nullable GenerationTimings lastTimings;
+	private static double @Nullable [] lastCaptureTotals;
 
 	private DatasetRuns() {
 	}
@@ -34,12 +37,15 @@ public final class DatasetRuns {
 			throw new IllegalStateException(CaptureService.IMPROVED_TRANSPARENCY_REQUIRED);
 		}
 
-		DatasetGenerator generator = new DatasetGenerator(config, new RuntimeGenerationEnvironment(EnvironmentRuntime.get()), Clock.systemUTC());
+		RuntimeGenerationEnvironment environment = new RuntimeGenerationEnvironment(EnvironmentRuntime.get());
+		DatasetGenerator generator = new DatasetGenerator(config, environment, Clock.systemUTC());
 		CompletableFuture<DatasetGenerator.Result> result = generator.start();
 		running = generator;
 		return result.whenComplete((value, error) -> {
 			running = null;
 			last = value;
+			lastTimings = generator.timings();
+			lastCaptureTotals = environment.captureTotals();
 			if (error != null) {
 				HoneyFactory.LOGGER.error("Dataset generation ended with an error", error);
 			}
@@ -52,5 +58,15 @@ public final class DatasetRuns {
 
 	public static DatasetGenerator.@Nullable Result last() {
 		return last;
+	}
+
+	/** Where the last run's time went. */
+	public static @Nullable GenerationTimings lastTimings() {
+		return lastTimings;
+	}
+
+	/** The last run's captures, then their render, readback and reprojection seconds. */
+	public static double @Nullable [] lastCaptureTotals() {
+		return lastCaptureTotals == null ? null : lastCaptureTotals.clone();
 	}
 }

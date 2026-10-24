@@ -43,6 +43,44 @@ class SightLinesTest {
 	}
 
 	@Test
+	void shapedBlocksHideOnlyWhatTheyDraw() {
+		double[] low = {8.5, 1.3, 14.5};
+		assertEquals(0.0, SightLines.clearFraction(grid(new Placement(8, 1, 10, "minecraft:stone")), low, TARGET), "a full cube at eye level");
+		double slab = SightLines.clearFraction(grid(row(10, "minecraft:stone_slab[type=bottom,waterlogged=false]")), EYE, TARGET);
+		assertTrue(slab > 0.0 && slab < 1.0, "a bottom slab hides the lower part: " + slab);
+		double topSlab = SightLines.clearFraction(grid(row(10, "minecraft:stone_slab[type=top,waterlogged=false]")), new double[] {8.5, 1.2, 14.5}, TARGET);
+		assertTrue(topSlab > 0.0 && topSlab < 1.0, "a top slab leaves the lower part visible below it: " + topSlab);
+		double fence = SightLines.clearFraction(grid(new Placement(8, 1, 10, "minecraft:oak_fence[east=false,north=false,south=false,waterlogged=false,west=false]")), EYE, TARGET);
+		assertTrue(fence > 0.5, "a lone fence post hides little: " + fence);
+		assertEquals(1.0, SightLines.clearFraction(grid(row(10, "minecraft:oak_leaves[distance=7,persistent=true,waterlogged=false]")), EYE, TARGET),
+			"leaves never block an estimate");
+		double stairs = SightLines.clearFraction(grid(row(10, "minecraft:stone_stairs[facing=north,half=bottom,shape=straight,waterlogged=false]")), low, TARGET);
+		assertEquals(0.0, stairs, "the stair's high side faces the target and fills eye level");
+	}
+
+	@Test
+	void theShapeTableDescribesSlabsStairsAndFences() {
+		assertTrue(BlockShapes.fullCube("minecraft:stone"));
+		assertTrue(BlockShapes.fullCube("minecraft:stone_slab[type=double,waterlogged=false]"));
+		assertFalse(BlockShapes.fullCube("minecraft:stone_slab[type=bottom,waterlogged=false]"));
+		assertFalse(BlockShapes.fullCube("minecraft:oak_leaves[distance=7,persistent=true,waterlogged=false]"));
+		assertEquals(List.of(new BlockShapes.Box(0, 0, 0, 16, 8, 16), new BlockShapes.Box(8, 8, 0, 16, 16, 16)),
+			BlockShapes.boxes("minecraft:oak_stairs[facing=east,half=bottom,shape=straight,waterlogged=false]"));
+		assertEquals(BlockShapes.FULL, BlockShapes.boxes("minecraft:oak_stairs[facing=east,half=bottom,shape=inner_left,waterlogged=false]"), "corner stairs count as cubes");
+		assertEquals(5, BlockShapes.boxes("minecraft:oak_fence[east=true,north=false,south=false,waterlogged=false,west=true]").size(), "a post and two rails per side");
+		assertTrue(BlockShapes.boxes("minecraft:short_grass").isEmpty());
+	}
+
+	private static Placement[] row(int z, String state) {
+		List<Placement> blocks = new ArrayList<>();
+		for (int x = 6; x <= 10; x++) {
+			blocks.add(new Placement(x, 1, z, state));
+		}
+
+		return blocks.toArray(Placement[]::new);
+	}
+
+	@Test
 	void anEyeInsideTheCellSeesNoFace() {
 		assertEquals(0.0, SightLines.clearFraction(grid(), new double[] {8.5, 1.5, 8.5}, TARGET));
 	}

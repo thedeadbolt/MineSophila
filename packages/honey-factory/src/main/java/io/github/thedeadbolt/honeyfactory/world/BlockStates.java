@@ -3,8 +3,10 @@ package io.github.thedeadbolt.honeyfactory.world;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import io.github.thedeadbolt.honeyfactory.contract.BlockBox;
 import io.github.thedeadbolt.honeyfactory.contract.BlockLayout;
+import io.github.thedeadbolt.honeyfactory.contract.LayoutHasher;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.commands.arguments.blocks.BlockStateParser;
@@ -58,8 +60,23 @@ public final class BlockStates {
 		return blocks;
 	}
 
+	/** {@code layout-v1} hash of {@code box}, streamed; equal to hashing {@link #read}. */
 	public static String layoutSha256(BlockGetter level, BlockBox box) {
-		return BlockLayout.sha256(box.min(), box.max(), read(level, box));
+		LayoutHasher hasher = new LayoutHasher(box.min(), box.max());
+		Map<BlockState, String> names = new IdentityHashMap<>();
+		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+		for (int y = box.minY(); y <= box.maxY(); y++) {
+			for (int z = box.minZ(); z <= box.maxZ(); z++) {
+				for (int x = box.minX(); x <= box.maxX(); x++) {
+					BlockState state = level.getBlockState(pos.set(x, y, z));
+					if (!state.isAir()) {
+						hasher.block(x, y, z, names.computeIfAbsent(state, BlockStates::canonical));
+					}
+				}
+			}
+		}
+
+		return hasher.finish();
 	}
 
 	private static <T extends Comparable<T>> String name(Property.Value<T> value) {

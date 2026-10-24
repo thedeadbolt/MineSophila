@@ -1,15 +1,20 @@
 package io.github.thedeadbolt.honeyfactory.dataset;
 
+import io.github.thedeadbolt.honeyfactory.contract.Algorithms;
 import io.github.thedeadbolt.honeyfactory.contract.DatasetManifest;
+import io.github.thedeadbolt.honeyfactory.contract.JsonFields;
 import io.github.thedeadbolt.honeyfactory.contract.SampleRecord;
 import io.github.thedeadbolt.honeyfactory.contract.SceneRecord;
 import io.github.thedeadbolt.honeyfactory.contract.SceneSeeds;
 import io.github.thedeadbolt.honeyfactory.contract.Split;
 import io.github.thedeadbolt.honeyfactory.contract.SplitGrouping;
+import io.github.thedeadbolt.honeyfactory.scene.SceneBase;
+import io.github.thedeadbolt.honeyfactory.scene.SceneSpec;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -20,9 +25,10 @@ import java.util.Set;
  *
  * <p>Every dataset, whatever its lifecycle, must be internally consistent: unique IDs,
  * samples inheriting their scene's split and target presence, target-present samples
- * meeting the level's visibility rule, and, for scene grouping, every scene in the class
- * and split {@code scene-slots-v1} assigns its index. Since a scene's samples inherit its
- * split and each index has exactly one slot, no grouping key can reach two splits.
+ * meeting the level's visibility rule, every scene in the class and split its slot
+ * algorithm ({@code scene-slots-v1} or {@code patch-slots-v1}) assigns its index, and on a
+ * natural base, source patches kept apart across splits. Since a scene's samples inherit
+ * its split and each index has exactly one slot, no grouping key can reach two splits.
  * Complete datasets must also meet their quotas and final split counts.
  */
 public final class DatasetConsistency {
@@ -32,9 +38,14 @@ public final class DatasetConsistency {
 	/** Returns every violation found; an empty list means the records are consistent. */
 	public static List<String> check(DatasetManifest manifest, List<SceneRecord> scenes, List<SampleRecord> samples) {
 		List<String> errors = new ArrayList<>();
-		List<SceneSlots.Slot> slots = manifest.splitGrouping() == SplitGrouping.SCENE
-			? SceneSlots.plan(manifest.seed(), manifest.acceptedScenesRequested(), manifest.targetPresentScenes(), manifest.splitRatios())
-			: null;
+		SceneBase sceneBase = SceneSpec.read(JsonFields.of(manifest.sceneRecipe()), "level1").base();
+		SceneBase.NaturalTerrain natural = sceneBase instanceof SceneBase.NaturalTerrain terrain ? terrain : null;
+		List<SceneSlots.Slot> slots = switch (manifest.splitGrouping()) {
+			case SCENE -> SceneSlots.plan(manifest.seed(), manifest.acceptedScenesRequested(), manifest.targetPresentScenes(), manifest.splitRatios());
+			case SOURCE_REGION -> natural == null ? null
+				: SceneSlots.planPatches(manifest.seed(), manifest.acceptedScenesRequested(), manifest.targetPresentScenes(), natural.scenesPerPatch(), manifest.splitRatios());
+			case SOURCE_WORLD -> null;
+		};
 		DatasetManifest.Visibility visibility = manifest.visibility();
 		Map<String, SceneRecord> scenesById = new HashMap<>();
 		for (SceneRecord scene : scenes) {
@@ -56,8 +67,16 @@ public final class DatasetConsistency {
 			}
 
 			if (slots != null) {
-				checkSlot(scene, slots, errors);
+				checkSlot(scene, slots, Algorithms.slotsFor(manifest.splitGrouping()), errors);
 			}
+
+			if ((natural != null) != (scene.sourcePatch() != null)) {
+				errors.add("scene " + scene.sceneId() + ": " + (natural != null ? "lacks the source_patch a natural_patch base needs" : "has a source_patch but the base is a platform"));
+			}
+		}
+
+		if (natural != null) {
+			checkSourceRegions(natural, scenes, errors);
 		}
 
 		Set<String> sampleIds = new HashSet<>();
@@ -143,8 +162,53 @@ public final class DatasetConsistency {
 		return errors;
 	}
 
+	/**
+	 * Split leakage between source patches: a patch's scenes share one split, every copied
+	 * box has the base's size, and boxes of different splits lie at least the region
+	 * separation apart horizontally.
+	 */
+	private static void checkSourceRegions(SceneBase.NaturalTerrain base, List<SceneRecord> scenes, List<String> errors) {
+		Map<String, SceneRecord> byPatch = new LinkedHashMap<>();
+		for (SceneRecord scene : scenes) {
+			SceneRecord.SourcePatch patch = scene.sourcePatch();
+			if (patch == null) {
+				continue;
+			}
+
+			int[] min = patch.boundsMin();
+			int[] max = patch.boundsMax();
+			if (max[0] - min[0] + 1 != base.copyWidth() || max[2] - min[2] + 1 != base.copyLength() || max[1] - min[1] + 1 != base.height()) {
+				errors.add("scene " + scene.sceneId() + ": source patch bounds do not have the base's copied size");
+			}
+
+			SceneRecord first = byPatch.putIfAbsent(patch.patchId(), scene);
+			if (first != null && first.split() != scene.split()) {
+				errors.add("scene " + scene.sceneId() + ": source patch " + patch.patchId() + " appears in both " + first.split().jsonName() + " and " + scene.split().jsonName());
+			}
+		}
+
+		List<SceneRecord> patches = List.copyOf(byPatch.values());
+		for (int a = 0; a < patches.size(); a++) {
+			for (int b = a + 1; b < patches.size(); b++) {
+				SceneRecord.SourcePatch first = patches.get(a).sourcePatch();
+				SceneRecord.SourcePatch second = patches.get(b).sourcePatch();
+				int gap = Math.max(gap(first.boundsMin()[0], first.boundsMax()[0], second.boundsMin()[0], second.boundsMax()[0]),
+					gap(first.boundsMin()[2], first.boundsMax()[2], second.boundsMin()[2], second.boundsMax()[2]));
+				if (patches.get(a).split() != patches.get(b).split() && gap < base.regionSeparationBlocks()) {
+					errors.add("source patches " + first.patchId() + " and " + second.patchId() + " of different splits are " + gap + " blocks apart, under the "
+						+ base.regionSeparationBlocks() + "-block region separation");
+				}
+			}
+		}
+	}
+
+	/** Blocks strictly between two inclusive intervals; negative when they overlap. */
+	private static int gap(int minA, int maxA, int minB, int maxB) {
+		return Math.max(minB - maxA - 1, minA - maxB - 1);
+	}
+
 	/** The scene must sit in the class and split its index's slot fixes. */
-	private static void checkSlot(SceneRecord scene, List<SceneSlots.Slot> slots, List<String> errors) {
+	private static void checkSlot(SceneRecord scene, List<SceneSlots.Slot> slots, String algorithm, List<String> errors) {
 		int index = scene.generation().sceneIndex();
 		if (index >= slots.size()) {
 			errors.add("scene " + scene.sceneId() + ": scene_index " + index + " exceeds the requested " + slots.size() + " scenes");
@@ -153,12 +217,11 @@ public final class DatasetConsistency {
 
 		SceneSlots.Slot slot = slots.get(index);
 		if (scene.split() != slot.split()) {
-			errors.add("scene " + scene.sceneId() + ": split " + scene.split().jsonName() + " differs from the " + slot.split().jsonName() + " that "
-				+ SceneSlots.ALGORITHM + " assigns");
+			errors.add("scene " + scene.sceneId() + ": split " + scene.split().jsonName() + " differs from the " + slot.split().jsonName() + " that " + algorithm + " assigns");
 		}
 
 		if (scene.target().present() != slot.targetPresent()) {
-			errors.add("scene " + scene.sceneId() + ": target presence differs from the class " + SceneSlots.ALGORITHM + " assigns");
+			errors.add("scene " + scene.sceneId() + ": target presence differs from the class " + algorithm + " assigns");
 		}
 	}
 

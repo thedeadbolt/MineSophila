@@ -16,6 +16,8 @@ import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
 import io.github.thedeadbolt.honeyfactory.world.ArenaDimension;
 import io.github.thedeadbolt.honeyfactory.world.ArenaExecutor;
 import io.github.thedeadbolt.honeyfactory.world.BlockStates;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -29,6 +31,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
+import net.minecraft.server.level.ChunkTrackingView;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.LightLayer;
 import org.jspecify.annotations.Nullable;
@@ -46,7 +49,8 @@ import org.jspecify.annotations.Nullable;
 public final class EnvironmentRuntime {
 	/** Settling minimums and timeouts, in client ticks. */
 	public record Timing(int serverTimeoutTicks, int resetSettleTicks, int resetTimeoutTicks, int viewpointSettleTicks, int viewpointTimeoutTicks) {
-		public static final Timing DEFAULT = new Timing(600, 5, 600, 3, 200);
+		/** A source-patch copy generates terrain and relights hundreds of chunks, so server work may take minutes. */
+		public static final Timing DEFAULT = new Timing(6000, 5, 1200, 3, 200);
 	}
 
 	public record SceneState(String operationId, String layoutSha256, long serverTick, long settledTicks, CameraPose pose) {
@@ -83,7 +87,10 @@ public final class EnvironmentRuntime {
 	private @Nullable ArenaLayout arena;
 	private @Nullable ScenePlan scene;
 	private @Nullable String layoutSha256;
+	private ArenaExecutor.@Nullable ResetResult lastReset;
 	private @Nullable Runnable deferredCapture;
+	private @Nullable PoseSequence poseSequence;
+	private boolean poseStepQueued;
 
 	private EnvironmentRuntime(Timing timing) {
 		this.timing = timing;
@@ -96,8 +103,27 @@ public final class EnvironmentRuntime {
 
 	public static void initialize() {
 		ClientTickEvents.END_CLIENT_TICK.register(minecraft -> INSTANCE.tick());
-		LevelRenderEvents.END_MAIN.register(context -> INSTANCE.frames++);
+		LevelRenderEvents.END_MAIN.register(context -> INSTANCE.frameRendered());
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, minecraft) -> INSTANCE.disconnect());
+	}
+
+	/**
+	 * Counts the frame and, during {@link #observeAll}, queues the pose sequence's next step
+	 * to run between this frame and the next, so poses advance per frame rather than per tick.
+	 */
+	private void frameRendered() {
+		this.frames++;
+		if (this.poseSequence != null && !this.poseStepQueued) {
+			this.poseStepQueued = true;
+			Minecraft minecraft = Minecraft.getInstance();
+			minecraft.schedule(minecraft.wrapRunnable(() -> {
+				this.poseStepQueued = false;
+				PoseSequence sequence = this.poseSequence;
+				if (sequence != null && sequence.step(minecraft)) {
+					this.poseSequence = null;
+				}
+			}));
+		}
 	}
 
 	/** Leaving a world fails any running operation and forgets the scene; the next world starts IDLE. */
@@ -110,6 +136,7 @@ public final class EnvironmentRuntime {
 
 		this.coordinator = new OperationCoordinator();
 		this.deferredCapture = null;
+		this.poseSequence = null;
 		this.arena = null;
 		this.scene = null;
 		this.layoutSha256 = null;
@@ -129,6 +156,11 @@ public final class EnvironmentRuntime {
 		return this.arena;
 	}
 
+	/** The server's report of the last successful reset, including any patch copy statistics, or null. */
+	public ArenaExecutor.@Nullable ResetResult lastReset() {
+		return this.lastReset;
+	}
+
 	/** The verified layout hash of the current scene, or null. */
 	public @Nullable String layoutSha256() {
 		return this.layoutSha256;
@@ -140,7 +172,6 @@ public final class EnvironmentRuntime {
 	 */
 	public CompletableFuture<SceneState> reset(ArenaLayout layout, ScenePlan plan, CameraPose firstViewpoint) {
 		return start(OperationKind.RESET, (server, operation) -> {
-			String expected = plan.layoutSha256(layout);
 			this.arena = layout;
 			this.scene = null;
 			this.layoutSha256 = null;
@@ -149,10 +180,11 @@ public final class EnvironmentRuntime {
 				ArenaExecutor.placeViewpoint(server, player(server), layout, firstViewpoint, ConfigResolver.EYE_HEIGHT_BLOCKS);
 				return result;
 			});
-			SceneReadiness readiness = new SceneReadiness(layout, firstViewpoint, expected);
-			return new Pending<>(operation, work, this.timing.resetSettleTicks(), this.timing.resetTimeoutTicks(), result -> readiness.ready(Minecraft.getInstance()), (result, settled) -> {
+			SceneReadiness readiness = new SceneReadiness(layout, firstViewpoint);
+			return new Pending<>(operation, work, this.timing.resetSettleTicks(), this.timing.resetTimeoutTicks(), result -> readiness.ready(Minecraft.getInstance(), result), (result, settled) -> {
 				this.scene = plan;
 				this.layoutSha256 = result.layoutSha256();
+				this.lastReset = result;
 				return new SceneState(operation.id(), result.layoutSha256(), result.serverTick(), settled, clientPose(Minecraft.getInstance()));
 			});
 		});
@@ -205,6 +237,83 @@ public final class EnvironmentRuntime {
 		});
 	}
 
+	/**
+	 * Captures from each of {@code poses} in turn, in one operation. For each pose the client
+	 * moves its player there, the server following as it would any spectator's movement; the
+	 * game's own frame loop then renders until the player is at the pose and every section is
+	 * compiled for at least {@link #STABLE_FRAMES} frames, and the capture runs between that
+	 * frame and the next. Skipping the server-side placement and its settling, and stepping
+	 * per frame rather than per tick, saves several ticks per pose. Poses must lie in the current scene near the player, whose surroundings
+	 * the reset readied. Returns one observation per pose, in order.
+	 */
+	public CompletableFuture<List<Observation>> observeAll(CaptureProjection projection, List<CameraPose> poses) {
+		return start(OperationKind.OBSERVE, (server, operation) -> {
+			int[] target = this.scene.targetPosition(this.arena);
+			PoseSequence sequence = new PoseSequence(operation, projection, target == null ? null : new BlockPos(target[0], target[1], target[2]), poses);
+			this.poseSequence = sequence;
+			return new Pending<>(operation, sequence.result, 0, 0, observations -> true, (observations, settled) -> observations);
+		});
+	}
+
+	/** The poses of one {@link #observeAll} operation, advanced between frames. */
+	private final class PoseSequence {
+		private final Operation operation;
+		private final CaptureProjection projection;
+		private final @Nullable BlockPos target;
+		private final List<CameraPose> poses;
+		private final List<Observation> observations = new ArrayList<>();
+		private final CompletableFuture<List<Observation>> result = new CompletableFuture<>();
+		private int index;
+		private long movedAtFrame = -1;
+
+		PoseSequence(Operation operation, CaptureProjection projection, @Nullable BlockPos target, List<CameraPose> poses) {
+			this.operation = operation;
+			this.projection = projection;
+			this.target = target;
+			this.poses = List.copyOf(poses);
+		}
+
+		/** Moves to the next pose, or captures it once the client renders it; returns true when done. */
+		boolean step(Minecraft minecraft) {
+			try {
+				CameraPose pose = this.poses.get(this.index);
+				if (this.movedAtFrame < 0) {
+					LocalPlayer player = minecraft.player;
+					player.snapTo(pose.x(), pose.y(), pose.z(), pose.yawDegrees(), pose.pitchDegrees());
+					player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
+					this.movedAtFrame = EnvironmentRuntime.this.frames;
+					return false;
+				}
+
+				if (EnvironmentRuntime.this.frames - this.movedAtFrame < STABLE_FRAMES || !atPose(minecraft, pose) || !sectionsCompiled(minecraft)) {
+					return false;
+				}
+
+				CaptureService.Capture capture = CaptureService.capture(minecraft, this.projection, this.target);
+				BlockPos eye = BlockPos.containing(minecraft.player.getEyePosition());
+				this.observations.add(new Observation(
+					this.operation.id(),
+					capture,
+					clientPose(minecraft),
+					minecraft.level.getBiome(eye).unwrapKey().map(key -> key.identifier().toString()).orElse(null),
+					minecraft.level.getBrightness(LightLayer.SKY, eye),
+					minecraft.level.getBrightness(LightLayer.BLOCK, eye)
+				));
+				this.index++;
+				this.movedAtFrame = -1;
+				if (this.index == this.poses.size()) {
+					this.result.complete(List.copyOf(this.observations));
+					return true;
+				}
+
+				return false;
+			} catch (RuntimeException e) {
+				this.result.completeExceptionally(e);
+				return true;
+			}
+		}
+	}
+
 	/** Movement actions arrive in M7; until then every step is rejected without changing state. */
 	public CompletableFuture<Void> step(String action) {
 		return CompletableFuture.failedFuture(new EnvironmentException(EnvironmentException.Reason.UNSUPPORTED, "step actions are not implemented until M7: " + action));
@@ -241,6 +350,7 @@ public final class EnvironmentRuntime {
 		if (capture != null) {
 			capture.run();
 		}
+
 
 		Pending<?, ?> running = this.pending;
 		// Completing an operation may start the caller's next one; keep that one pending.
@@ -297,26 +407,25 @@ public final class EnvironmentRuntime {
 	}
 
 	/**
-	 * Whether the client shows a freshly built scene: in the arena at the first viewpoint
-	 * with the expected layout, then every arena section rebuilt and stable for
+	 * Whether the client shows a freshly built scene: in the arena at the first viewpoint,
+	 * every chunk of the reset volume within render distance received, the readiness volume
+	 * matching the server's hash, then every arena section rebuilt and stable for
 	 * {@link #STABLE_FRAMES} frames.
 	 */
 	private final class SceneReadiness {
 		private final ArenaLayout layout;
 		private final CameraPose pose;
-		private final String expectedLayout;
 		private final RenderStability stability = new RenderStability();
 		private boolean refreshed;
 
-		SceneReadiness(ArenaLayout layout, CameraPose pose, String expectedLayout) {
+		SceneReadiness(ArenaLayout layout, CameraPose pose) {
 			this.layout = layout;
 			this.pose = pose;
-			this.expectedLayout = expectedLayout;
 		}
 
-		boolean ready(Minecraft minecraft) {
-			boolean shown = inArena(minecraft) && atPose(minecraft, this.pose)
-				&& this.expectedLayout.equals(BlockStates.layoutSha256(minecraft.level, this.layout.resetVolume()));
+		boolean ready(Minecraft minecraft, ArenaExecutor.ResetResult result) {
+			boolean shown = inArena(minecraft) && atPose(minecraft, this.pose) && chunksReceived(minecraft, this.layout.resetVolume())
+				&& result.readinessSha256().equals(BlockStates.layoutSha256(minecraft.level, result.readinessVolume()));
 			if (shown && !this.refreshed) {
 				// Change marks for the arena can be dropped while the camera waits on the
 				// distant staging platform; rebuild every arena section from the client's blocks.
@@ -327,6 +436,23 @@ public final class EnvironmentRuntime {
 
 			return this.stability.holds(shown && this.refreshed && sectionsCompiled(minecraft));
 		}
+	}
+
+	/** Whether the client holds every chunk of {@code box} the server sends within render distance of the camera. */
+	private static boolean chunksReceived(Minecraft minecraft, BlockBox box) {
+		int distance = minecraft.options.getEffectiveRenderDistance();
+		int centreX = SectionPos.blockToSectionCoord(minecraft.player.getBlockX());
+		int centreZ = SectionPos.blockToSectionCoord(minecraft.player.getBlockZ());
+		int[] chunks = box.chunkRange();
+		for (int x = Math.max(chunks[0], centreX - distance); x <= Math.min(chunks[2], centreX + distance); x++) {
+			for (int z = Math.max(chunks[1], centreZ - distance); z <= Math.min(chunks[3], centreZ + distance); z++) {
+				if (ChunkTrackingView.isInViewDistance(centreX, centreZ, distance, x, z) && !minecraft.level.getChunkSource().hasChunk(x, z)) {
+					return false;
+				}
+			}
+		}
+
+		return true;
 	}
 
 	/** Whether render conditions have held over at least {@link #STABLE_FRAMES} complete level frames. */

@@ -38,6 +38,10 @@ public class M4DatasetTest implements FabricClientGameTest {
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
+		if (GameTestSupport.skipped(this)) {
+			return;
+		}
+
 		Path output = GameTestSupport.repoRoot().resolve("packages/honey-factory/build/m4-datasets");
 		GameTestSupport.deleteRecursively(output);
 		GameTestSupport.pinCaptureSettings(context);

@@ -14,7 +14,9 @@ import io.github.thedeadbolt.honeyfactory.dataset.SceneDescriptor;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.scene.ArenaLayout;
 import io.github.thedeadbolt.honeyfactory.scene.GeneratedScene;
+import io.github.thedeadbolt.honeyfactory.scene.SceneBase;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
+import io.github.thedeadbolt.honeyfactory.scene.SourcePatch;
 import io.github.thedeadbolt.honeyfactory.scene.Template;
 import java.util.List;
 
@@ -66,8 +68,11 @@ final class RecordFactory {
 
 	/** @param draws the accepted draw of each viewpoint, in order */
 	SceneRecord scene(SceneDescriptor descriptor, GeneratedScene generated, List<Integer> draws, GenerationEnvironment.SceneReady ready, int acceptedSamples) {
-		ResolvedConfig.Arena size = this.config.arena();
+		ResolvedConfig.Arena size = this.config.scene().base() instanceof SceneBase.NaturalTerrain natural
+			? new ResolvedConfig.Arena(natural.coreWidth(), natural.coreLength(), natural.height(), natural.contextPadding())
+			: this.config.arena();
 		ScenePlan plan = generated.plan();
+		SourcePatch patch = plan.patch();
 		Template template = plan.template();
 		int[] target = plan.targetPosition(this.arena);
 		int[] aim = generated.aimBlock();
@@ -83,7 +88,7 @@ final class RecordFactory {
 			descriptor.split(),
 			this.config.difficulty(),
 			new SceneRecord.Generation(descriptor.slot().sceneIndex(), descriptor.attemptIndex(), descriptor.seeds(), SceneSeeds.ALGORITHM, parameters),
-			new SceneRecord.Template(template.id(), template.version(), template.sha256()),
+			new SceneRecord.Template(template.id(), template.version(), patch == null ? template.sha256() : patch.contentSha256()),
 			new SceneRecord.Arena(
 				ArenaLayout.DIMENSION_ID,
 				this.arena.core().min(),
@@ -94,7 +99,7 @@ final class RecordFactory {
 				size.height(),
 				size.margin()
 			),
-			null,
+			patch == null ? null : new SceneRecord.SourcePatch(patch.worldSeed(), patch.dimension(), patch.sourceMin(), patch.sourceMax(), patch.generatorVersion(), patch.patchId()),
 			new SceneRecord.Target(target != null, this.config.target().blockId(), plan.target() == null ? null : plan.target().state(), target),
 			new SceneRecord.Environment(plan.timeOfDayTicks(), plan.weather(), ready.gamerules()),
 			ready.layoutSha256(),

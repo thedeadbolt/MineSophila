@@ -44,6 +44,10 @@ public class M2EnvironmentTest implements FabricClientGameTest {
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
+		if (GameTestSupport.skipped(this)) {
+			return;
+		}
+
 		List<String> failures = new ArrayList<>();
 		refusesOrdinarySave(context, failures);
 		datasetWorld(context, failures);

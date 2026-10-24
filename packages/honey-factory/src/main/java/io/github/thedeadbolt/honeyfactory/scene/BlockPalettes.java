@@ -3,8 +3,9 @@ package io.github.thedeadbolt.honeyfactory.scene;
 import java.util.List;
 
 /**
- * Block palettes of the generated levels. Every entry is an opaque full cube without
- * block-state properties, so its ID is also its canonical state. Generators draw from
+ * Block palettes of the generated levels. Entries of the level 1–3 lists are opaque full
+ * cubes without block-state properties, so each ID is also its canonical state; level 4
+ * adds shaped blocks and vegetation with explicit canonical states. Generators draw from
  * these lists by index: reordering or editing one changes their output and needs a new
  * generator version.
  */
@@ -63,6 +64,78 @@ public final class BlockPalettes {
 		"minecraft:terracotta",
 		"minecraft:smooth_stone",
 		"minecraft:sandstone"
+	);
+
+	/**
+	 * Level-4 building materials: a full block and the stairs and slab IDs cut from it.
+	 * Unlike the lists above, stairs and slabs carry block-state properties.
+	 */
+	public record Family(String full, String stairs, String slab) {
+		/** A straight stair, its high side towards {@code facing}. */
+		public String stair(String facing, boolean top) {
+			return this.stairs + "[facing=" + facing + ",half=" + (top ? "top" : "bottom") + ",shape=straight,waterlogged=false]";
+		}
+
+		/** A slab of {@code type} bottom, top or double. */
+		public String slab(String type) {
+			return this.slab + "[type=" + type + ",waterlogged=false]";
+		}
+	}
+
+	public static final List<Family> FAMILIES = List.of(
+		new Family("minecraft:cobblestone", "minecraft:cobblestone_stairs", "minecraft:cobblestone_slab"),
+		new Family("minecraft:mossy_cobblestone", "minecraft:mossy_cobblestone_stairs", "minecraft:mossy_cobblestone_slab"),
+		new Family("minecraft:stone_bricks", "minecraft:stone_brick_stairs", "minecraft:stone_brick_slab"),
+		new Family("minecraft:mossy_stone_bricks", "minecraft:mossy_stone_brick_stairs", "minecraft:mossy_stone_brick_slab"),
+		new Family("minecraft:bricks", "minecraft:brick_stairs", "minecraft:brick_slab"),
+		new Family("minecraft:oak_planks", "minecraft:oak_stairs", "minecraft:oak_slab"),
+		new Family("minecraft:spruce_planks", "minecraft:spruce_stairs", "minecraft:spruce_slab"),
+		new Family("minecraft:mud_bricks", "minecraft:mud_brick_stairs", "minecraft:mud_brick_slab"),
+		new Family("minecraft:sandstone", "minecraft:sandstone_stairs", "minecraft:sandstone_slab"),
+		new Family("minecraft:polished_andesite", "minecraft:polished_andesite_stairs", "minecraft:polished_andesite_slab"),
+		new Family("minecraft:deepslate_bricks", "minecraft:deepslate_brick_stairs", "minecraft:deepslate_brick_slab")
+	);
+
+	/** Wooden fence IDs; they all connect to each other. Generators add the connection properties. */
+	public static final List<String> FENCES = List.of(
+		"minecraft:oak_fence",
+		"minecraft:spruce_fence",
+		"minecraft:birch_fence",
+		"minecraft:dark_oak_fence"
+	);
+
+	/** Persistent leaves, so they never decay. */
+	public static final List<String> LEAVES = List.of(
+		"minecraft:oak_leaves[distance=7,persistent=true,waterlogged=false]",
+		"minecraft:birch_leaves[distance=7,persistent=true,waterlogged=false]",
+		"minecraft:spruce_leaves[distance=7,persistent=true,waterlogged=false]",
+		"minecraft:azalea_leaves[distance=7,persistent=true,waterlogged=false]"
+	);
+
+	/** Single-block plants; each stands on a {@link #GROUND} block. */
+	public static final List<String> PLANTS = List.of(
+		"minecraft:short_grass",
+		"minecraft:fern",
+		"minecraft:bush",
+		"minecraft:poppy",
+		"minecraft:dandelion",
+		"minecraft:cornflower",
+		"minecraft:oxeye_daisy"
+	);
+
+	/** Ground blocks that plants grow on and terraces are topped with. */
+	public static final List<String> GROUND = List.of(
+		"minecraft:grass_block[snowy=false]",
+		"minecraft:moss_block",
+		"minecraft:podzol[snowy=false]",
+		"minecraft:coarse_dirt"
+	);
+
+	/** Fill below a terrace's ground block. */
+	public static final List<String> TERRAIN_FILL = List.of(
+		"minecraft:dirt",
+		"minecraft:stone",
+		"minecraft:packed_mud"
 	);
 
 	private BlockPalettes() {

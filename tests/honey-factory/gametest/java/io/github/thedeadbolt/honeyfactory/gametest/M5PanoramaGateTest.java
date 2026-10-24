@@ -149,6 +149,10 @@ public class M5PanoramaGateTest implements FabricClientGameTest {
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
+		if (GameTestSupport.skipped(this)) {
+			return;
+		}
+
 		List<String> failures = new ArrayList<>();
 		Path root = GameTestSupport.repoRoot();
 		Path review = root.resolve("packages/honey-factory/build/m5-review");

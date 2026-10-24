@@ -6,7 +6,7 @@ checks, for a complete or failed dataset:
 - ``dataset.json`` and every index line against the schemas and single-record rules;
 - the manifest's index digests, when it has an integrity section;
 - cross-record rules: unique IDs, references, split and target-presence inheritance,
-  seed derivation, every scene in the class and split ``scene-slots-v1`` assigns (so no
+  seed derivation, every scene in the class and split its slot algorithm assigns (so no
   grouping key reaches two splits), and the level's visibility rule;
 - for a complete dataset, the target-class quotas, every viewpoint and the split counts;
 - every image file: present, matching its byte count and SHA-256, an 8-bit PNG of the
@@ -150,14 +150,26 @@ def consistency(manifest: Record, scenes: list[Record], samples: list[Record]) -
     block_id: str = manifest["target"]["block_id"]
     viewpoints: int = manifest["capture"]["viewpoints"]["count"]
     grouping: str = manifest["splits"]["grouping"]
+    ratios: Record = manifest["splits"]["ratios"]
+    split_ratios = (ratios["train"], ratios["validation"], ratios["test"])
+    base: Record = generator["scene"]["base"]
+    natural = base["type"] == "natural_patch"
+    algorithm: str = manifest["splits"]["algorithm"]
     slots: list[ids.Slot] | None = None
     if grouping == "scene":
-        ratios: Record = manifest["splits"]["ratios"]
         slots = ids.plan_slots(
             seed,
             generator["accepted_scenes"],
             manifest["target"]["target_present_scenes"],
-            (ratios["train"], ratios["validation"], ratios["test"]),
+            split_ratios,
+        )
+    elif grouping == "source_region" and natural:
+        slots = ids.plan_patch_slots(
+            seed,
+            generator["accepted_scenes"],
+            manifest["target"]["target_present_scenes"],
+            base["scenes_per_patch"],
+            split_ratios,
         )
 
     by_id: dict[str, Record] = {}
@@ -193,12 +205,24 @@ def consistency(manifest: Record, scenes: list[Record], samples: list[Record]) -
                 if scene["split"] != slot.split:
                     errors.append(
                         label + f"split {scene['split']} differs from the {slot.split} "
-                        "that scene-slots-v1 assigns"
+                        f"that {algorithm} assigns"
                     )
                 if scene["target"]["present"] != slot.target_present:
                     errors.append(
-                        label + "target presence differs from the class scene-slots-v1 assigns"
+                        label + f"target presence differs from the class {algorithm} assigns"
                     )
+
+        if natural != ("source_patch" in scene):
+            errors.append(
+                label
+                + (
+                    "lacks the source_patch a natural_patch base needs"
+                    if natural
+                    else "has a source_patch but the base is a platform"
+                )
+            )
+    if natural:
+        errors += _source_regions(base, scenes)
 
     visibility: Record = generator["visibility"]
     sample_ids: set[str] = set()
@@ -266,6 +290,50 @@ def consistency(manifest: Record, scenes: list[Record], samples: list[Record]) -
         )
     if manifest["lifecycle"] == "complete":
         errors += _complete(manifest, scenes, base_samples)
+    return errors
+
+
+def _source_regions(base: Record, scenes: list[Record]) -> list[str]:
+    """A patch keeps one split, has the base's size and stays apart from other splits'."""
+    errors: list[str] = []
+    width = base["core_width"] + 2 * base["context_padding"]
+    length = base["core_length"] + 2 * base["context_padding"]
+    separation: int = base["region_separation_blocks"]
+    patches: dict[str, Record] = {}
+    for scene in scenes:
+        patch: Record | None = scene.get("source_patch")
+        if patch is None:
+            continue
+        low: list[int] = patch["bounds"]["min"]
+        high: list[int] = patch["bounds"]["max"]
+        size = (high[0] - low[0] + 1, high[1] - low[1] + 1, high[2] - low[2] + 1)
+        if size != (width, base["height"], length):
+            errors.append(
+                f"scene {scene['scene_id']}: source patch bounds do not have the base's copied size"
+            )
+        first = patches.setdefault(patch["patch_id"], scene)
+        if first["split"] != scene["split"]:
+            errors.append(
+                f"scene {scene['scene_id']}: source patch {patch['patch_id']} appears in both "
+                f"{first['split']} and {scene['split']}"
+            )
+    owners = list(patches.values())
+    for a, first in enumerate(owners):
+        for second in owners[a + 1 :]:
+            if first["split"] == second["split"]:
+                continue
+            one: Record = first["source_patch"]["bounds"]
+            two: Record = second["source_patch"]["bounds"]
+            gap = max(
+                max(two["min"][axis] - one["max"][axis], one["min"][axis] - two["max"][axis]) - 1
+                for axis in (0, 2)
+            )
+            if gap < separation:
+                errors.append(
+                    f"source patches {first['source_patch']['patch_id']} and "
+                    f"{second['source_patch']['patch_id']} of different splits are {gap} blocks "
+                    f"apart, under the {separation}-block region separation"
+                )
     return errors
 
 

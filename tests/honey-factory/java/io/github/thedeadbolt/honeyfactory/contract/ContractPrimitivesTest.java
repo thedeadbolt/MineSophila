@@ -69,6 +69,10 @@ class ContractPrimitivesTest {
 			1 1 0 minecraft:stone
 			""", BlockLayout.serialize(min, max, blocks));
 		assertEquals(BlockLayout.sha256(min, max, blocks), BlockLayout.sha256(min, max, blocks.reversed()));
+		LayoutHasher streamed = new LayoutHasher(min, max);
+		streamed.block(0, 0, 1, blocks.get(1).state());
+		streamed.block(1, 1, 0, blocks.get(0).state());
+		assertEquals(BlockLayout.sha256(min, max, blocks), streamed.finish(), "streaming gives the same hash");
 		assertThrows(IllegalArgumentException.class, () -> BlockLayout.serialize(min, max, List.of(new BlockLayout.Block(3, 0, 0, "minecraft:stone"))));
 		assertThrows(IllegalArgumentException.class, () -> BlockLayout.serialize(min, max, List.of(new BlockLayout.Block(0, 0, 0, "minecraft:air"))));
 		assertThrows(IllegalArgumentException.class, () -> BlockLayout.serialize(min, max, List.of(new BlockLayout.Block(0, 0, 0, "minecraft:oak_stairs[half=bottom,facing=north]"))));
