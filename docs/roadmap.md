@@ -64,7 +64,31 @@ have been measured.
 **Done when:** the agreed identification criteria are met. This completes the core
 project. Learning to choose movement actions is optional.
 
-## Phase 4 — Optional gameplay
+## Phase 4 — Active search with the fly brain
+
+Agreed 2026-10-24. Phase 4 is the long-term goal, no longer optional gameplay. The
+connectome-constrained fly brain keeps honey in view and, when it disappears, searches for
+it with memory instead of randomly. The agent stays a player that walks, turns and looks.
+
+- `honey-factory` provides four things:
+  - animal-like lock-step control, with one frame per tick;
+  - motion clips generated through that control;
+  - a caged level-6 environment with teleporting honey and a scripted teacher;
+  - a live adapter.
+
+  These are roadmap milestones M11–M14 of the
+  [`honey-factory` roadmap](../packages/honey-factory/docs/roadmap.md#beyond-phase-1-active-search-with-the-fly-brain).
+- The brain learns mostly offline by imitating the teacher from recorded frame streams.
+  DAgger rounds run in the live loop, and reinforcement-learning fine-tuning is optional.
+  A plain recurrent network is the baseline.
+- Memory should come from the connectome's own recurrent circuits, such as the central
+  complex and the mushroom body. Which circuits, and how motor neurons map to controls, is
+  phase-2 network design with the collaborator.
+- Mining remains a further extension.
+
+## Former phase 4 — Optional gameplay
+
+Superseded by the plan above; kept for its original scope.
 
 - Connect model outputs to the environment controls from phase 1.
 - Evaluate searching, turning and approaching honey.

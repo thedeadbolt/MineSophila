@@ -796,6 +796,22 @@ runs should set the requested count explicitly after measuring capture time, rej
 rates, compression and disk use for the selected difficulty and capture mode. A small
 smoke run may override it with only a few scenes.
 
+Agreed 2026-10-24: the phase-1 production datasets, generated once the acceptance gates
+pass. There is one dataset per level and capture mode, both `PERSPECTIVE_90` and
+`PANORAMA_310`, at the default resolutions, with 8 viewpoints and the default 80/20
+balance. Effort is weighted towards the harder levels, whose scenes vary most:
+
+| Level | Images per mode | Scenes | Note |
+|---|---:|---:|---|
+| 1 | 2,000 | 250 | Curriculum and sanity checks |
+| 2 | 5,000 | 625 | |
+| 3 | 10,000 | 1,250 | |
+| 4 | 10,000 | 1,250 | |
+| 5 | 20,000 | 2,500 | `scenes_per_patch` 4, so about 625 source patches |
+
+That is 47,000 base images per mode and 94,000 in all. More data for a level is added as
+another dataset with a new seed, never by regenerating these.
+
 - Resolve exact target-present and target-absent scene quotas before generation so
   seeded runs do not drift because of random class selection. Keep their distribution
   across splits as close to the requested ratios as scene grouping permits.
