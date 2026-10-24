@@ -79,6 +79,11 @@ public final class CaptureService {
 		TargetMaskRenderer.initialize();
 	}
 
+	/** Whether a capture is rendering now. */
+	public static boolean capturing() {
+		return CaptureSetup.activeVerticalFov() != null;
+	}
+
 	/** The vertical field of view the camera must use while a capture renders, or null. */
 	public static @Nullable Float verticalFovOverride() {
 		return CaptureSetup.activeVerticalFov();

@@ -43,13 +43,16 @@ import org.jspecify.annotations.Nullable;
  * the end of the main level pass, using the frame's camera matrices and viewport.
  *
  * <ul>
- *   <li>Visible: depth-tested, without writing, against the main depth attachment.</li>
+ *   <li>Visible: depth-tested, without writing, against the scene depth retained before
+ *       translucent geometry.</li>
  *   <li>Unoccluded: depth-tested against a freshly cleared private depth texture.</li>
  * </ul>
  *
- * <p>The main depth holds only opaque/cutout geometry when improved transparency (OIT) is
- * enabled, because every OIT translucent pipeline has depth writes disabled. With classic
- * transparency, translucent terrain (including the target) also writes main depth.
+ * <p>With improved transparency (OIT), {@link #retainSceneDepth} copies the main depth as the
+ * translucent stages begin, when it holds opaque and cutout terrain and solid features. The
+ * translucent pipelines do not write depth, but the OIT composite writes the nearest
+ * translucent surface into the main depth, so by the end of the pass rain, water or glass
+ * in front of the target would remove label pixels.
  */
 public final class TargetMaskRenderer {
 	public static final RenderPipeline VISIBLE = RenderPipelines.register(pipeline("target_mask_visible", false));
@@ -66,6 +69,10 @@ public final class TargetMaskRenderer {
 	private static @Nullable GpuTextureView visibleView;
 	private static @Nullable GpuTextureView unoccludedView;
 	private static @Nullable GpuTextureView unoccludedDepthView;
+	/** The main depth as the translucent stages began, for the armed render. */
+	private static @Nullable GpuTexture retainedDepth;
+	private static @Nullable GpuTextureView retainedDepthView;
+	private static boolean depthRetained;
 
 	private TargetMaskRenderer() {
 	}
@@ -95,7 +102,32 @@ public final class TargetMaskRenderer {
 	static void arm(BlockPos target) {
 		armedTarget = target.immutable();
 		drawn = false;
+		depthRetained = false;
 		failure = null;
+	}
+
+	/**
+	 * Copies the main depth for the armed render's visible mask; called as the OIT stages
+	 * begin, after opaque and cutout terrain and solid features.
+	 */
+	public static void retainSceneDepth(RenderTarget main) {
+		if (armedTarget == null || drawn) {
+			return;
+		}
+
+		try {
+			GpuTexture depth = main.getDepthTexture();
+			if (depth == null) {
+				throw new IllegalStateException("Main render target has no depth attachment");
+			}
+
+			ensureTextures(main.width, main.height, depth.getFormat());
+			RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(depth, retainedDepth, 0, 0, 0, 0, 0, main.width, main.height);
+			depthRetained = true;
+		} catch (RuntimeException e) {
+			failure = e.toString();
+			HoneyFactory.LOGGER.error("Retaining the scene depth failed", e);
+		}
 	}
 
 	/** Returns the failure reason, or null when both masks were drawn for the armed render. */
@@ -120,7 +152,7 @@ public final class TargetMaskRenderer {
 	/** Bytes held by the mask textures at their current size. */
 	static long allocatedBytes() {
 		long total = 0;
-		for (GpuTexture texture : new GpuTexture[] {visible, unoccluded, unoccludedDepth}) {
+		for (GpuTexture texture : new GpuTexture[] {visible, unoccluded, unoccludedDepth, retainedDepth}) {
 			if (texture != null) {
 				total += (long) texture.getWidth(0) * texture.getHeight(0) * texture.getFormat().blockSize();
 			}
@@ -130,13 +162,13 @@ public final class TargetMaskRenderer {
 	}
 
 	static void close() {
-		for (GpuTextureView view : new GpuTextureView[] {visibleView, unoccludedView, unoccludedDepthView}) {
+		for (GpuTextureView view : new GpuTextureView[] {visibleView, unoccludedView, unoccludedDepthView, retainedDepthView}) {
 			if (view != null) {
 				view.close();
 			}
 		}
 
-		for (GpuTexture texture : new GpuTexture[] {visible, unoccluded, unoccludedDepth}) {
+		for (GpuTexture texture : new GpuTexture[] {visible, unoccluded, unoccludedDepth, retainedDepth}) {
 			if (texture != null) {
 				texture.close();
 			}
@@ -148,6 +180,8 @@ public final class TargetMaskRenderer {
 		visibleView = null;
 		unoccludedView = null;
 		unoccludedDepthView = null;
+		retainedDepth = null;
+		retainedDepthView = null;
 	}
 
 	private static GpuTexture require(@Nullable GpuTexture texture) {
@@ -181,13 +215,17 @@ public final class TargetMaskRenderer {
 		}
 
 		RenderTarget main = context.gameRenderer().mainRenderTarget();
-		GpuTextureView sceneDepth = main.getDepthTextureView();
 		GpuTexture sceneDepthTexture = main.getDepthTexture();
-		if (sceneDepth == null || sceneDepthTexture == null) {
+		if (sceneDepthTexture == null) {
 			throw new IllegalStateException("Main render target has no depth attachment");
 		}
 
+		if (!depthRetained) {
+			throw new IllegalStateException("the scene depth was not retained before translucent geometry rendered");
+		}
+
 		ensureTextures(main.width, main.height, sceneDepthTexture.getFormat());
+		GpuTextureView sceneDepth = retainedDepthView;
 		GpuDevice device = RenderSystem.getDevice();
 		CommandEncoder encoder = device.createCommandEncoder();
 		encoder.clearColorTexture(visible, CLEAR);
@@ -271,8 +309,10 @@ public final class TargetMaskRenderer {
 		visible = device.createTexture(() -> "Honey Factory visible mask", colorUsage, GpuFormat.RGBA8_UNORM, width, height, 1, 1);
 		unoccluded = device.createTexture(() -> "Honey Factory unoccluded mask", colorUsage, GpuFormat.RGBA8_UNORM, width, height, 1, 1);
 		unoccludedDepth = device.createTexture(() -> "Honey Factory unoccluded depth", GpuTexture.USAGE_RENDER_ATTACHMENT | GpuTexture.USAGE_COPY_DST, depthFormat, width, height, 1, 1);
+		retainedDepth = device.createTexture(() -> "Honey Factory retained scene depth", GpuTexture.USAGE_RENDER_ATTACHMENT | GpuTexture.USAGE_COPY_DST, depthFormat, width, height, 1, 1);
 		visibleView = device.createTextureView(visible);
 		unoccludedView = device.createTextureView(unoccluded);
 		unoccludedDepthView = device.createTextureView(unoccludedDepth);
+		retainedDepthView = device.createTextureView(retainedDepth);
 	}
 }

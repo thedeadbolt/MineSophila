@@ -38,6 +38,7 @@ class Report:
     """What was read and every violation found; an empty ``errors`` list means valid."""
 
     lifecycle: str | None = None
+    manifest: Record | None = None
     scenes: list[Record] = field(default_factory=list[Record])
     samples: list[Record] = field(default_factory=list[Record])
     errors: list[str] = field(default_factory=list[str])
@@ -48,6 +49,25 @@ class Report:
 
 
 def validate(root: Path, schemas: Schemas, *, allow_generating: bool = False) -> Report:
+    report = load(root, schemas)
+    manifest = report.manifest
+    if manifest is not None:
+        if manifest["lifecycle"] == "generating" and not allow_generating:
+            report.errors.append(
+                f"{MANIFEST}: lifecycle is generating; the run is unfinished or was interrupted"
+            )
+        report.errors.extend(consistency(manifest, report.scenes, report.samples))
+
+    report.errors.extend(_files(root, report.samples))
+    return report
+
+
+def load(root: Path, schemas: Schemas) -> Report:
+    """Read the manifest and indexes, checking each record and the index digests only.
+
+    Records that fail are reported and left out; cross-record rules and image files are
+    not checked.
+    """
     report = Report()
     manifest = _manifest(root, schemas, report.errors)
     digests: dict[str, Record] = {}
@@ -62,11 +82,8 @@ def validate(root: Path, schemas: Schemas, *, allow_generating: bool = False) ->
             target += _index(data, name, kind, schemas, report.errors)
 
     if manifest is not None:
+        report.manifest = manifest
         report.lifecycle = manifest["lifecycle"]
-        if manifest["lifecycle"] == "generating" and not allow_generating:
-            report.errors.append(
-                f"{MANIFEST}: lifecycle is generating; the run is unfinished or was interrupted"
-            )
         integrity: Record | None = manifest.get("integrity")
         if integrity is not None:
             for name, key in ((SCENES, "scenes"), (SAMPLES, "samples")):
@@ -74,9 +91,6 @@ def validate(root: Path, schemas: Schemas, *, allow_generating: bool = False) ->
                     report.errors.append(
                         f"{MANIFEST}: integrity.indexes.{key} does not match {name}"
                     )
-        report.errors.extend(consistency(manifest, report.scenes, report.samples))
-
-    report.errors.extend(_files(root, report.samples))
     return report
 
 
@@ -398,30 +412,8 @@ def _files(root: Path, samples: list[Record]) -> list[str]:
     errors: list[str] = []
     referenced: set[str] = set()
     for sample in samples:
-        label = f"sample {sample['sample_id']}: "
-        rgb: Record = sample["files"]["rgb"]
-        mask: Record = sample["files"]["mask"]
-        referenced.update((rgb["path"], mask["path"]))
-        _image(root, rgb, 3, label + "rgb", errors)
-        decoded = _image(root, mask, 1, label + "mask", errors)
-        if decoded is None:
-            continue
-        try:
-            statistics = images.mask_statistics(decoded)
-        except images.ImageError as error:
-            errors.append(f"{label}mask {error}")
-            continue
-        target: Record = sample["target"]
-        recorded = (
-            target["visible_pixels"],
-            target["visible_bbox_xywh"],
-            target["visible_centroid_xy"],
-        )
-        if (statistics.positive_pixels, statistics.bbox_xywh, statistics.centroid_xy) != recorded:
-            errors.append(
-                label + "visible_pixels, visible_bbox_xywh or visible_centroid_xy "
-                "differ from the saved mask"
-            )
+        referenced.update((sample["files"]["rgb"]["path"], sample["files"]["mask"]["path"]))
+        errors += sample_file_errors(root, sample)
 
     for image_root in IMAGE_ROOTS:
         directory = root / image_root
@@ -430,6 +422,33 @@ def _files(root: Path, samples: list[Record]) -> list[str]:
                 relative = path.relative_to(root).as_posix()
                 if path.is_file() and relative not in referenced:
                     errors.append(f"{relative}: no sample references this file")
+    return errors
+
+
+def sample_file_errors(root: Path, sample: Record) -> list[str]:
+    """Check one sample's images: present, as recorded, decodable and, for the mask, binary
+    with the recorded statistics."""
+    errors: list[str] = []
+    label = f"sample {sample['sample_id']}: "
+    _image(root, sample["files"]["rgb"], 3, label + "rgb", errors)
+    decoded = _image(root, sample["files"]["mask"], 1, label + "mask", errors)
+    if decoded is None:
+        return errors
+    try:
+        statistics = images.mask_statistics(decoded)
+    except images.ImageError as error:
+        return [*errors, f"{label}mask {error}"]
+    target: Record = sample["target"]
+    recorded = (
+        target["visible_pixels"],
+        target["visible_bbox_xywh"],
+        target["visible_centroid_xy"],
+    )
+    if (statistics.positive_pixels, statistics.bbox_xywh, statistics.centroid_xy) != recorded:
+        errors.append(
+            label + "visible_pixels, visible_bbox_xywh or visible_centroid_xy "
+            "differ from the saved mask"
+        )
     return errors
 
 

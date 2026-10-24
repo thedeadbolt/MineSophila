@@ -3,8 +3,12 @@
 	"package": "io.github.thedeadbolt.honeyfactory.client.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
+		"AtmosphericFogAccessor",
 		"CameraMixin",
-		"LevelRendererMixin"
+		"ClientLevelAccessor",
+		"FogRendererAccessor",
+		"LevelRendererMixin",
+		"SectionOcclusionGraphAccessor"
 	],
 	"injectors": {
 		"defaultRequire": 1

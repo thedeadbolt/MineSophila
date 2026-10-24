@@ -722,6 +722,27 @@ layout checksum matches and, on the pinned render setup, regenerated masks match
 stored masks. Different graphics hardware may be inspected visually but cannot be
 claimed as byte-identical without passing the same reproducibility check.
 
+Agreed with M8 ([ADR 0015](../../../docs/adr/0015-inspector-and-replay.md)):
+
+- The inspector is `honey-factory-tools inspect`: a loopback-only page served by the
+  Python standard library, guarded by a per-session token.
+- Selections follow `review-selection-v1`: samples are ordered by a seeded SHA-256 key,
+  and stratified selection takes from the strata in turn. The strata are absent, fully
+  occluded, other non-visible, edge or panorama seam, low pixel count, partially visible
+  and fully visible.
+- Reviews follow `honey-factory-review-v1`. They are appended, one file per dataset ID and
+  manifest hash, under the review root; a later review of a subject supersedes earlier
+  ones.
+- Replay re-resolves the manifest's configuration with the running build and requires the
+  recorded configuration hash before anything else. A difference is reported as
+  unavailable.
+- Level-5 scenes replay exactly only in the dataset world that generated them, or a copy
+  of it. Minecraft decorates chunks in an order-dependent way, so another world with the
+  same seed holds different source terrain.
+- Captures exclude particles, and a reset waits for the scene's weather, its rain fog and
+  received light to settle. The visible mask is tested against the depth retained before
+  translucent geometry, as the mask-rendering steps above require.
+
 #### Inspector success criteria
 
 | Criterion | Passing result |

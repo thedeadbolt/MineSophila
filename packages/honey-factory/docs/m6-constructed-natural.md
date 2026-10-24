@@ -7,6 +7,11 @@ Decisions are in [ADR 0011](../../../docs/adr/0011-scene-recipes.md) (scene reci
 [ADR 0012](../../../docs/adr/0012-natural-source-patches.md) (natural patches) and
 [ADR 0013](../../../docs/adr/0013-dataset-throughput.md) (throughput).
 
+M8 replay later found that level-5 captures could be taken before the weather had faded
+in or the section occlusion graph caught up with the camera, and that particles and rain
+could remove mask pixels. Those fixes are in the
+[M8 findings](m8-inspector-and-replay.md); regenerate level-5 datasets made before them.
+
 ## What exists
 
 - **Scene recipes.** Every level is a preset of one generator: a base, registered layout

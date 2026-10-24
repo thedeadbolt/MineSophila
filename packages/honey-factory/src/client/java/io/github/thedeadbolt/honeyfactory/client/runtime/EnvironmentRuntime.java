@@ -2,8 +2,13 @@ package io.github.thedeadbolt.honeyfactory.client.runtime;
 
 import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
+import io.github.thedeadbolt.honeyfactory.client.mixin.AtmosphericFogAccessor;
+import io.github.thedeadbolt.honeyfactory.client.mixin.ClientLevelAccessor;
+import io.github.thedeadbolt.honeyfactory.client.mixin.FogRendererAccessor;
+import io.github.thedeadbolt.honeyfactory.client.mixin.SectionOcclusionGraphAccessor;
 import io.github.thedeadbolt.honeyfactory.config.ConfigResolver;
 import io.github.thedeadbolt.honeyfactory.contract.BlockBox;
+import io.github.thedeadbolt.honeyfactory.contract.Weather;
 import io.github.thedeadbolt.honeyfactory.environment.Action;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
@@ -17,12 +22,14 @@ import io.github.thedeadbolt.honeyfactory.scene.ArenaLayout;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
 import io.github.thedeadbolt.honeyfactory.world.ArenaDimension;
 import io.github.thedeadbolt.honeyfactory.world.ArenaExecutor;
+import io.github.thedeadbolt.honeyfactory.world.Baseline;
 import io.github.thedeadbolt.honeyfactory.world.BlockStates;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 import java.util.concurrent.CompletionException;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
@@ -33,6 +40,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.ClientInput;
 import net.minecraft.client.player.KeyboardInput;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.fog.environment.FogEnvironment;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
@@ -122,6 +130,12 @@ public final class EnvironmentRuntime {
 	 * trustworthy only after a frame has run since the change.
 	 */
 	private static final int STABLE_FRAMES = 2;
+	/**
+	 * Largest change in the rain fog multiplier between readiness checks at which fog counts
+	 * as settled; the fog's end distance is then within a few hundredths of a block of its
+	 * final value.
+	 */
+	private static final float RAIN_FOG_SETTLED = 1e-5F;
 
 	private OperationCoordinator coordinator = new OperationCoordinator();
 	private Timing timing;
@@ -270,7 +284,7 @@ public final class EnvironmentRuntime {
 				ArenaExecutor.placeViewpoint(server, player(server), layout, firstViewpoint, ConfigResolver.EYE_HEIGHT_BLOCKS);
 				return result;
 			});
-			SceneReadiness readiness = new SceneReadiness(layout, firstViewpoint);
+			SceneReadiness readiness = new SceneReadiness(layout, firstViewpoint, plan.weather());
 			return new Pending<>(operation, work, this.timing.resetSettleTicks(), this.timing.resetTimeoutTicks(), result -> readiness.ready(Minecraft.getInstance(), result), (result, settled) -> {
 				this.scene = plan;
 				this.layoutSha256 = result.layoutSha256();
@@ -321,8 +335,9 @@ public final class EnvironmentRuntime {
 	/**
 	 * Captures from each of {@code poses} in turn, in one operation. For each pose the client
 	 * moves its player there, the server following as it would any spectator's movement; the
-	 * game's own frame loop then renders until the player is at the pose and every section is
-	 * compiled for at least {@link #STABLE_FRAMES} frames, and the capture runs between that
+	 * game's own frame loop then renders until the player is at the pose, a client tick has
+	 * sampled the environment there and every section is compiled for at least
+	 * {@link #STABLE_FRAMES} frames, and the capture runs between that
 	 * frame and the next. Skipping the server-side placement and its settling, and stepping
 	 * per frame rather than per tick, saves several ticks per pose. Poses must lie in the current scene near the player, whose surroundings
 	 * the reset readied. Returns one observation per pose, in order.
@@ -346,6 +361,12 @@ public final class EnvironmentRuntime {
 		private final CompletableFuture<List<Observation>> result = new CompletableFuture<>();
 		private int index;
 		private long movedAtFrame = -1;
+		/**
+		 * Whether a client tick has run since a frame was drawn at the current pose. The
+		 * camera samples sky, fog and light colours from the biomes around it only in its
+		 * tick, so until then a frame shows the previous pose's colours.
+		 */
+		private boolean environmentSampled;
 
 		PoseSequence(Operation operation, CaptureProjection projection, @Nullable BlockPos target, List<CameraPose> poses) {
 			this.operation = operation;
@@ -355,6 +376,13 @@ public final class EnvironmentRuntime {
 		}
 
 		/** Moves to the next pose, or captures it once the client renders it; returns true when done. */
+		/** Called after each client tick, once the camera has sampled its surroundings. */
+		void ticked() {
+			if (this.movedAtFrame >= 0 && EnvironmentRuntime.this.frames > this.movedAtFrame) {
+				this.environmentSampled = true;
+			}
+		}
+
 		boolean step(Minecraft minecraft) {
 			try {
 				CameraPose pose = this.poses.get(this.index);
@@ -363,10 +391,11 @@ public final class EnvironmentRuntime {
 					player.snapTo(pose.x(), pose.y(), pose.z(), pose.yawDegrees(), pose.pitchDegrees());
 					player.setDeltaMovement(Vec3.ZERO);
 					this.movedAtFrame = EnvironmentRuntime.this.frames;
+					this.environmentSampled = false;
 					return false;
 				}
 
-				if (EnvironmentRuntime.this.frames - this.movedAtFrame < STABLE_FRAMES || !atPose(minecraft, pose) || !sectionsCompiled(minecraft)) {
+				if (EnvironmentRuntime.this.frames - this.movedAtFrame < STABLE_FRAMES || !this.environmentSampled || !atPose(minecraft, pose) || !sectionsCompiled(minecraft)) {
 					return false;
 				}
 
@@ -667,6 +696,11 @@ public final class EnvironmentRuntime {
 			driver.tick(Minecraft.getInstance());
 		}
 
+		PoseSequence sequence = this.poseSequence;
+		if (sequence != null) {
+			sequence.ticked();
+		}
+
 		Pending<?, ?> running = this.pending;
 		// Completing an operation may start the caller's next one; keep that one pending.
 		if (running != null && running.poll(this.tick) && this.pending == running) {
@@ -704,8 +738,45 @@ public final class EnvironmentRuntime {
 		);
 	}
 
+	/**
+	 * Whether every section in view is compiled and the occlusion graph that picks the
+	 * sections to draw is current for the camera's position.
+	 */
 	private static boolean sectionsCompiled(Minecraft minecraft) {
-		return minecraft.levelRenderer.hasRenderedAllSections();
+		if (!minecraft.levelRenderer.hasRenderedAllSections()) {
+			return false;
+		}
+
+		SectionOcclusionGraphAccessor graph = (SectionOcclusionGraphAccessor) minecraft.levelRenderer.sectionOcclusionGraph();
+		Future<?> rebuild = graph.honeyFactory$fullUpdateTask();
+		return !graph.honeyFactory$needsFullUpdate() && (rebuild == null || rebuild.isDone()) && !graph.honeyFactory$needsFrustumUpdate().get();
+	}
+
+	/** How strongly rain currently thickens the atmospheric fog; see {@link AtmosphericFogAccessor}. */
+	private static float rainFog() {
+		for (FogEnvironment environment : FogRendererAccessor.honeyFactory$fogEnvironments()) {
+			if (environment instanceof AtmosphericFogAccessor atmospheric) {
+				return atmospheric.honeyFactory$rainFogMultiplier();
+			}
+		}
+
+		return 0.0F;
+	}
+
+	/** Whether the client shows {@code weather} at its full rain and thunder levels, not fading towards them. */
+	private static boolean weatherShown(Minecraft minecraft, Weather weather) {
+		float rain = Baseline.rainLevel(weather);
+		return minecraft.level.getRainLevel(1.0F) == rain && minecraft.level.getRainLevel(0.0F) == rain
+			&& minecraft.level.getThunderLevel(1.0F) == Baseline.thunderLevel(weather) * rain && minecraft.level.getThunderLevel(0.0F) == Baseline.thunderLevel(weather) * rain;
+	}
+
+	/**
+	 * Whether the client has applied every light update it received. Until then sections
+	 * can compile with stale light and be rebuilt once it arrives.
+	 */
+	private static boolean lightApplied(Minecraft minecraft) {
+		return ((ClientLevelAccessor) minecraft.level).honeyFactory$lightUpdateQueue().isEmpty()
+			&& !minecraft.level.getChunkSource().getLightEngine().hasLightWork();
 	}
 
 	private static boolean atPose(Minecraft minecraft, CameraPose pose) {
@@ -726,21 +797,28 @@ public final class EnvironmentRuntime {
 	/**
 	 * Whether the client shows a freshly built scene: in the arena at the first viewpoint,
 	 * every chunk of the reset volume within render distance received, the readiness volume
-	 * matching the server's hash, then every arena section rebuilt and stable for
-	 * {@link #STABLE_FRAMES} frames.
+	 * matching the server's hash, then the scene's weather at full strength with the fog it
+	 * thickens no longer easing, every received light update applied and every arena section
+	 * rebuilt, stable for {@link #STABLE_FRAMES} frames.
 	 */
 	private final class SceneReadiness {
 		private final ArenaLayout layout;
 		private final CameraPose pose;
+		private final Weather weather;
 		private final RenderStability stability = new RenderStability();
 		private boolean refreshed;
+		private float lastRainFog = Float.NaN;
 
-		SceneReadiness(ArenaLayout layout, CameraPose pose) {
+		SceneReadiness(ArenaLayout layout, CameraPose pose, Weather weather) {
 			this.layout = layout;
 			this.pose = pose;
+			this.weather = weather;
 		}
 
 		boolean ready(Minecraft minecraft, ArenaExecutor.ResetResult result) {
+			float fog = rainFog();
+			boolean fogSettled = Math.abs(fog - this.lastRainFog) < RAIN_FOG_SETTLED;
+			this.lastRainFog = fog;
 			boolean shown = inArena(minecraft) && atPose(minecraft, this.pose) && chunksReceived(minecraft, this.layout.resetVolume())
 				&& result.readinessSha256().equals(BlockStates.layoutSha256(minecraft.level, result.readinessVolume()));
 			if (shown && !this.refreshed) {
@@ -751,7 +829,7 @@ public final class EnvironmentRuntime {
 				return this.stability.holds(false);
 			}
 
-			return this.stability.holds(shown && this.refreshed && sectionsCompiled(minecraft));
+			return this.stability.holds(shown && this.refreshed && weatherShown(minecraft, this.weather) && fogSettled && lightApplied(minecraft) && sectionsCompiled(minecraft));
 		}
 	}
 
