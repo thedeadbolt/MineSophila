@@ -197,10 +197,6 @@ public record SceneRecord(
 			);
 		}
 
-		if ((difficulty == 5) != (patch != null)) {
-			throw fields.error("source_patch", difficulty == 5 ? "is required for level 5" : "applies only to level 5");
-		}
-
 		Target target = target(fields.object("target"), min, max);
 		JsonFields environment = fields.object("environment");
 		JsonObject gamerules = environment.object("gamerules").raw();

@@ -12,7 +12,7 @@ import java.util.Map;
  * place only full opaque cubes, so for them the two agree. Cells outside the arena core
  * are empty.
  */
-public final class SolidGrid {
+public final class SolidGrid implements SightGrid {
 	private final int width;
 	private final int height;
 	private final int length;
@@ -47,7 +47,7 @@ public final class SolidGrid {
 		});
 	}
 
-	/** Whether the cell holds any block. */
+	@Override
 	public boolean solid(int x, int y, int z) {
 		return inside(x, y, z) && this.cells[index(x, y, z)] != 0;
 	}
@@ -57,6 +57,7 @@ public final class SolidGrid {
 	 * {@code from} to {@code to}; see-through blocks never do. Callers pass only cells the
 	 * segment crosses, so a full cube always blocks.
 	 */
+	@Override
 	public boolean blocks(int x, int y, int z, double[] from, double[] to) {
 		if (!inside(x, y, z) || this.cells[index(x, y, z)] == 0) {
 			return false;

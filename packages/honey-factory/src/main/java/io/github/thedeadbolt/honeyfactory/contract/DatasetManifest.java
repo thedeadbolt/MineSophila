@@ -225,6 +225,11 @@ public record DatasetManifest(
 		return new double[] {ratios.decimal("train", 0.0, 1.0), ratios.decimal("validation", 0.0, 1.0), ratios.decimal("test", 0.0, 1.0)};
 	}
 
+	/** The resolved scene recipe, {@code generator.scene}. */
+	public JsonObject sceneRecipe() {
+		return this.configuration.getAsJsonObject("generator").getAsJsonObject("scene").deepCopy();
+	}
+
 	public SplitGrouping splitGrouping() {
 		return SplitGrouping.fromJson(this.configuration.getAsJsonObject("splits").get("grouping").getAsString());
 	}
@@ -517,20 +522,18 @@ public record DatasetManifest(
 		visibility.nullableDecimal("min_ratio", 0.0, 1.0);
 		visibility.nullableDecimal("max_ratio", 0.0, 1.0);
 		JsonFields splits = configuration.object("splits");
-		requireConstant(splits, "algorithm", Algorithms.SCENE_SLOTS);
 		JsonFields ratios = splits.object("ratios");
 		for (String split : List.of("train", "validation", "test")) {
 			ratios.decimal(split, 0.0, 1.0);
 		}
-		boolean level5 = configuration.integer32("difficulty", 1, 5) == 5;
-		if (generator.has("natural_region") != level5) {
-			throw generator.error("natural_region", level5 ? "is required for level 5" : "applies only to level 5");
+
+		boolean natural = "natural_patch".equals(generator.object("scene").object("base").string("type"));
+		SplitGrouping grouping = splits.enumValue("grouping", SplitGrouping::fromJson);
+		if (natural == (grouping == SplitGrouping.SCENE)) {
+			throw splits.error("grouping", natural ? "a natural_patch base groups splits by source_region or source_world" : "a platform base groups splits by scene");
 		}
 
-		SplitGrouping grouping = splits.enumValue("grouping", SplitGrouping::fromJson);
-		if (grouping != (level5 ? SplitGrouping.SOURCE_WORLD : SplitGrouping.SCENE)) {
-			throw splits.error("grouping", level5 ? "level 5 groups splits by source_world" : "levels 1-4 group splits by scene");
-		}
+		requireConstant(splits, "algorithm", Algorithms.slotsFor(grouping));
 	}
 
 	private static void requireConstant(JsonFields fields, String name, String expected) {

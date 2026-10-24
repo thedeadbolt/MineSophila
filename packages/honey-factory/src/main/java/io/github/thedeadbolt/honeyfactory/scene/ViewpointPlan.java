@@ -7,10 +7,16 @@ import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
  * degrees. The eye is the configured eye height above the feet.
  */
 public record ViewpointPlan(double x, double y, double z, double yawDegrees, double pitchDegrees) {
-	/** The absolute camera pose; angles take the float precision Minecraft stores. */
+	/** The absolute camera pose in the platform arena; angles take the float precision Minecraft stores. */
 	public CameraPose pose() {
 		double[] feet = feet();
 		return new CameraPose(feet[0], feet[1], feet[2], (float) this.yawDegrees, (float) this.pitchDegrees);
+	}
+
+	/** The absolute camera pose in {@code arena}, whose core's minimum corner is the plan's origin. */
+	public CameraPose pose(ArenaLayout arena) {
+		int[] origin = arena.core().min();
+		return new CameraPose(origin[0] + this.x, origin[1] + this.y, origin[2] + this.z, (float) this.yawDegrees, (float) this.pitchDegrees);
 	}
 
 	/** This viewpoint turned by {@code degrees} of yaw. */

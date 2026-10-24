@@ -10,6 +10,7 @@ import io.github.thedeadbolt.honeyfactory.contract.ContractException;
 import io.github.thedeadbolt.honeyfactory.contract.SplitGrouping;
 import io.github.thedeadbolt.honeyfactory.contract.VisibilityRule;
 import io.github.thedeadbolt.honeyfactory.contract.Weather;
+import io.github.thedeadbolt.honeyfactory.scene.SceneBase;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePresets;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,6 @@ class ConfigResolverTest {
 		assertEquals(new ResolvedConfig.Quotas(1000, 800, 200, 10_000), config.quotas());
 		assertEquals(new ResolvedConfig.Splits(0.8, 0.1, 0.1, SplitGrouping.SCENE), config.splits());
 		assertEquals(VisibilityRule.FULLY_VISIBLE, config.visibility().rule());
-		assertNull(config.naturalRegion());
 		assertEquals(Path.of("/srv/datasets"), config.outputRoot());
 		assertEquals(10L << 30, config.output().freeSpaceReserveBytes());
 	}
@@ -67,13 +67,15 @@ class ConfigResolverTest {
 	}
 
 	@Test
-	void level5NeedsARegionAndGroupsBySourceWorld() {
-		String level5 = MINIMAL.replace("\"difficulty\": 1", "\"difficulty\": 5");
-		ContractException missing = assertThrows(ContractException.class, () -> ConfigResolver.resolve(level5));
-		assertEquals("/natural_region", missing.path());
-		ResolvedConfig config = ConfigResolver.resolve(level5.replace("\"output\"", "\"natural_region\": {\"core_width\": 64, \"core_length\": 64, \"height\": 96, \"context_padding\": 128}, \"output\""));
-		assertEquals(SplitGrouping.SOURCE_WORLD, config.splits().grouping());
+	void level5CopiesNaturalTerrainAndGroupsBySourceRegion() {
+		ResolvedConfig config = ConfigResolver.resolve(MINIMAL.replace("\"difficulty\": 1", "\"difficulty\": 5"));
+		assertEquals(SceneBase.NaturalTerrain.DEFAULT, config.scene().base());
+		assertEquals(SplitGrouping.SOURCE_REGION, config.splits().grouping());
+		assertEquals("patch-slots-v1", config.toJson().getAsJsonObject("splits").get("algorithm").getAsString());
 		assertEquals(VisibilityRule.AT_LEAST_PARTLY_VISIBLE, config.visibility().rule());
+		ResolvedConfig mixed = ConfigResolver.resolve(with("scene", "{\"base\": {\"type\": \"natural_patch\", \"context_padding\": 64, \"scenes_per_patch\": 2}}"));
+		assertEquals(new SceneBase.NaturalTerrain(32, 32, 128, 64, 2, 256), mixed.scene().base(), "any level may use natural terrain");
+		assertEquals(SplitGrouping.SOURCE_REGION, mixed.splits().grouping());
 	}
 
 	/** Every invalid input names the offending setting and changes nothing outside the resolver. */
@@ -81,7 +83,9 @@ class ConfigResolverTest {
 	@CsvSource(delimiter = '|', textBlock = """
 		unknown section                 | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "extra": {}}                                    | /extra
 		old lighting section            | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "lighting": {}}                                 | /lighting
-		recipe for level 5              | {"dataset": {"name": "a", "seed": 1, "difficulty": 5}, "output": {"root": "/x"}, "scene": {}, "natural_region": {"core_width": 64, "core_length": 64, "height": 96, "context_padding": 128}} | /scene
+		parts on natural terrain        | {"dataset": {"name": "a", "seed": 1, "difficulty": 5}, "output": {"root": "/x"}, "scene": {"parts": [{"type": "clutter"}]}}  | /scene/parts
+		unaligned natural core          | {"dataset": {"name": "a", "seed": 1, "difficulty": 5}, "output": {"root": "/x"}, "scene": {"base": {"type": "natural_patch", "core_width": 40}}} | /scene/base/core_width
+		arena with natural terrain      | {"dataset": {"name": "a", "seed": 1, "difficulty": 5}, "output": {"root": "/x"}, "arena": {"width": 16}}                          | /arena
 		unknown setting                 | {"dataset": {"name": "a", "seed": 1, "difficulty": 1, "colour": 1}, "output": {"root": "/x"}}                                     | /dataset/colour
 		seed beyond 2^53                | {"dataset": {"name": "a", "seed": 9007199254740992, "difficulty": 1}, "output": {"root": "/x"}}                                    | /dataset/seed
 		bad dataset name                | {"dataset": {"name": "Honey L1", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}}                                            | /dataset/name
@@ -100,7 +104,7 @@ class ConfigResolverTest {
 		no training split               | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "splits": {"train": 0.0, "validation": 0.5, "test": 0.5}} | /splits/train
 		fractional scene count          | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "quotas": {"accepted_scenes": 2.5}}               | /quotas/accepted_scenes
 		arena too tall with its margin  | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "arena": {"height": 256, "margin": 4}}           | /arena/height
-		region outside level 5          | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "natural_region": {}}                             | /natural_region
+		old natural region section      | {"dataset": {"name": "a", "seed": 1, "difficulty": 5}, "output": {"root": "/x"}, "natural_region": {}}                             | /natural_region
 		arena without a target layer    | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "arena": {"height": 1}}                         | /arena/height
 		negative free-space reserve     | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x", "free_space_reserve_bytes": -1}}                 | /output/free_space_reserve_bytes
 		foreign block state             | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "target": {"allowed_block_states": ["minecraft:stone"]}} | /target/allowed_block_states

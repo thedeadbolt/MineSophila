@@ -45,6 +45,26 @@ def test_scene_slots_match_vectors(vectors_dir: Path, load_json: Callable[[Path]
         assert [(s.scene_index, s.target_present, s.split) for s in slots] == expected
 
 
+def test_patch_slots_match_vectors(vectors_dir: Path, load_json: Callable[[Path], Any]) -> None:
+    for case in load_json(vectors_dir / "patch-slots.json")["cases"]:
+        ratios = (case["ratios"][0], case["ratios"][1], case["ratios"][2])
+        slots = ids.plan_patch_slots(
+            case["dataset_seed"],
+            case["accepted_scenes"],
+            case["target_present_scenes"],
+            case["scenes_per_patch"],
+            ratios,
+        )
+        expected = [
+            (s["scene_index"], s["target_present"], s["split"], s["patch"]) for s in case["slots"]
+        ]
+        assert [(s.scene_index, s.target_present, s.split, s.group) for s in slots] == expected
+        by_patch: dict[int, set[str]] = {}
+        for slot in slots:
+            by_patch.setdefault(slot.group, set()).add(slot.split)
+        assert all(len(splits) == 1 for splits in by_patch.values())
+
+
 def test_split_counts_use_largest_remainder() -> None:
     assert ids.split_counts(3, (0.5, 0.25, 0.25)) == [1, 1, 1]
     assert ids.split_counts(5, (0.5, 0.25, 0.25)) == [3, 1, 1]

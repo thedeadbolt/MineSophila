@@ -1,13 +1,16 @@
 package io.github.thedeadbolt.honeyfactory.scene;
 
+import io.github.thedeadbolt.honeyfactory.contract.Weather;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * Named starting recipes, one per difficulty level. Every preset stands on the default
- * platform with noon, clear lighting; they differ in parts and sight rule.
+ * Named starting recipes, one per difficulty level. Levels 1–4 stand on the default
+ * platform with noon, clear lighting and differ in parts and sight rule. Level 5 copies a
+ * natural source patch with its default settings, takes no parts, and draws each scene's
+ * time from 1000–11000 ticks and its weather from clear and rain.
  *
  * <table>
  *   <tr><th>Preset</th><th>Parts</th><th>Sight rule</th></tr>
@@ -17,9 +20,12 @@ import java.util.Set;
  *       {@code scattered_blocks}</td><td>{@code partly_hidden}</td></tr>
  *   <tr><td>{@code level4}</td><td>{@code constructed_setting}, {@code near_aim_blocks},
  *       {@code scattered_items}</td><td>{@code clear_and_obstructed}</td></tr>
+ *   <tr><td>{@code level5}</td><td>none, on a {@code natural_patch} base</td><td>{@code some_clear}</td></tr>
  * </table>
  */
 public final class ScenePresets {
+	/** Daylight from early morning to late afternoon, clear or raining. */
+	public static final Lighting LEVEL5_LIGHTING = Lighting.of(new IntRange(1000, 11000), Weather.CLEAR, Weather.RAIN);
 	private static final Map<String, SceneSpec> PRESETS = new LinkedHashMap<>();
 
 	static {
@@ -27,6 +33,7 @@ public final class ScenePresets {
 		add("level2", List.of(ClutterPart.DEFAULT), SightRule.ALL_CLEAR);
 		add("level3", List.of(HidingStructurePart.DEFAULT, BackgroundStructuresPart.DEFAULT, ScatteredBlocksPart.DEFAULT), SightRule.PARTLY_HIDDEN);
 		add("level4", List.of(ConstructedSettingPart.DEFAULT, NearAimBlocksPart.DEFAULT, ScatteredItemsPart.DEFAULT), SightRule.CLEAR_AND_OBSTRUCTED);
+		PRESETS.put("level5", new SceneSpec("level5", SceneBase.NaturalTerrain.DEFAULT, List.of(), SightRule.SOME_CLEAR, LEVEL5_LIGHTING));
 	}
 
 	private ScenePresets() {

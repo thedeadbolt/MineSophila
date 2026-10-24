@@ -157,8 +157,6 @@ def scene_errors(scene: Record) -> list[str]:
         a > b for a, b in zip(patch["bounds"]["min"], patch["bounds"]["max"], strict=True)
     ):
         errors.append("/source_patch/bounds/min: must not exceed max on any axis")
-    if (scene["difficulty"] == 5) != (patch is not None):
-        errors.append("/source_patch: is required for level 5 and applies only to it")
 
     target: Record = scene["target"]
     block_id: str = target["block_id"]
@@ -217,11 +215,13 @@ def manifest_errors(manifest: Record) -> list[str]:
         errors.append(
             "/target/target_present_scenes: present and absent quotas must sum to accepted_scenes"
         )
-    level5 = manifest["difficulty"] == 5
-    if ("natural_region" in generator) != level5:
-        errors.append("/generator/natural_region: is required for level 5 and applies only to it")
-    if manifest["splits"]["grouping"] != ("source_world" if level5 else "scene"):
-        errors.append("/splits/grouping: level 5 groups by source_world, levels 1-4 by scene")
+    natural = generator["scene"]["base"]["type"] == "natural_patch"
+    grouping: str = manifest["splits"]["grouping"]
+    if natural == (grouping == "scene"):
+        errors.append(
+            "/splits/grouping: a natural_patch base groups by source_region or source_world, "
+            "a platform base by scene"
+        )
 
     counts: Record = manifest["counts"]
     if counts["requested_scenes"] != accepted_requested:

@@ -15,6 +15,9 @@ import java.util.Set;
 public record SceneSpec(String preset, SceneBase base, List<LayoutPart> parts, SightRule sight, Lighting lighting) {
 	public SceneSpec {
 		parts = List.copyOf(parts);
+		if (base instanceof SceneBase.NaturalTerrain && !parts.isEmpty()) {
+			throw new IllegalArgumentException("layout parts need a platform base; a natural_patch base takes none");
+		}
 	}
 
 	public SceneRecipe toRecipe() {
@@ -60,6 +63,10 @@ public record SceneSpec(String preset, SceneBase base, List<LayoutPart> parts, S
 
 		SightRule sight = fields.has("sight") ? fields.enumValue("sight", SightRule::fromJson) : spec.sight();
 		Lighting lighting = fields.has("lighting") ? Lighting.read(fields.object("lighting"), spec.lighting()) : spec.lighting();
-		return new SceneSpec(preset, base, parts, sight, lighting);
+		try {
+			return new SceneSpec(preset, base, parts, sight, lighting);
+		} catch (IllegalArgumentException e) {
+			throw fields.error("parts", e.getMessage());
+		}
 	}
 }

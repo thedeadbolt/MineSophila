@@ -31,7 +31,7 @@
     },
     "generator": {
       "type": "object",
-      "required": ["dataset_name", "seed", "accepted_scenes", "scene_attempt_limit", "arena", "visibility", "algorithms"],
+      "required": ["dataset_name", "seed", "accepted_scenes", "scene_attempt_limit", "arena", "scene", "visibility", "algorithms"],
       "properties": {
         "dataset_name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,47}$"},
         "seed": {"$ref": "common.schema.json#/$defs/seed"},
@@ -47,16 +47,6 @@
             "margin": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
           }
         },
-        "natural_region": {
-          "type": "object",
-          "required": ["core_width", "core_length", "height", "context_padding"],
-          "properties": {
-            "core_width": {"type": "integer", "minimum": 1},
-            "core_length": {"type": "integer", "minimum": 1},
-            "height": {"type": "integer", "minimum": 1},
-            "context_padding": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
-          }
-        },
         "scene": {
           "description": "The scene recipe every scene was generated from: a preset, a base, layout parts in build order, a viewpoint sight rule and lighting.",
           "type": "object",
@@ -65,8 +55,25 @@
             "preset": {"type": "string", "minLength": 1},
             "base": {
               "type": "object",
-              "required": ["type", "floor"],
-              "properties": {"type": {"const": "platform"}, "floor": {"$ref": "common.schema.json#/$defs/blockState"}}
+              "required": ["type"],
+              "oneOf": [
+                {
+                  "required": ["floor"],
+                  "properties": {"type": {"const": "platform"}, "floor": {"$ref": "common.schema.json#/$defs/blockState"}}
+                },
+                {
+                  "required": ["core_width", "core_length", "height", "context_padding", "scenes_per_patch", "region_separation_blocks"],
+                  "properties": {
+                    "type": {"const": "natural_patch"},
+                    "core_width": {"type": "integer", "minimum": 16, "maximum": 256, "multipleOf": 16},
+                    "core_length": {"type": "integer", "minimum": 16, "maximum": 256, "multipleOf": 16},
+                    "height": {"type": "integer", "minimum": 32, "maximum": 256, "multipleOf": 16},
+                    "context_padding": {"type": "integer", "minimum": 0, "maximum": 512, "multipleOf": 16},
+                    "scenes_per_patch": {"type": "integer", "minimum": 1, "maximum": 10000},
+                    "region_separation_blocks": {"type": "integer", "minimum": 0, "maximum": 4096, "multipleOf": 32}
+                  }
+                }
+              ]
             },
             "parts": {
               "type": "array",
@@ -172,8 +179,8 @@
             "test": {"type": "number", "minimum": 0, "maximum": 1}
           }
         },
-        "grouping": {"enum": ["scene", "source_world"]},
-        "algorithm": {"const": "scene-slots-v1"},
+        "grouping": {"enum": ["scene", "source_region", "source_world"]},
+        "algorithm": {"enum": ["scene-slots-v1", "patch-slots-v1"]},
         "counts": {
           "type": "object",
           "required": ["train", "validation", "test"],
@@ -305,9 +312,9 @@
       }
     },
     {
-      "if": {"properties": {"difficulty": {"const": 5}}},
-      "then": {"properties": {"generator": {"required": ["natural_region"]}, "splits": {"properties": {"grouping": {"const": "source_world"}}}}},
-      "else": {"properties": {"generator": {"required": ["scene"], "not": {"required": ["natural_region"]}}, "splits": {"properties": {"grouping": {"const": "scene"}}}}}
+      "if": {"properties": {"generator": {"properties": {"scene": {"properties": {"base": {"properties": {"type": {"const": "natural_patch"}}}}}}}}},
+      "then": {"properties": {"splits": {"properties": {"grouping": {"enum": ["source_region", "source_world"]}, "algorithm": {"const": "patch-slots-v1"}}}}},
+      "else": {"properties": {"splits": {"properties": {"grouping": {"const": "scene"}, "algorithm": {"const": "scene-slots-v1"}}}}}
     }
   ],
   "$defs": {

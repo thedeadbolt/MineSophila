@@ -25,7 +25,7 @@ public enum SightRule implements JsonEnum {
 	}
 
 	/** Null when the view suits the rule, otherwise the rejection reason. */
-	public @Nullable String check(SolidGrid grid, double[] eye, int[] aim) {
+	public @Nullable String check(SightGrid grid, double[] eye, int[] aim) {
 		if (this == ANY) {
 			return null;
 		}

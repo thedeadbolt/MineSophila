@@ -10,7 +10,7 @@ import java.util.Arrays;
  * <p>Each face of the cell that faces the eye is sampled at a 3 × 3 grid of points at
  * 0.15, 0.5 and 0.85 along its edges. A sample is clear when the segment from the eye to
  * it, nudged just inside the cell, crosses the drawn geometry of no other cell
- * ({@link SolidGrid#blocks}): a whole cube, or a box of a slab, stair or fence.
+ * ({@link SightGrid#blocks}): a whole cube, or a box of a slab, stair or fence.
  * See-through leaves and plants never block. Coordinates are arena-relative.
  */
 public final class SightLines {
@@ -33,12 +33,12 @@ public final class SightLines {
 	}
 
 	/** The fraction of samples that are clear, or 0 when the eye is inside the cell. */
-	public static double clearFraction(SolidGrid grid, double[] eye, int[] cell) {
+	public static double clearFraction(SightGrid grid, double[] eye, int[] cell) {
 		return estimate(grid, eye, cell).clear();
 	}
 
 	/** Both fractions; each is 0 when the eye is inside the cell. */
-	public static Estimate estimate(SolidGrid grid, double[] eye, int[] cell) {
+	public static Estimate estimate(SightGrid grid, double[] eye, int[] cell) {
 		int samples = 0;
 		int clear = 0;
 		int open = 0;
@@ -73,7 +73,7 @@ public final class SightLines {
 	 * Walks the cells the segment crosses (Amanatides–Woo) until it enters {@code target}:
 	 * {@link #BLOCKED}, {@link #CLEAR} past block cells, or {@link #OPEN}.
 	 */
-	private static int reach(SolidGrid grid, double[] from, double[] to, int[] target) {
+	private static int reach(SightGrid grid, double[] from, double[] to, int[] target) {
 		int[] cell = new int[3];
 		int[] step = new int[3];
 		double[] next = new double[3];

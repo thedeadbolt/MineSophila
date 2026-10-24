@@ -85,4 +85,22 @@ class GoldenVectorsTest {
 			}
 		}
 	}
+
+	@Test
+	void patchSlotsMatchVectors() {
+		for (JsonElement element : Fixtures.json(Fixtures.vectors().resolve("patch-slots.json")).getAsJsonArray("cases")) {
+			JsonObject c = element.getAsJsonObject();
+			var ratios = c.getAsJsonArray("ratios");
+			List<SceneSlots.Slot> slots = SceneSlots.planPatches(c.get("dataset_seed").getAsLong(), c.get("accepted_scenes").getAsInt(), c.get("target_present_scenes").getAsInt(),
+				c.get("scenes_per_patch").getAsInt(), new double[] {ratios.get(0).getAsDouble(), ratios.get(1).getAsDouble(), ratios.get(2).getAsDouble()});
+			var expected = c.getAsJsonArray("slots");
+			assertEquals(expected.size(), slots.size());
+			for (int i = 0; i < slots.size(); i++) {
+				JsonObject slot = expected.get(i).getAsJsonObject();
+				assertEquals(slot.get("target_present").getAsBoolean(), slots.get(i).targetPresent(), "slot " + i);
+				assertEquals(slot.get("split").getAsString(), slots.get(i).split().jsonName(), "slot " + i);
+				assertEquals(slot.get("patch").getAsInt(), slots.get(i).group(), "slot " + i);
+			}
+		}
+	}
 }

@@ -9,7 +9,9 @@ import io.github.thedeadbolt.honeyfactory.contract.JsonFields;
 import io.github.thedeadbolt.honeyfactory.contract.SceneSeeds;
 import io.github.thedeadbolt.honeyfactory.contract.SplitGrouping;
 import io.github.thedeadbolt.honeyfactory.contract.VisibilityRule;
+import io.github.thedeadbolt.honeyfactory.scene.SceneBase;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePresets;
+import io.github.thedeadbolt.honeyfactory.scene.SourcePatches;
 import io.github.thedeadbolt.honeyfactory.scene.SceneSpec;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -30,12 +32,11 @@ import org.jspecify.annotations.Nullable;
  * <pre>
  * dataset        name (required), difficulty (required, 1-5), seed (drawn at random when absent)
  * target         block_id, allowed_block_states, present_fraction
- * arena          width, length, height, margin
- * natural_region core_width, core_length, height, context_padding (required for level 5 only)
+ * arena          width, length, height, margin (platform bases only)
  * viewpoints     count, distance_min_blocks, distance_max_blocks, yaw_jitter_degrees,
  *                pitch_jitter_degrees, attempts_per_viewpoint
- * scene          preset (default level&lt;difficulty&gt;), base, parts, sight, lighting; levels 1-4,
- *                see {@link SceneSpec#read}
+ * scene          preset (default level&lt;difficulty&gt;), base, parts, sight, lighting; see
+ *                {@link SceneSpec#read}. A natural_patch base groups splits by source region.
  * visibility     min_ratio, max_ratio (levels 3-5; defaults 0.2-0.8 for level 3, 0.1 minimum for 4-5)
  * capture        mode, width, height, cube_face_size (PANORAMA_310 only)
  * quotas         accepted_scenes, scene_attempts_per_accepted_scene
@@ -48,7 +49,7 @@ public final class ConfigResolver {
 	public static final double EYE_HEIGHT_BLOCKS = 1.62;
 
 	private static final Set<String> SECTIONS = Set.of(
-		"dataset", "target", "arena", "natural_region", "viewpoints", "scene", "visibility", "capture", "quotas", "splits", "output"
+		"dataset", "target", "arena", "viewpoints", "scene", "visibility", "capture", "quotas", "splits", "output"
 	);
 	private static final double SPLIT_SUM_TOLERANCE = 1e-9;
 	private static final int MAX_ARENA_HEIGHT_WITH_MARGIN = 256;
@@ -87,16 +88,22 @@ public final class ConfigResolver {
 
 		ResolvedConfig.Target target = target(root.objectOrEmpty("target"));
 		ResolvedConfig.Arena arena = arena(root.objectOrEmpty("arena"));
-		ResolvedConfig.NaturalRegion region = naturalRegion(root, difficulty);
 		ResolvedConfig.Viewpoints viewpoints = viewpoints(root.objectOrEmpty("viewpoints"));
-		SceneSpec scene = scene(root, difficulty);
+		SceneSpec scene = SceneSpec.read(root.objectOrEmpty("scene"), ScenePresets.forLevel(difficulty));
+		boolean natural = scene.base() instanceof SceneBase.NaturalTerrain;
+		if (natural && root.has("arena")) {
+			throw root.error("arena", "applies to platform bases; a natural_patch base sets its own region");
+		}
 		ResolvedConfig.Visibility visibility = visibility(root.objectOrEmpty("visibility"), difficulty);
 		ResolvedConfig.Capture capture = capture(root.objectOrEmpty("capture"));
 		ResolvedConfig.Quotas quotas = quotas(root.objectOrEmpty("quotas"), target.presentFraction());
-		ResolvedConfig.Splits splits = splits(root.objectOrEmpty("splits"), difficulty);
+		ResolvedConfig.Splits splits = splits(root.objectOrEmpty("splits"), natural);
+		if (scene.base() instanceof SceneBase.NaturalTerrain base && Math.ceilDiv(quotas.acceptedScenes(), base.scenesPerPatch()) > SourcePatches.maxPatches()) {
+			throw root.error("scene", "needs more than " + SourcePatches.maxPatches() + " source patches; raise scenes_per_patch");
+		}
 		ResolvedConfig.Output output = output(root.object("output"));
 
-		return new ResolvedConfig(name, difficulty, seed, target, arena, region, viewpoints, scene, visibility, capture, quotas, splits, output);
+		return new ResolvedConfig(name, difficulty, seed, target, arena, viewpoints, scene, visibility, capture, quotas, splits, output);
 	}
 
 	private static ResolvedConfig.Target target(JsonFields target) {
@@ -137,29 +144,6 @@ public final class ConfigResolver {
 		return resolved;
 	}
 
-	private static ResolvedConfig.@Nullable NaturalRegion naturalRegion(JsonFields root, int difficulty) {
-		if (difficulty != 5) {
-			if (root.has("natural_region")) {
-				throw root.error("natural_region", "applies only to level 5");
-			}
-
-			return null;
-		}
-
-		if (!root.has("natural_region")) {
-			throw root.error("natural_region", "is required for level 5; its defaults are set after the M6 benchmark");
-		}
-
-		JsonFields region = root.object("natural_region");
-		region.rejectUnknown(Set.of("core_width", "core_length", "height", "context_padding"));
-		return new ResolvedConfig.NaturalRegion(
-			region.integer32("core_width", 1, 1024),
-			region.integer32("core_length", 1, 1024),
-			region.integer32("height", 1, 384),
-			region.integer32("context_padding", 0, 1024)
-		);
-	}
-
 	private static ResolvedConfig.Viewpoints viewpoints(JsonFields viewpoints) {
 		viewpoints.rejectUnknown(Set.of(
 			"count", "distance_min_blocks", "distance_max_blocks", "yaw_jitter_degrees", "pitch_jitter_degrees", "attempts_per_viewpoint"
@@ -179,18 +163,6 @@ public final class ConfigResolver {
 			viewpoints.integer32("attempts_per_viewpoint", 1, 10_000, 50),
 			EYE_HEIGHT_BLOCKS
 		);
-	}
-
-	private static @Nullable SceneSpec scene(JsonFields root, int difficulty) {
-		if (difficulty == 5) {
-			if (root.has("scene")) {
-				throw root.error("scene", "level 5 has no scene recipe yet");
-			}
-
-			return null;
-		}
-
-		return SceneSpec.read(root.objectOrEmpty("scene"), ScenePresets.forLevel(difficulty));
 	}
 
 	/** A seed for a configuration that names none; the resolved configuration records it. */
@@ -264,7 +236,7 @@ public final class ConfigResolver {
 		return new ResolvedConfig.Quotas(accepted, present, accepted - present, (int) attemptLimit);
 	}
 
-	private static ResolvedConfig.Splits splits(JsonFields splits, int difficulty) {
+	private static ResolvedConfig.Splits splits(JsonFields splits, boolean natural) {
 		splits.rejectUnknown(Set.of("train", "validation", "test"));
 		double train = splits.decimal("train", 0.0, 1.0, 0.8);
 		double validation = splits.decimal("validation", 0.0, 1.0, 0.1);
@@ -277,7 +249,7 @@ public final class ConfigResolver {
 			throw splits.error("train", "must be above 0");
 		}
 
-		return new ResolvedConfig.Splits(train, validation, test, difficulty == 5 ? SplitGrouping.SOURCE_WORLD : SplitGrouping.SCENE);
+		return new ResolvedConfig.Splits(train, validation, test, natural ? SplitGrouping.SOURCE_REGION : SplitGrouping.SCENE);
 	}
 
 	private static ResolvedConfig.Output output(JsonFields output) {

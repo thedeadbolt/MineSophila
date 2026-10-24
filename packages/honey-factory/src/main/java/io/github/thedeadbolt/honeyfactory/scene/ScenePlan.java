@@ -16,8 +16,17 @@ import org.jspecify.annotations.Nullable;
  * <p>Generators return plans; they never touch the world. Applying the same plan to a
  * fresh arena must reproduce {@link #layoutSha256(ArenaLayout)}.
  */
-public record ScenePlan(Template template, List<Placement> delta, @Nullable Placement target, int timeOfDayTicks, Weather weather) {
+public record ScenePlan(Template template, List<Placement> delta, @Nullable Placement target, int timeOfDayTicks, Weather weather, @Nullable SourcePatch patch) {
+	/** A plan on a generated template, with no source patch. */
+	public ScenePlan(Template template, List<Placement> delta, @Nullable Placement target, int timeOfDayTicks, Weather weather) {
+		this(template, delta, target, timeOfDayTicks, weather, null);
+	}
+
 	public ScenePlan {
+		if (patch != null && !template.blocks().isEmpty()) {
+			throw new IllegalArgumentException("A plan on a source patch restores no template blocks");
+		}
+
 		delta = List.copyOf(delta);
 		for (Placement placement : delta) {
 			requireInside(template, placement);
@@ -38,8 +47,16 @@ public record ScenePlan(Template template, List<Placement> delta, @Nullable Plac
 		}
 	}
 
-	/** Absolute non-air blocks after restoring the template and applying the delta in order. */
+	/**
+	 * Absolute non-air blocks after restoring the template and applying the delta in order.
+	 *
+	 * @throws IllegalStateException for a plan on a source patch, whose blocks only the source world holds
+	 */
 	public List<BlockLayout.Block> layoutBlocks(ArenaLayout arena) {
+		if (this.patch != null) {
+			throw new IllegalStateException("The layout of a plan on source patch " + this.patch.patchId() + " is read from its source world");
+		}
+
 		Map<List<Integer>, String> blocks = new LinkedHashMap<>();
 		for (Placement placement : this.template.blocks()) {
 			blocks.put(List.of(placement.x(), placement.y(), placement.z()), placement.state());

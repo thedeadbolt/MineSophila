@@ -101,8 +101,5 @@
     },
     "layout_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
     "accepted_sample_count": {"type": "integer", "minimum": 0, "maximum": 99}
-  },
-  "if": {"properties": {"difficulty": {"const": 5}}},
-  "then": {"required": ["source_patch"]},
-  "else": {"not": {"required": ["source_patch"]}}
+  }
 }

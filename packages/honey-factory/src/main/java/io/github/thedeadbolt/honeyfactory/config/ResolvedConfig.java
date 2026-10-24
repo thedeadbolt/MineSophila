@@ -32,9 +32,8 @@ public record ResolvedConfig(
 	long seed,
 	Target target,
 	Arena arena,
-	@Nullable NaturalRegion naturalRegion,
 	Viewpoints viewpoints,
-	@Nullable SceneSpec scene,
+	SceneSpec scene,
 	Visibility visibility,
 	Capture capture,
 	Quotas quotas,
@@ -45,10 +44,6 @@ public record ResolvedConfig(
 	}
 
 	public record Arena(int width, int length, int height, int margin) {
-	}
-
-	/** Level-5 sampled region; no defaults until M6 benchmarks them. */
-	public record NaturalRegion(int coreWidth, int coreLength, int height, int contextPadding) {
 	}
 
 	public record Viewpoints(
@@ -129,18 +124,7 @@ public record ResolvedConfig(
 		arena.addProperty("height", this.arena.height());
 		arena.addProperty("margin", this.arena.margin());
 		generator.add("arena", arena);
-		if (this.naturalRegion != null) {
-			JsonObject region = new JsonObject();
-			region.addProperty("core_width", this.naturalRegion.coreWidth());
-			region.addProperty("core_length", this.naturalRegion.coreLength());
-			region.addProperty("height", this.naturalRegion.height());
-			region.addProperty("context_padding", this.naturalRegion.contextPadding());
-			generator.add("natural_region", region);
-		}
-
-		if (this.scene != null) {
-			generator.add("scene", this.scene.toJson());
-		}
+		generator.add("scene", this.scene.toJson());
 
 		JsonObject visibility = new JsonObject();
 		visibility.addProperty("rule", this.visibility.rule().jsonName());
@@ -153,10 +137,7 @@ public record ResolvedConfig(
 		algorithms.addProperty("ids", Algorithms.IDS);
 		algorithms.addProperty("scene_slots", Algorithms.SCENE_SLOTS);
 		algorithms.addProperty("layout", Algorithms.LAYOUT);
-		String sceneGenerator = Algorithms.sceneGenerator(this.difficulty);
-		if (sceneGenerator != null) {
-			algorithms.addProperty("scene_generator", sceneGenerator);
-		}
+		algorithms.addProperty("scene_generator", Algorithms.sceneGenerator(this.difficulty));
 		generator.add("algorithms", algorithms);
 		return generator;
 	}
@@ -200,7 +181,7 @@ public record ResolvedConfig(
 		ratios.addProperty("test", this.splits.test());
 		splits.add("ratios", ratios);
 		splits.addProperty("grouping", this.splits.grouping().jsonName());
-		splits.addProperty("algorithm", Algorithms.SCENE_SLOTS);
+		splits.addProperty("algorithm", Algorithms.slotsFor(this.splits.grouping()));
 		return splits;
 	}
 }
