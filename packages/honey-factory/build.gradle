@@ -43,9 +43,11 @@ loom {
 			// Where the M9 acceptance runs write, and the label of this run's folder; empty uses the defaults.
 			property("honeyfactory.acceptanceRoot", providers.systemProperty("honeyfactory.acceptanceRoot").getOrElse(""))
 			property("honeyfactory.acceptanceLabel", providers.systemProperty("honeyfactory.acceptanceLabel").getOrElse(""))
-			// Where the production runner writes and which of its datasets it runs; empty uses the defaults and runs all.
+			// Where the production runner writes, which of its datasets it runs and an optional scene count for trials;
+			// empty uses the defaults, runs all and keeps the production counts.
 			property("honeyfactory.productionRoot", providers.systemProperty("honeyfactory.productionRoot").getOrElse(""))
 			property("honeyfactory.productionRuns", providers.systemProperty("honeyfactory.productionRuns").getOrElse(""))
+			property("honeyfactory.productionScenes", providers.systemProperty("honeyfactory.productionScenes").getOrElse(""))
 		}
 	}
 }

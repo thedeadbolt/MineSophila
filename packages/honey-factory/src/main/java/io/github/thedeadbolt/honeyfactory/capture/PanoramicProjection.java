@@ -117,6 +117,61 @@ public final class PanoramicProjection implements CaptureProjection {
 		return direction;
 	}
 
+	@Override
+	public double @Nullable [] project(CameraFrame camera, double[] point) {
+		double[] eye = camera.eye();
+		double[] offset = {point[0] - eye[0], point[1] - eye[1], point[2] - eye[2]};
+		double length = Math.sqrt(dot(offset, offset));
+		if (length == 0.0) {
+			return null;
+		}
+
+		double[][] axes = levelAxes(camera);
+		double longitude = Math.toDegrees(Math.atan2(dot(offset, axes[0]), dot(offset, axes[2])));
+		double elevation = Math.toDegrees(Math.asin(Math.clamp(dot(offset, axes[1]) / length, -1.0, 1.0)));
+		if (Math.abs(longitude) > LONGITUDE_MAX_DEGREES || elevation < ELEVATION_MIN_DEGREES) {
+			return null;
+		}
+
+		return new double[] {
+			(longitude + LONGITUDE_MAX_DEGREES) / (2 * LONGITUDE_MAX_DEGREES) * this.width,
+			(ELEVATION_MAX_DEGREES - elevation) / (ELEVATION_MAX_DEGREES - ELEVATION_MIN_DEGREES) * this.height,
+		};
+	}
+
+	/** The panorama is level, so only {@code px} can be placed: yaw turns the direction to its longitude, pitch looks along it. */
+	@Override
+	public double @Nullable [] orientationPlacing(double[] direction, double px, double py) {
+		double targetYaw = Math.toDegrees(Math.atan2(-direction[0], direction[2]));
+		double pitch = -Math.toDegrees(Math.asin(Math.clamp(direction[1], -1.0, 1.0)));
+		return new double[] {targetYaw - longitudeDegrees(px), pitch};
+	}
+
+	/**
+	 * Also requires the corners to span less than half the image's width, so a box that
+	 * crosses the rear blind sector, or stands over the camera, is never taken as inside.
+	 */
+	@Override
+	public boolean contains(CameraFrame camera, double[] boxMin, double[] boxMax, double marginPx) {
+		if (!CaptureProjection.super.contains(camera, boxMin, boxMax, marginPx)) {
+			return false;
+		}
+
+		double left = Double.POSITIVE_INFINITY;
+		double right = Double.NEGATIVE_INFINITY;
+		for (int i = 0; i < 8; i++) {
+			double[] pixel = project(camera, new double[] {
+				(i & 1) == 0 ? boxMin[0] : boxMax[0],
+				(i & 2) == 0 ? boxMin[1] : boxMax[1],
+				(i & 4) == 0 ? boxMin[2] : boxMax[2],
+			});
+			left = Math.min(left, pixel[0]);
+			right = Math.max(right, pixel[0]);
+		}
+
+		return right - left < this.width / 2.0;
+	}
+
 	/** World-space right, up and forward of the level frame: the camera's horizontal right and forward, and world up. */
 	static double[][] levelAxes(CameraFrame camera) {
 		double[] right = camera.basis().right();

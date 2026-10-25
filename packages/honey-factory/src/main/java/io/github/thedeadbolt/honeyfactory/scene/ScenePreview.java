@@ -23,13 +23,13 @@ public record ScenePreview(ArenaLayout arena, GeneratedScene scene, @Nullable Vi
 
 	/** A platform recipe's preview; see {@link #of(SceneSpec, PreparedPatch, long, int)} for natural ones. */
 	public static ScenePreview of(SceneSpec spec, long seed, int index) {
-		RecipeGenerator generator = new RecipeGenerator(spec, DEFAULTS.arena(), DEFAULTS.target().allowedBlockStates(), DEFAULTS.viewpoints());
+		RecipeGenerator generator = new RecipeGenerator(spec, DEFAULTS.arena(), DEFAULTS.target().allowedBlockStates(), DEFAULTS.viewpoints(), DEFAULTS.projection());
 		return first(generator, generator.scene(SceneSeeds.derive(seed, index, 0), true), ArenaLayout.of(DEFAULTS.arena()));
 	}
 
 	/** A natural recipe's preview on {@code patch}, which must have been prepared for the spec's base. */
 	public static ScenePreview of(SceneSpec spec, PreparedPatch patch, long seed, int index) {
-		NaturalGenerator generator = new NaturalGenerator(spec, DEFAULTS.target().allowedBlockStates(), DEFAULTS.viewpoints());
+		NaturalGenerator generator = new NaturalGenerator(spec, DEFAULTS.target().allowedBlockStates(), DEFAULTS.viewpoints(), DEFAULTS.projection());
 		return first(generator, generator.scene(SceneSeeds.derive(seed, index, 0), true, patch), ArenaLayout.natural(generator.base()));
 	}
 

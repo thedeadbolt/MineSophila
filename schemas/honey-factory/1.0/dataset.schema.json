@@ -99,7 +99,8 @@
           "properties": {
             "rule": {"enum": ["fully_visible", "partially_visible", "at_least_partly_visible"]},
             "min_ratio": {"oneOf": [{"type": "null"}, {"type": "number", "minimum": 0, "maximum": 1}]},
-            "max_ratio": {"oneOf": [{"type": "null"}, {"type": "number", "minimum": 0, "maximum": 1}]}
+            "max_ratio": {"oneOf": [{"type": "null"}, {"type": "number", "minimum": 0, "maximum": 1}]},
+            "min_visible_pixels": {"type": "integer", "minimum": 0}
           }
         },
         "algorithms": {
@@ -141,6 +142,7 @@
             "count": {"type": "integer", "minimum": 1, "maximum": 99},
             "distance_min_blocks": {"type": "number", "exclusiveMinimum": 0},
             "distance_max_blocks": {"type": "number", "exclusiveMinimum": 0},
+            "aim": {"enum": ["target_jitter", "image_uniform"]},
             "yaw_jitter_degrees": {"type": "number", "minimum": 0, "maximum": 180},
             "pitch_jitter_degrees": {"type": "number", "minimum": 0, "maximum": 90},
             "attempts_per_viewpoint": {"type": "integer", "minimum": 1},

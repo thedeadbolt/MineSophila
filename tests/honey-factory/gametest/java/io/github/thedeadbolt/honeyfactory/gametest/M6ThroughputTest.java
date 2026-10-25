@@ -105,7 +105,7 @@ public class M6ThroughputTest implements FabricClientGameTest {
 			summary.add("level4", compare(context, ArenaLayout.of(level4.arena()), scene, viewpoints(platform, scene), new PerspectiveProjection(640, 480), failures));
 
 			SceneSpec clear = SceneRecipe.of("level5").lighting(6000, Weather.CLEAR).build();
-			NaturalGenerator natural = new NaturalGenerator(clear, List.of("minecraft:honey_block"), level4.viewpoints());
+			NaturalGenerator natural = new NaturalGenerator(clear, List.of("minecraft:honey_block"), level4.viewpoints(), level4.projection());
 			PreparedPatch patch = world.getServer().computeOnServer(server -> NaturalPatches.prepare(server, new NaturalPatches.Request(5, natural.base(), 0, "minecraft:honey_block")));
 			GeneratedScene terrain = natural.scene(SceneSeeds.derive(5, 0, 0), true, patch);
 			summary.add("level5", compare(context, ArenaLayout.natural(natural.base()), terrain, viewpoints(natural, terrain), new PerspectiveProjection(640, 480), failures));

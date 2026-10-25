@@ -41,6 +41,34 @@ public sealed interface CaptureProjection permits PerspectiveProjection, Panoram
 	/** World-space unit direction through output pixel coordinates {@code (px, py)}; pixel centres are at {@code + 0.5}. */
 	double[] direction(CameraFrame camera, double px, double py);
 
+	/** Continuous output pixel coordinates of a world point, or null when it is outside the captured field of view. */
+	double @Nullable [] project(CameraFrame camera, double[] point);
+
+	/**
+	 * Minecraft yaw and pitch, in degrees, of a camera that sees world-space unit direction
+	 * {@code direction} at output pixel coordinates {@code (px, py)}, or null when no camera
+	 * with pitch in [-90, 90] can. The yaw is not wrapped to a range. A projection whose rows
+	 * do not depend on the camera ignores {@code py} and looks along the direction's own
+	 * elevation.
+	 */
+	double @Nullable [] orientationPlacing(double[] direction, double px, double py);
+
+	/** Whether every corner of the axis-aligned box projects at least {@code marginPx} inside the output image. */
+	default boolean contains(CameraFrame camera, double[] boxMin, double[] boxMax, double marginPx) {
+		for (int i = 0; i < 8; i++) {
+			double[] pixel = project(camera, new double[] {
+				(i & 1) == 0 ? boxMin[0] : boxMax[0],
+				(i & 2) == 0 ? boxMin[1] : boxMax[1],
+				(i & 4) == 0 ? boxMin[2] : boxMax[2],
+			});
+			if (pixel == null || pixel[0] < marginPx || pixel[0] > width() - marginPx || pixel[1] < marginPx || pixel[1] > height() - marginPx) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	/** Whether any part of the axis-aligned box lies inside the captured field of view. */
 	boolean intersects(CameraFrame camera, double[] boxMin, double[] boxMax);
 

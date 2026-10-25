@@ -48,6 +48,18 @@ class ObservationCheckTest {
 		}
 	}
 
+	/** A 6×6 target shows 36 pixels: enough for a minimum of 36, too few for 37. */
+	@Test
+	void rejectsATargetShowingFewerPixelsThanTheMinimum() {
+		ResolvedConfig.Visibility minimum36 = new ResolvedConfig.Visibility(VisibilityRule.AT_LEAST_PARTLY_VISIBLE, 0.1, null, 36);
+		ResolvedConfig.Visibility minimum37 = new ResolvedConfig.Visibility(VisibilityRule.AT_LEAST_PARTLY_VISIBLE, 0.1, null, 37);
+		assertInstanceOf(ObservationCheck.Outcome.Accepted.class, ObservationCheck.check(minimum36, PROJECTION, CAMERA, TARGET, square(12, 12, 6)));
+		ObservationCheck.Outcome outcome = ObservationCheck.check(minimum37, PROJECTION, CAMERA, TARGET, square(12, 12, 6));
+		assertEquals(ObservationCheck.TOO_FEW_PIXELS, assertInstanceOf(ObservationCheck.Outcome.Rejected.class, outcome).reason());
+		ObservationCheck.Outcome absent = ObservationCheck.check(minimum37, PROJECTION, CAMERA, null, CapturedImages.withoutTarget(SIZE, SIZE, new byte[SIZE * SIZE * 3]));
+		assertInstanceOf(ObservationCheck.Outcome.Accepted.class, absent, "a scene without a target needs no pixels");
+	}
+
 	@Test
 	void sceneWithoutATargetIsNeverClipped() {
 		ObservationCheck.Outcome outcome = ObservationCheck.check(AT_LEAST_PARTLY, PROJECTION, CAMERA, null, CapturedImages.withoutTarget(SIZE, SIZE, new byte[SIZE * SIZE * 3]));

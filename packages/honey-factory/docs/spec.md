@@ -185,6 +185,18 @@ optional derivation step.
   subject to scene bounds and reachability. Aim the base view at the target centre,
   then apply configurable orientation jitter; initial defaults are ±15 degrees yaw
   and ±10 degrees pitch. The visibility check below remains authoritative.
+- Agreed 2026-10-25, after the M9 measurements: aiming at the target and jittering
+  leaves it near the image centre. In M9's perspective images 90% of target centroids
+  lay in the middle quarter of the width; in panoramas, in the middle 8%. A model could
+  learn that the honey is straight ahead. `viewpoints.aim: image_uniform` instead draws
+  the target centre's output pixel uniformly over the image and solves the camera's yaw
+  and pitch to put it there. A panorama is level, so only its column is drawn; its row
+  follows from the target's elevation. A draw that would leave any part of the target
+  block within 2 pixels of the image edge is re-sampled before capture, so the
+  frame-edge rule under target-state metadata still holds. The default stays
+  `target_jitter` with the jitter above, as M1–M9 used. The manifest records `aim` only
+  when it is changed, so their configuration hashes stay valid. The phase-1 production
+  datasets (M10) use `image_uniform`. See ADR 0016.
 - Treat all values above as configuration defaults, not format limits. Store their
   resolved values in the dataset manifest so later tuning is reproducible.
 - Use the first-person player eye height agreed below. Camera positions must be
@@ -305,6 +317,16 @@ if visible pixels exceed unoccluded pixels, or if its stored status and ratio do
 match these rules. Exact equality defines `fully_visible` initially. If prototype
 tests reveal legitimate one-pixel instability, introduce an explicit, recorded
 tolerance later rather than silently changing the meaning.
+
+Agreed 2026-10-25, after the second M9 audit: a present target can satisfy a level's
+ratio rule while showing only a sliver. The audit found a 22 × 5 pixel strip of a honey
+block over a ridge 43 blocks away, 50 of 400 unoccluded pixels, labelled
+`partially_visible` in a 2480 × 1280 panorama, and invisible at normal size. Such samples
+teach a classifier to fire on faint texture, and the fly-brain model sees far coarser
+frames still. `visibility.min_visible_pixels` rejects a present capture with fewer visible
+pixels (`too_few_pixels`). The default, 0, keeps the earlier behaviour and is not recorded,
+so M1–M9 hashes stay valid; the phase-1 production datasets (M10) use 200, which would have
+removed 1.1% of the M9 pilot's present samples.
 
 Agreed 2026-10-25, after the M9 audit: an accepted present target lies wholly inside the
 frame. The visible and unoccluded masks only cover the image, so a target cut by the frame

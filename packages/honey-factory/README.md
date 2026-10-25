@@ -164,7 +164,7 @@ SceneSpec spec = SceneRecipe.of("level3")
     .addPart(new ConstructedSettingPart(List.of("courtyard")))
     .lighting(Lighting.of(new IntRange(1000, 11000), Weather.CLEAR, Weather.RAIN))
     .build();
-RecipeGenerator generator = new RecipeGenerator(spec, arena, targetStates, viewpoints);
+RecipeGenerator generator = new RecipeGenerator(spec, arena, targetStates, viewpoints, projection);
 ```
 
 Rain and thunder images are not byte-reproducible; masks are. Write a `scene` section to a

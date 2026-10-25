@@ -8,8 +8,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
+import io.github.thedeadbolt.honeyfactory.contract.CameraBasis;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import java.util.List;
+import java.util.Random;
 import org.junit.jupiter.api.Test;
 
 class PerspectiveProjectionTest {
@@ -71,5 +73,45 @@ class PerspectiveProjectionTest {
 		assertThrows(IllegalArgumentException.class, () -> new PerspectiveProjection(15, 64));
 		assertThrows(IllegalArgumentException.class, () -> new PerspectiveProjection(64, 16_385));
 		assertThrows(IllegalArgumentException.class, () -> CaptureProjection.of(io.github.thedeadbolt.honeyfactory.contract.CaptureMode.PANORAMA_310, 2480, 1280, null));
+	}
+
+	/** A camera solved for a pixel sees the direction at that pixel, across the image and at steep elevations. */
+	@Test
+	void orientationPlacingPutsTheDirectionOnThePixel() {
+		PerspectiveProjection projection = new PerspectiveProjection(1280, 960);
+		Random random = new Random(26);
+		int solved = 0;
+		for (int i = 0; i < 2000; i++) {
+			double elevation = Math.toRadians(random.nextDouble(-80.0, 80.0));
+			double heading = random.nextDouble(0.0, 2 * Math.PI);
+			double[] direction = {Math.cos(elevation) * Math.sin(heading), Math.sin(elevation), Math.cos(elevation) * Math.cos(heading)};
+			double px = random.nextDouble(0.0, 1280.0);
+			double py = random.nextDouble(0.0, 960.0);
+			double[] orientation = projection.orientationPlacing(direction, px, py);
+			if (orientation == null) {
+				continue;
+			}
+
+			solved++;
+			assertTrue(orientation[1] >= -90.0 && orientation[1] <= 90.0);
+			CameraFrame camera = new CameraFrame(new double[] {0.0, 0.0, 0.0}, CameraBasis.of(orientation[0], orientation[1]));
+			double[] pixel = projection.project(camera, direction);
+			assertEquals(px, pixel[0], 1e-6);
+			assertEquals(py, pixel[1], 1e-6);
+		}
+
+		// About 23% of these need a pitch past vertical, such as a target 70 degrees up at the
+		// image's bottom edge; the closed form's other branch never adds a solution.
+		assertTrue(solved > 1400, solved + " of 2000 solved");
+		// Straight up cannot land at the bottom edge without pitching past vertical.
+		assertNull(projection.orientationPlacing(new double[] {0.0, 1.0, 0.0}, 640.0, 960.0));
+	}
+
+	@Test
+	void containsNeedsEveryCornerInsideTheMargin() {
+		PerspectiveProjection projection = new PerspectiveProjection(64, 64);
+		assertTrue(projection.contains(SOUTH, new double[] {0, 65, 8}, new double[] {1, 66, 9}, 2.0), "straight ahead");
+		assertFalse(projection.contains(SOUTH, new double[] {8, 65, 8}, new double[] {9, 66, 9}, 2.0), "across the left edge");
+		assertFalse(projection.contains(SOUTH, new double[] {0, 65, 0}, new double[] {1, 66, 1}, 2.0), "around the eye");
 	}
 }

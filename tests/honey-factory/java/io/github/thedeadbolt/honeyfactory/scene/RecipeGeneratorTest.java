@@ -242,7 +242,7 @@ class RecipeGeneratorTest {
 			.parts(List.of(HidingStructurePart.DEFAULT, new BackgroundStructuresPart(IntRange.of(0), 3), ScatteredBlocksPart.DEFAULT))
 			.build();
 		RecipeGenerator original = generator(3);
-		RecipeGenerator changed = new RecipeGenerator(edited, config.arena(), config.target().allowedBlockStates(), config.viewpoints());
+		RecipeGenerator changed = new RecipeGenerator(edited, config.arena(), config.target().allowedBlockStates(), config.viewpoints(), config.projection());
 		for (int index = 0; index < 20; index++) {
 			SceneSeeds seeds = SceneSeeds.derive(42, index, 0);
 			JsonObject before = original.scene(seeds, false).layoutParameters();
@@ -259,7 +259,7 @@ class RecipeGeneratorTest {
 		ResolvedConfig config = config(2);
 		SceneSpec spec = config.scene().toRecipe().lighting(Lighting.of(new IntRange(1000, 11000), io.github.thedeadbolt.honeyfactory.contract.Weather.CLEAR,
 			io.github.thedeadbolt.honeyfactory.contract.Weather.RAIN)).build();
-		RecipeGenerator generator = new RecipeGenerator(spec, config.arena(), config.target().allowedBlockStates(), config.viewpoints());
+		RecipeGenerator generator = new RecipeGenerator(spec, config.arena(), config.target().allowedBlockStates(), config.viewpoints(), config.projection());
 		Set<Integer> times = new HashSet<>();
 		Set<Object> weathers = new HashSet<>();
 		for (int index = 0; index < 40; index++) {

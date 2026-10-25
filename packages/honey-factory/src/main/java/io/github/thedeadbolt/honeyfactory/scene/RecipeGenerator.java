@@ -2,6 +2,7 @@ package io.github.thedeadbolt.honeyfactory.scene;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
 import io.github.thedeadbolt.honeyfactory.contract.Algorithms;
 import io.github.thedeadbolt.honeyfactory.contract.SceneSeeds;
@@ -27,7 +28,9 @@ import java.util.List;
  *       horizontal distance uniform in the configured range, azimuth uniform in [0, 360)
  *       degrees around the aim block's centre, feet standing on the floor. The camera aims
  *       at the block centre; uniform yaw and pitch jitter follow, and both angles are
- *       rounded to the float precision Minecraft stores.</li>
+ *       rounded to the float precision Minecraft stores. With aim {@code image_uniform} the
+ *       draw instead places the block centre at a uniform output pixel; see
+ *       {@link ViewpointAims}.</li>
  *   <li>A draw is rejected when the player would not stand fully on the floor, would
  *       overlap the aim block or another block, or when the recipe's {@link SightRule}
  *       rejects the eye's view of the aim cell.</li>
@@ -49,13 +52,14 @@ public final class RecipeGenerator implements SceneGenerator {
 	private final ResolvedConfig.Arena arena;
 	private final List<String> targetStates;
 	private final ResolvedConfig.Viewpoints viewpoints;
+	private final CaptureProjection projection;
 	private final Template template;
 
 	public RecipeGenerator(ResolvedConfig config) {
-		this(config.scene(), config.arena(), config.target().allowedBlockStates(), config.viewpoints());
+		this(config.scene(), config.arena(), config.target().allowedBlockStates(), config.viewpoints(), config.projection());
 	}
 
-	public RecipeGenerator(SceneSpec spec, ResolvedConfig.Arena arena, List<String> targetStates, ResolvedConfig.Viewpoints viewpoints) {
+	public RecipeGenerator(SceneSpec spec, ResolvedConfig.Arena arena, List<String> targetStates, ResolvedConfig.Viewpoints viewpoints, CaptureProjection projection) {
 		if (!(spec.base() instanceof SceneBase.Platform platform)) {
 			throw new IllegalArgumentException("A platform generator needs a platform base, got " + spec.base());
 		}
@@ -64,6 +68,7 @@ public final class RecipeGenerator implements SceneGenerator {
 		this.arena = arena;
 		this.targetStates = List.copyOf(targetStates);
 		this.viewpoints = viewpoints;
+		this.projection = projection;
 		this.template = Template.platform(TEMPLATE_ID, TEMPLATE_VERSION, arena.width(), arena.length(), arena.height(), platform.floor());
 	}
 
@@ -149,10 +154,7 @@ public final class RecipeGenerator implements SceneGenerator {
 			return new ViewpointCandidate.Rejected(sight);
 		}
 
-		ViewpointPlan base = ViewpointPlan.lookingAt(x, feetY, z, settings.eyeHeightBlocks(), aim[0], aim[1], aim[2]);
-		float yaw = (float) ViewpointPlan.wrapDegrees(base.yawDegrees() + yawJitter);
-		float pitch = (float) Math.clamp(base.pitchDegrees() + pitchJitter, -90.0, 90.0);
-		return new ViewpointCandidate.Placeable(new ViewpointPlan(x, feetY, z, yaw, pitch));
+		return ViewpointAims.orient(settings, this.projection, random, x, feetY, z, aim, yawJitter, pitchJitter);
 	}
 
 	private static SeededRandom random(String purpose) {

@@ -10,13 +10,15 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 /**
  * Generates the phase-1 production datasets the specification sets out under generation
  * quotas: one dataset per level and capture mode at the default resolutions, with 8
- * viewpoints and the default 80/20 balance, weighted towards the harder levels.
+ * viewpoints, the target anywhere in the image ({@code image_uniform} aim), at least 200
+ * visible target pixels and the default 80/20 balance, weighted towards the harder levels.
  *
  * <p>Outputs go to {@code /mnt/fastvault/minesophila/datasets/phase1/} (set
  * {@code -Dhoneyfactory.productionRoot}), with metrics and a copy of the dataset world as in
  * {@link AcceptanceRun}. {@code -Dhoneyfactory.productionRuns} selects datasets by name part
  * (comma-separated, such as {@code perspective}, {@code panorama} or {@code l5-panorama});
- * empty runs all ten. Each run uses its own world. Runs only when named
+ * empty runs all ten. {@code -Dhoneyfactory.productionScenes} replaces every scene count, for a
+ * trial at another root. Each run uses its own world. Runs only when named
  * ({@code -Dhoneyfactory.gametests=ProductionRun}).
  */
 public class ProductionRunTest implements FabricClientGameTest {
@@ -30,6 +32,7 @@ public class ProductionRunTest implements FabricClientGameTest {
 			return;
 		}
 
+		String scenesOverride = System.getProperty("honeyfactory.productionScenes", "");
 		List<String> selected = List.of(System.getProperty("honeyfactory.productionRuns", "").split(",")).stream().map(String::trim).filter(part -> !part.isEmpty()).toList();
 		Path directory = AcceptanceRun.directory(System.getProperty("honeyfactory.productionRoot", ""), "/mnt/fastvault/minesophila/datasets", "phase1");
 		GameTestSupport.pinCaptureSettings(context);
@@ -44,22 +47,24 @@ public class ProductionRunTest implements FabricClientGameTest {
 						continue;
 					}
 
+					int scenes = scenesOverride.isBlank() ? SCENES[level - 1] : Integer.parseInt(scenesOverride);
 					String scene = level == 5 ? "\"scene\": {\"base\": {\"type\": \"natural_patch\", \"scenes_per_patch\": 4}}," : "";
 					String config = """
 						{
 						  "dataset": {"name": "%s", "seed": %d, "difficulty": %d},
 						  %s
-						  "viewpoints": {"count": 8},
+						  "viewpoints": {"count": 8, "aim": "image_uniform"},
+						  "visibility": {"min_visible_pixels": 200},
 						  "capture": {"mode": "%s"},
 						  "quotas": {"accepted_scenes": %d},
 						  "target": {"present_fraction": 0.8},
 						  "output": {"root": "%s", "free_space_reserve_bytes": 10737418240}
 						}
 						""".formatted(name, 10_000 + level * 10 + (mode.equals("perspective") ? 0 : 1), level, scene,
-						mode.equals("perspective") ? "PERSPECTIVE_90" : "PANORAMA_310", SCENES[level - 1], directory.toString().replace("\\", "\\\\"));
+						mode.equals("perspective") ? "PERSPECTIVE_90" : "PANORAMA_310", scenes, directory.toString().replace("\\", "\\\\"));
 					JsonObject metrics = AcceptanceRun.generate(context, directory, name, config, TIMEOUT_TICKS);
 					runs.add(metrics);
-					if (!"complete".equals(metrics.get("lifecycle").getAsString()) || metrics.get("accepted_samples").getAsInt() != SCENES[level - 1] * 8) {
+					if (!"complete".equals(metrics.get("lifecycle").getAsString()) || metrics.get("accepted_samples").getAsInt() != scenes * 8) {
 						failures.add(name + ": " + metrics.get("lifecycle").getAsString() + " with " + metrics.get("accepted_samples").getAsInt() + " samples (" + metrics.get("failure") + ")");
 					}
 				}
