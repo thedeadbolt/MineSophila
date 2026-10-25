@@ -231,6 +231,9 @@ def test_perspective_dot_reaches_expected_ommatidium() -> None:
     hit = int(np.argmax(f.activations[:, 0]))
     d = to_unit(*eye.lattice.direction_deg[hit])
     assert np.degrees(np.arccos(np.clip(d @ target, -1, 1))) < 4.0
+    az, el = eye.lattice.direction_deg[hit]
+    assert az > 0.0  # right of centre
+    assert el > 0.0  # above the horizon
 
 
 def test_perspective_behind_fly_is_all_invalid() -> None:

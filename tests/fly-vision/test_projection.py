@@ -140,6 +140,8 @@ def test_perspective_rotated_placement() -> None:
     top = r[0, 50]  # top-centre: same azimuth, higher
     assert np.isclose(np.degrees(np.arctan2(top[1], top[0])), 30.0)
     assert np.degrees(np.arcsin(top[2])) > 20.0
+    tilt = 20.0 + np.degrees(np.arctan(40.0 / p.focal_px))  # half a pixel above row 0 is 40
+    assert abs(np.degrees(np.arcsin(top[2])) - tilt) < 1e-9
 
 
 def test_perspective_key_covers_placement() -> None:

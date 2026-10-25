@@ -297,3 +297,11 @@ def test_omitted_projection_with_fov_selects_equirect(tmp_path: Path) -> None:
     assert main(_args(tmp_path, "--fov-h", "90", "--fov-v", "90", panorama="photo.png")) == 0
     meta = load_frame(tmp_path / "out" / "f.fly.npz").meta
     assert meta["projection"]["type"] == "equirect"
+
+
+def test_perspective_center_recorded(tmp_path: Path) -> None:
+    _photo(tmp_path)
+    assert main(_persp(tmp_path, "--fov-h", "90", "--center-az", "10", "--center-el", "-25")) == 0
+    proj = load_frame(tmp_path / "out" / "f.fly.npz").meta["projection"]
+    assert proj["center_az_deg"] == 10.0
+    assert proj["center_el_deg"] == -25.0
