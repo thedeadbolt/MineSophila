@@ -17,7 +17,7 @@
 - **A2.** The sampler takes a `Projection` protocol (`width`, `height`, `rays()`,
   `solid_angle()`, `key()`); only `EquirectSpec` exists in v0.
 - **A3, A4, A5.** Package in `packages/fly-vision/`, tests in `tests/fly-vision/`, lattice as
-  package data (`lattices/generated_v1.npz`), version read from package metadata.
+  package data (`lattices/generated_v2.npz`), version read from package metadata.
 - **A6, A8.** Milestone pauses with hex plots; real-capture smoke runs are done by hand.
 - **A7.** A rotation test (shift by one interommatidial angle moves the output by one column).
 - **A9 (supersedes decision 1).** Labels are a pure transformation: `FlyLabels` holds only

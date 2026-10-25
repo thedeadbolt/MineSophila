@@ -67,7 +67,7 @@ Per frame, written to a chosen directory with `fly-vision convert`:
 | `<frame_id>.png` | optional debug hex plot of R1_6 (`--plot`) |
 
 Inputs and labels are in separate files on purpose. Arrays are indexed by ommatidium in the
-lattice order (default lattice: 877 per eye).
+lattice order (default lattice: 863 per eye).
 
 `.fly.npz`:
 

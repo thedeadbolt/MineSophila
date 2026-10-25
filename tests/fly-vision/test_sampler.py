@@ -48,7 +48,9 @@ def test_uniform_including_poles() -> None:
 
 
 def test_below_image_invalid() -> None:
-    assert not SM.valid[L.direction_deg[:, 1] < -73].any()  # bottom edge of the panorama is -70
+    spec = EquirectSpec(620, 320, 310.0, 120.0, center_el_deg=30.0)  # bottom edge is -30
+    sm = build_sampling_matrix(L, spec, C)
+    assert not sm.valid[L.direction_deg[:, 1] < -33].any()
 
 
 def test_dot_hits_nearest_ommatidium_and_falloff() -> None:

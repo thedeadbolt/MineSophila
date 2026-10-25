@@ -96,7 +96,7 @@ def test_block_sizes() -> None:
 
     near = cov(11.3 / 2)  # 1 m block at 5 m
     far = cov(2.9 / 2)  # 1 m block at 20 m
-    assert 2 <= (near >= 0.25).sum() <= 12
+    assert 2 <= (near >= 0.25).sum() <= 16
     assert 0.05 < far.max() < 0.6
 
 

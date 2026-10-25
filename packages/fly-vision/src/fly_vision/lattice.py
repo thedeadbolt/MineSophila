@@ -13,10 +13,11 @@ import numpy as np
 from numpy.typing import NDArray
 
 SUBTYPES = ("pale", "yellow", "dorsal_yellow", "dra")
-LATTICE_VERSION = "generated-v1"
+LATTICE_VERSION = "generated-v2"
 
-_AZ_RIGHT = (-15.0, 155.0)
-_EL_RANGE = (-75.0, 75.0)
+_AZ_RIGHT = (-10.0, 155.0)
+_EL_RANGE = (-70.0, 90.0)
+DRA_MIN_EL_DEG = 70.0
 _PALE_FRACTION = 0.3
 _ARRAY_NAMES = (
     "ommatidium_id",
@@ -74,13 +75,12 @@ def generate_hex_lattice(spacing_deg: float = 5.0, seed: int = 0) -> Lattice:
     for e in "LR":
         rows = parts[e]
         draws = rng.random(len(rows))
-        top = max(k for k, _, _, _ in rows)
         dorsal_el = el_max - (el_max - el_min) / 3
         for (k, j, az, el), u in zip(rows, draws, strict=True):
             eyes.append(e)
             uv.append((k, j))
             dirs.append((az, el))
-            if k == top:
+            if el >= DRA_MIN_EL_DEG:
                 subtypes.append("dra")
             elif el >= dorsal_el:
                 subtypes.append("pale" if u < _PALE_FRACTION else "dorsal_yellow")
@@ -170,7 +170,7 @@ def lattice_hash(lattice: Lattice) -> str:
 
 
 def default_lattice() -> Lattice:
-    """The packaged `lattices/generated_v1.npz`."""
-    resource = resources.files("fly_vision").joinpath("lattices", "generated_v1.npz")
+    """The packaged `lattices/generated_v2.npz`."""
+    resource = resources.files("fly_vision").joinpath("lattices", "generated_v2.npz")
     with resources.as_file(resource) as path:
         return load_lattice(path)

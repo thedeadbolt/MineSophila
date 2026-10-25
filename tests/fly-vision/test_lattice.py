@@ -26,15 +26,27 @@ def test_neighbour_spacing() -> None:
     u = to_unit(L.direction_deg[:, 0], L.direction_deg[:, 1])[L.eye == "R"]
     ang = np.degrees(np.arccos(np.clip(u @ u.T, -1, 1)))
     np.fill_diagonal(ang, 1e9)
-    assert np.allclose(np.median(ang.min(1)), 5.0, atol=0.5)
+    # Between the row spacing d*sqrt(3)/2 (4.33) and the in-row spacing d (5): away from the
+    # equator the half-step offsets of adjacent rows drift, so the nearest neighbour is often
+    # almost directly above or below.
+    assert 4.3 <= np.median(ang.min(1)) <= 5.1
 
 
 def test_coverage_ranges() -> None:
     az = L.direction_deg[:, 0]
-    assert az[L.eye == "R"].min() >= -15 - 1e-9
+    el = L.direction_deg[:, 1]
+    assert az[L.eye == "R"].min() >= -10 - 1e-9
     assert az[L.eye == "R"].max() <= 155 + 1e-9
-    assert az[L.eye == "L"].max() <= 15 + 1e-9
+    assert az[L.eye == "L"].max() <= 10 + 1e-9
     assert az[L.eye == "L"].min() >= -155 - 1e-9
+    assert el.min() >= -70 - 1e-9
+    assert el.max() <= 90 + 1e-9
+
+
+def test_top_reaches_near_zenith() -> None:
+    el = L.direction_deg[:, 1]
+    for e in "LR":
+        assert el[L.eye == e].max() > 84  # the 5 degree cone then reaches the zenith
 
 
 def test_columns_increase_with_azimuth() -> None:
@@ -48,12 +60,15 @@ def test_columns_increase_with_azimuth() -> None:
 
 def test_subtypes() -> None:
     assert set(L.subtype) <= {"pale", "yellow", "dorsal_yellow", "dra"}
-    main = np.isin(L.subtype, ["pale", "yellow", "dorsal_yellow"])
+    main = L.subtype != "dra"
     assert 0.25 <= (L.subtype[main] == "pale").mean() <= 0.35
-    assert (L.subtype == "dra").any()
     assert (L.subtype == "dorsal_yellow").any()
     el = L.direction_deg[:, 1]
-    assert el[L.subtype == "dra"].min() > el[L.subtype != "dra"].mean()
+    dra = L.subtype == "dra"
+    assert (el[dra] >= 70).all()
+    assert dra[el >= 70].all()
+    for e in "LR":
+        assert 15 <= (dra & (L.eye == e)).sum() <= 40
 
 
 def test_seed_determinism_and_roundtrip(tmp_path: Path) -> None:

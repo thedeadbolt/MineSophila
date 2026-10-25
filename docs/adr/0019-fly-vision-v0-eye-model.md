@@ -24,7 +24,7 @@ output has to say how it was made.
   to unit ray, pixel solid angle, cache key). The panorama is never resized, filtered or
   cropped as an image. Neighbourhoods are found in direction space, so the 310° panorama
   does not wrap and a 360° one would.
-- **The lattice is generated.** A hexagonal lattice at 5° spacing, 877 ommatidia per eye,
+- **The lattice is generated.** A hexagonal lattice at 5° spacing, 863 ommatidia per eye (field of view from Zhao et al. 2025),
   with pale, yellow, dorsal yellow and dorsal-rim subtypes from a recorded seed, stored as
   package data. A FlyGym or real lattice replaces it later without code changes.
 - **Gaussian sparse sampler.** Each ommatidium weights pixels by a Gaussian of the angle to
@@ -58,8 +58,8 @@ output has to say how it was made.
   the stored hashes.
 - R7 is only as good as the assumed blue primary: a 10 nm shift changes R7/R8 for white
   (pale) by a factor of about 2.4 to 2.8. It is not an informative colour feature until checked against real frames.
-- The generated lattice mirrors the right eye, so in the −15…+15° binocular overlap many
-  left and right ommatidia nearly coincide (median partner distance about 1.2°) and sample
+- The generated lattice mirrors the right eye, so in the −10…+10° binocular overlap many
+  left and right ommatidia nearly coincide (median partner distance about 1.0°) and sample
   almost identical values. The overlap carries less independent information than its
   density suggests; a real lattice should replace it.
 - Dark 8-bit frames have few distinct levels, which linearisation amplifies; frames record
