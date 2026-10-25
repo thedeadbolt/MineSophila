@@ -168,3 +168,23 @@ def test_perspective_validation() -> None:
         PerspectiveSpec(101, 81, 50.0, center_el_deg=float("inf"))
     PerspectiveSpec(101, 81, 50.0, center_el_deg=90.0)
     PerspectiveSpec(101, 81, 50.0, center_el_deg=-90.0)
+
+
+def test_specs_coerce_numpy_and_int_fields() -> None:
+    assert (
+        PerspectiveSpec(np.int64(300), np.int64(400), np.float32(50)).key()  # pyright: ignore[reportArgumentType]
+        == PerspectiveSpec(300, 400, 50.0).key()
+    )
+    assert PerspectiveSpec(300, 400, 50).key() == PerspectiveSpec(300, 400, 50.0).key()
+    assert (
+        EquirectSpec(np.int64(8), np.int64(4), np.float32(90), np.float32(45)).key()  # pyright: ignore[reportArgumentType]
+        == EquirectSpec(8, 4, 90.0, 45.0).key()
+    )
+    assert EquirectSpec(8, 4, 90, 45).key() == EquirectSpec(8, 4, 90.0, 45.0).key()
+
+
+def test_specs_reject_fractional_size() -> None:
+    with pytest.raises((TypeError, ValueError)):
+        PerspectiveSpec(300.5, 400, 50.0)  # pyright: ignore[reportArgumentType]
+    with pytest.raises((TypeError, ValueError)):
+        EquirectSpec(8, 4.5, 90.0, 45.0)  # pyright: ignore[reportArgumentType]

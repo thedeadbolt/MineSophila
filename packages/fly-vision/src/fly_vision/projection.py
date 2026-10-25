@@ -6,6 +6,7 @@ elevation positive up; azimuth 0, elevation 0 is forward on the horizon.
 
 import json
 import math
+import operator
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -60,6 +61,10 @@ class EquirectSpec:
     center_el_deg: float = 0.0
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "width", operator.index(self.width))
+        object.__setattr__(self, "height", operator.index(self.height))
+        for name in ("fov_h_deg", "fov_v_deg", "center_az_deg", "center_el_deg"):
+            object.__setattr__(self, name, float(getattr(self, name)))
         if self.width <= 0 or self.height <= 0:
             raise ValueError(f"width and height must be > 0, got {self.width}x{self.height}")
         if not 0.0 < self.fov_h_deg <= 360.0:
@@ -102,7 +107,8 @@ class PerspectiveSpec:
 
     The optical axis points at (`center_az_deg`, `center_el_deg`). The image's vertical
     axis stays in the vertical plane through that axis. `fov_h_deg` is a measurement
-    supplied by the user (camera field of view); there is no default. No lens distortion.
+    supplied by the user (camera field of view). The class has no default field of view;
+    the CLI's 60 degree default is a separate, marked assumption. No lens distortion.
     """
 
     width: int
@@ -112,6 +118,10 @@ class PerspectiveSpec:
     center_el_deg: float = 0.0
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "width", operator.index(self.width))
+        object.__setattr__(self, "height", operator.index(self.height))
+        for name in ("fov_h_deg", "center_az_deg", "center_el_deg"):
+            object.__setattr__(self, name, float(getattr(self, name)))
         if self.width <= 0 or self.height <= 0:
             raise ValueError(f"width and height must be > 0, got {self.width}x{self.height}")
         if not 0.0 < self.fov_h_deg < 180.0:

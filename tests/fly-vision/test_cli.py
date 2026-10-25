@@ -192,7 +192,8 @@ def test_default_path_rejects_other_aspect_ratio(
 def test_center_without_fov_is_rejected(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _write_inputs(tmp_path)
     assert main(_args(tmp_path, "--center-el", "10")) == 1
-    assert "--fov-h" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "--projection equirect or --projection perspective" in err
     assert main(_args(tmp_path, "--center-az", "5")) == 1
     assert not (tmp_path / "out").exists()
 
@@ -305,3 +306,41 @@ def test_perspective_center_recorded(tmp_path: Path) -> None:
     proj = load_frame(tmp_path / "out" / "f.fly.npz").meta["projection"]
     assert proj["center_az_deg"] == 10.0
     assert proj["center_el_deg"] == -25.0
+
+
+def test_explicit_panorama_rejects_fov_and_center(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_inputs(tmp_path)
+    assert main(_args(tmp_path, "--projection", "panorama", "--fov-h", "310")) == 1
+    assert "--projection equirect or --projection perspective" in capsys.readouterr().err
+    assert main(_args(tmp_path, "--projection", "panorama", "--center-az", "5")) == 1
+    assert "--projection equirect or --projection perspective" in capsys.readouterr().err
+
+
+def test_equirect_needs_both_fov(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_inputs(tmp_path)
+    assert main(_args(tmp_path, "--projection", "equirect")) == 1
+    assert "equirect needs both --fov-h and --fov-v" in capsys.readouterr().err
+
+
+def test_invalid_perspective_prints_only_the_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _photo(tmp_path)
+    assert main(_persp(tmp_path, "--center-el", "95")) == 1
+    lines = capsys.readouterr().err.strip().splitlines()
+    assert len(lines) == 1
+    assert lines[0].startswith("fly-vision: error:")
+
+
+def test_image_nobody_sees_prints_a_note(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _photo(tmp_path)
+    assert main(_persp(tmp_path, "--fov-h", "2")) == 0
+    err = capsys.readouterr().err
+    assert "no ommatidium sees this image" in err
+    assert len(err.strip().splitlines()) == 1
+    assert main(_persp(tmp_path, "--fov-h", "90")) == 0
+    assert "no ommatidium" not in capsys.readouterr().err

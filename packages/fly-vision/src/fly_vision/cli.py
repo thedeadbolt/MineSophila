@@ -88,12 +88,15 @@ def _resolve(args: argparse.Namespace, w: int, h: int) -> tuple[Projection, Plac
             "--object-width-px/--object-size-m/--distance-m need --projection perspective"
         )
     if kind == "panorama":
-        if args.fov_h is not None or args.fov_v is not None:
-            raise ValueError("--fov-h/--fov-v need --projection equirect or perspective")
-        if args.center_az != 0.0 or args.center_el != 0.0:
+        if (
+            args.fov_h is not None
+            or args.fov_v is not None
+            or args.center_az != 0.0
+            or args.center_el != 0.0
+        ):
             raise ValueError(
-                "--center-az/--center-el need --fov-h and --fov-v "
-                "(the default honey-factory contract fixes the centre)"
+                "--fov-h/--fov-v/--center-az/--center-el need --projection equirect or "
+                "--projection perspective (the panorama contract fixes the field and centre)"
             )
         projection = honey_factory_panorama(w, h)
         contract_aspect = projection.fov_h_deg / projection.fov_v_deg
@@ -106,7 +109,7 @@ def _resolve(args: argparse.Namespace, w: int, h: int) -> tuple[Projection, Plac
         return projection, {"method": "honey_factory_contract", "assumed": False}
     if kind == "equirect":
         if args.fov_h is None or args.fov_v is None:
-            raise ValueError("--fov-h and --fov-v must be given together")
+            raise ValueError("equirect needs both --fov-h and --fov-v")
         projection = EquirectSpec(w, h, args.fov_h, args.fov_v, args.center_az, args.center_el)
         return projection, {"method": "fov", "assumed": False}
     if args.fov_v is not None:
@@ -146,12 +149,14 @@ def _resolve(args: argparse.Namespace, w: int, h: int) -> tuple[Projection, Plac
     else:
         fov = DEFAULT_FOV_H_DEG
         placement = {"method": "default", "assumed": True}
+    spec = PerspectiveSpec(w, h, fov, args.center_az, args.center_el)
+    if placement["assumed"]:
         print(
             f"fly-vision: warning: no placement given; assuming a {DEFAULT_FOV_H_DEG:g} deg "
             "horizontal field of view (pass --fov-h or the object flags)",
             file=sys.stderr,
         )
-    return PerspectiveSpec(w, h, fov, args.center_az, args.center_el), placement
+    return spec, placement
 
 
 def _convert(args: argparse.Namespace) -> int:
@@ -170,6 +175,11 @@ def _convert(args: argparse.Namespace) -> int:
             scene_id=args.scene_id, frame_id=args.frame_id, image_path=str(args.image)
         )
         frame, labels = eye.sample(pano, mask, source, placement)
+        if not frame.valid.any():
+            print(
+                "fly-vision: note: no ommatidium sees this image (check its placement)",
+                file=sys.stderr,
+            )
         fly_path, labels_path = save_frame(args.out, frame, labels)
         print(fly_path)
         if labels_path is not None:
