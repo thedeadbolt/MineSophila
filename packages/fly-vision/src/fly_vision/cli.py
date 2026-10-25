@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+import zipfile
 from pathlib import Path
 
 import matplotlib
@@ -15,6 +16,8 @@ from fly_vision.frame import SourceRef, load_mask, load_panorama, save_frame
 from fly_vision.lattice import default_lattice, load_lattice
 from fly_vision.plot import plot_hex
 from fly_vision.projection import EquirectSpec, Projection, honey_factory_panorama
+
+_ASPECT_TOLERANCE = 0.01  # relative; the default path expects a honey-factory capture
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -47,6 +50,13 @@ def _convert(args: argparse.Namespace) -> int:
     if (args.fov_h is None) != (args.fov_v is None):
         print("fly-vision: error: --fov-h and --fov-v must be given together", file=sys.stderr)
         return 2
+    if args.fov_h is None and (args.center_az != 0.0 or args.center_el != 0.0):
+        print(
+            "fly-vision: error: --center-az/--center-el need --fov-h and --fov-v "
+            "(the default honey-factory contract fixes the centre)",
+            file=sys.stderr,
+        )
+        return 1
     try:
         pano = load_panorama(args.panorama)
         mask = None if args.mask is None else load_mask(args.mask)
@@ -58,6 +68,13 @@ def _convert(args: argparse.Namespace) -> int:
         projection: Projection
         if args.fov_h is None:
             projection = honey_factory_panorama(w, h)
+            contract_aspect = projection.fov_h_deg / projection.fov_v_deg
+            if abs(w / h / contract_aspect - 1.0) > _ASPECT_TOLERANCE:
+                raise ValueError(
+                    f"the image is {w}x{h} and does not look like a PANORAMA_310 capture "
+                    f"(aspect {contract_aspect:.4f} within 1%); pass --fov-h and --fov-v "
+                    "for other equirectangular images (perspective images are not supported)"
+                )
         else:
             projection = EquirectSpec(w, h, args.fov_h, args.fov_v, args.center_az, args.center_el)
         lattice = default_lattice() if args.lattice is None else load_lattice(args.lattice)
@@ -78,7 +95,7 @@ def _convert(args: argparse.Namespace) -> int:
             finally:
                 plt.close(fig)
             print(png)
-    except (OSError, ValueError, KeyError) as e:
+    except (OSError, ValueError, KeyError, zipfile.BadZipFile) as e:
         print(f"fly-vision: error: {e}", file=sys.stderr)
         return 1
     return 0

@@ -5,6 +5,11 @@ import pytest
 from PIL import Image
 
 from fly_vision.cli import main
+from fly_vision.config import FlyVisionConfig
+from fly_vision.frame import load_frame
+from fly_vision.lattice import default_lattice
+from fly_vision.projection import honey_factory_panorama
+from fly_vision.sampler import matrix_key
 
 
 def _write_inputs(tmp_path: Path) -> None:
@@ -144,3 +149,56 @@ def test_mask_shape_mismatch_reports_error(
     )
     assert rc != 0
     assert "mask" in capsys.readouterr().err
+
+
+def _args(tmp_path: Path, *extra: str, panorama: str = "p.png") -> list[str]:
+    return [
+        "convert",
+        "--panorama",
+        str(tmp_path / panorama),
+        "--scene-id",
+        "s",
+        "--frame-id",
+        "f",
+        "--out",
+        str(tmp_path / "out"),
+        *extra,
+    ]
+
+
+def test_default_path_uses_honey_factory_matrix(tmp_path: Path) -> None:
+    _write_inputs(tmp_path)
+    assert main(_args(tmp_path)) == 0
+    frame = load_frame(tmp_path / "out" / "f.fly.npz")
+    expected = matrix_key(default_lattice(), honey_factory_panorama(400, 206), FlyVisionConfig())
+    assert frame.meta["matrix_key"] == expected
+
+
+def test_default_path_rejects_other_aspect_ratio(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    Image.fromarray(np.full((200, 400, 3), 100, np.uint8)).save(tmp_path / "wide.png")
+    assert main(_args(tmp_path, panorama="wide.png")) == 1
+    err = capsys.readouterr().err
+    assert "PANORAMA_310" in err
+    assert "--fov-h" in err
+    assert not (tmp_path / "out").exists()
+    # an explicit field of view is accepted for the same image
+    assert main(_args(tmp_path, "--fov-h", "360", "--fov-v", "180", panorama="wide.png")) == 0
+
+
+def test_center_without_fov_is_rejected(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_inputs(tmp_path)
+    assert main(_args(tmp_path, "--center-el", "10")) == 1
+    assert "--fov-h" in capsys.readouterr().err
+    assert main(_args(tmp_path, "--center-az", "5")) == 1
+    assert not (tmp_path / "out").exists()
+
+
+def test_corrupt_lattice_reports_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_inputs(tmp_path)
+    (tmp_path / "bad.npz").write_bytes(b"PK\x03\x04 not really a zip")
+    assert main(_args(tmp_path, "--lattice", str(tmp_path / "bad.npz"))) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("fly-vision: error:")
+    assert "Traceback" not in err

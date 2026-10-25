@@ -50,6 +50,21 @@ class EquirectSpec:
     center_az_deg: float = 0.0
     center_el_deg: float = 0.0
 
+    def __post_init__(self) -> None:
+        if self.width <= 0 or self.height <= 0:
+            raise ValueError(f"width and height must be > 0, got {self.width}x{self.height}")
+        if not 0.0 < self.fov_h_deg <= 360.0:
+            raise ValueError(f"fov_h_deg must be in (0, 360], got {self.fov_h_deg}")
+        if not 0.0 < self.fov_v_deg <= 180.0:
+            raise ValueError(f"fov_v_deg must be in (0, 180], got {self.fov_v_deg}")
+        half = self.fov_v_deg / 2.0
+        low, high = self.center_el_deg - half, self.center_el_deg + half
+        if low < -90.0 - 1e-9 or high > 90.0 + 1e-9:
+            raise ValueError(
+                f"elevation edges {low}..{high} degrees must lie within -90..+90 "
+                f"(center_el_deg={self.center_el_deg}, fov_v_deg={self.fov_v_deg})"
+            )
+
     def rays(self) -> FloatArray:
         az, el = pixel_directions(self)
         return to_unit(az, el)

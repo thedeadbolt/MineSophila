@@ -1,6 +1,8 @@
+import dataclasses
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from fly_vision.lattice import (
     default_lattice,
@@ -66,3 +68,11 @@ def test_seed_determinism_and_roundtrip(tmp_path: Path) -> None:
 def test_packaged_lattice_matches_generator() -> None:
     validate_lattice(default_lattice())
     assert lattice_hash(default_lattice()) == lattice_hash(L)
+
+
+def test_load_lattice_validates(tmp_path: Path) -> None:
+    subtype = L.subtype.copy()
+    subtype[0] = "bogus"
+    save_lattice(dataclasses.replace(L, subtype=subtype), tmp_path / "bad.npz")
+    with pytest.raises(ValueError, match="subtype"):
+        load_lattice(tmp_path / "bad.npz")

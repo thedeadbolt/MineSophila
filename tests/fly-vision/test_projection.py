@@ -1,6 +1,8 @@
 import numpy as np
+import pytest
 
 from fly_vision.projection import (
+    EquirectSpec,
     Projection,
     direction_to_pixel,
     honey_factory_panorama,
@@ -58,3 +60,29 @@ def test_projection_protocol() -> None:
     assert np.allclose(np.linalg.norm(r, axis=-1), 1.0)
     assert S.solid_angle().shape == (1280, 2480)
     assert S.key() != honey_factory_panorama(1240, 640).key()
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"width": 0}, "width"),
+        ({"height": -1}, "height"),
+        ({"fov_h_deg": 0.0}, "fov_h"),
+        ({"fov_h_deg": -10.0}, "fov_h"),
+        ({"fov_h_deg": 361.0}, "fov_h"),
+        ({"fov_v_deg": 0.0}, "fov_v"),
+        ({"fov_v_deg": -5.0}, "fov_v"),
+        ({"fov_v_deg": 181.0}, "fov_v"),
+        ({"fov_v_deg": 180.0, "center_el_deg": 10.0}, "elevation"),
+        ({"fov_v_deg": 90.0, "center_el_deg": -50.0}, "elevation"),
+    ],
+)
+def test_equirect_spec_rejects_invalid(kwargs: dict[str, float], match: str) -> None:
+    base: dict[str, float] = {"width": 100, "height": 50, "fov_h_deg": 90.0, "fov_v_deg": 90.0}
+    with pytest.raises(ValueError, match=match):
+        EquirectSpec(**{**base, **kwargs})  # pyright: ignore[reportArgumentType]
+
+
+def test_equirect_spec_accepts_full_sphere_and_contract() -> None:
+    EquirectSpec(10, 5, 360.0, 180.0)
+    EquirectSpec(10, 5, 310.0, 160.0, center_el_deg=10.0)
