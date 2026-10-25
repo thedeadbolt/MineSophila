@@ -20,6 +20,7 @@
 			"io.github.thedeadbolt.honeyfactory.gametest.M11TickTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M11ControlLoopTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M11ServerTest",
+			"io.github.thedeadbolt.honeyfactory.gametest.M11ExitTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M9MatrixTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M9PilotTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.ProductionRunTest"
