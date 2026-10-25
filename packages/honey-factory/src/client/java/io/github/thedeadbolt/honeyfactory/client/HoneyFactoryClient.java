@@ -5,6 +5,7 @@ import io.github.thedeadbolt.honeyfactory.client.generation.DatasetCommands;
 import io.github.thedeadbolt.honeyfactory.client.replay.ReplayCommands;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentCommands;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
+import io.github.thedeadbolt.honeyfactory.client.runtime.TickStepper;
 import net.fabricmc.api.ClientModInitializer;
 
 /**
@@ -16,6 +17,7 @@ public class HoneyFactoryClient implements ClientModInitializer {
 	public void onInitializeClient() {
 		CaptureService.initialize();
 		EnvironmentRuntime.initialize();
+		TickStepper.initialize();
 		EnvironmentCommands.initialize();
 		DatasetCommands.initialize();
 		ReplayCommands.initialize();

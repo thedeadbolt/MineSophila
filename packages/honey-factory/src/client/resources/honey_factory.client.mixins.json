@@ -5,6 +5,7 @@
 	"client": [
 		"AtmosphericFogAccessor",
 		"CameraMixin",
+		"ClientLevelMixin",
 		"ClientLevelAccessor",
 		"FogRendererAccessor",
 		"LevelRendererMixin",
