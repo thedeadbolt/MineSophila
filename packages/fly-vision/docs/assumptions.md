@@ -30,3 +30,4 @@ Types: **measured** (with citation), **estimated**, **chosen**.
 | Wavelength grid | 300-800 nm, 1 nm steps | chosen | n/a | `spectral.py` (`WAVELENGTHS_NM`) |
 | Subtype to channel mapping | pale: R7 Rh3, R8 Rh5; yellow: R7 Rh4, R8 Rh6; dorsal_yellow: R7 mean(Rh3, Rh4), R8 Rh6; dra: R7 Rh3, R8 Rh3 | chosen | n/a | `spectral.py` (`SpectralModel.receptors`) |
 | Reflectance-upsampling model | Minecraft colours as surface reflectances under daylight via spectral upsampling | later option, not implemented | n/a | n/a |
+| Adaptation mode | `none` (default; receptor activations pass through unchanged). `frame_mean` (experimental, decision 11): per channel `y = x / (x + m_c + 1e-12)`, `m_c` = mean over valid ommatidia of the current frame only; invalid rows are 0. It rescales R7 too, so it is not used for R7 analysis until the night-frame check is done | chosen (`frame_mean` experimental) | n/a | `adaptation.py` (`adapt`), `config.py` (`adaptation`) |
