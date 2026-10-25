@@ -1,5 +1,5 @@
 """Command-line entry point: ``validate``, ``validate-dataset``, ``inspect``, ``select``,
-``reviews``."""
+``reviews``, ``acceptance-report`` and ``control-demo``."""
 
 import argparse
 import json
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from honey_factory_tools import __version__, dataset, inspector, report, selection
+from honey_factory_tools import __version__, control, dataset, inspector, report, selection
 from honey_factory_tools.canonical import Json, loads
 from honey_factory_tools.catalog import Catalog
 from honey_factory_tools.reviews import ReviewError, ReviewStore
@@ -84,7 +84,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--output", type=Path, help="write <output>.md and <output>.json instead of printing"
     )
     acceptance.add_argument("directory", type=Path, help="the acceptance folder")
+    demo = commands.add_parser(
+        "control-demo", help="drive the player through a running control server and log every step"
+    )
+    demo.add_argument(
+        "--connection", type=Path, required=True, help="the server's honey-factory-control.json"
+    )
+    demo.add_argument("--steps", type=int, default=1000)
+    demo.add_argument("--seed", type=int, default=0, help="scene seed and command schedule seed")
+    demo.add_argument("--log", type=Path, required=True, help="JSONL log to write")
+    demo.add_argument("--preset", default="level1", help="scene preset")
+    demo.add_argument("--width", type=int, default=128)
+    demo.add_argument("--height", type=int, default=128)
+    demo.add_argument(
+        "--client-delay-ms",
+        type=int,
+        default=0,
+        help="sleep before each step; frames must not change",
+    )
     args = parser.parse_args(argv)
+    if args.command == "control-demo":
+        return _control_demo(args)
 
     try:
         schemas = Schemas(find_schema_directory(cast(Path | None, args.schemas)))
@@ -253,3 +273,24 @@ def _parse(text: str) -> Json | _Unreadable:
         return loads(text)
     except ValueError as error:
         return _Unreadable(f"invalid JSON: {error}")
+
+
+def _control_demo(args: argparse.Namespace) -> int:
+    try:
+        control.run_demo(
+            cast(Path, args.connection),
+            steps=cast(int, args.steps),
+            seed=cast(int, args.seed),
+            log=cast(Path, args.log),
+            capture={
+                "mode": "PERSPECTIVE_90",
+                "width": cast(int, args.width),
+                "height": cast(int, args.height),
+            },
+            scene={"preset": cast(str, args.preset)},
+            client_delay_ms=cast(int, args.client_delay_ms),
+        )
+    except (OSError, control.ControlError, ValueError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    return 0
