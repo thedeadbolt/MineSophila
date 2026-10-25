@@ -31,7 +31,8 @@ are proposed.
 
 | Component | Responsibility |
 |---|---|
-| `Projection` protocol, `EquirectSpec` (`projection.py`) | pixel to unit ray and pixel solid angle; `honey_factory_panorama` is honey-factory's `equirectangular-310x160-v1` |
+| `Projection` protocol, `EquirectSpec`, `PerspectiveSpec` (`projection.py`) | pixel to unit ray and pixel solid angle; `honey_factory_panorama` is honey-factory's `equirectangular-310x160-v1`; `PerspectiveSpec` is a level pinhole photo |
+| Placement (`placement.py`) | field of view from object size and distance; the assumed default field of view |
 | `Lattice` (`lattice.py`) | generated ommatidium directions, eye and subtype (`pale`, `yellow`, `dorsal_yellow`, `dra`), stored as package data |
 | Sampling matrix (`sampler.py`) | sparse Gaussian weights in direction space, cached by key; the same matrix serves colours and mask |
 | Spectral model (`spectral.py`) | linear RGB to Rh1/Rh3/Rh4/Rh5/Rh6 catches and then to channels; R7 from the visible curve tails |
@@ -45,7 +46,8 @@ honey-factory is in the [interface note](../packages/fly-vision/docs/interface.m
 another image type (a perspective photo, a cube map) places the image in the fly's visual
 field, meaning where its pixels point relative to the head, by implementing `Projection`.
 Ommatidia the image does not cover are `valid = False`. The lattice is never adapted to the
-image. These adapters are deferred.
+image. The perspective adapter is implemented ([ADR 0020](adr/0020-image-placement.md)); cube
+maps and fisheye lenses remain deferred.
 
 ### Proposed
 

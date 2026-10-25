@@ -47,25 +47,32 @@ split results later, and we never edit them:
   `fully_visible`, `partially_visible`);
 - `conditions` (weather, lighting and the like).
 
-The command line records only `scene_id`, `frame_id` and the panorama path, and adds
+The command line records only `scene_id`, `frame_id` and the image path, and adds
 `source_file_sha256` (the hash of the PNG file's bytes).
 
 ### Projections and placement
 
 `fly-vision convert --projection` selects `panorama`, `equirect` or `perspective`. When it is
-omitted, any `--fov-h`/`--fov-v` selects `equirect`; otherwise it is `panorama`. With `panorama`, `fly-vision convert` reads the image as a `PANORAMA_310` capture and exits
-with status 1 if its aspect ratio differs from 310/160 by more than 1%; `--fov-*` and
-`--center-*` are rejected when `--projection panorama` is given explicitly (without it,
-`--fov-*` selects `equirect`; `--center-*` alone is rejected). `equirect` needs `--fov-h` and `--fov-v` (`--center-az` and
-`--center-el` optional). `perspective` takes `--fov-h`, or `--object-width-px`,
-`--object-size-m` and `--distance-m`, or both (they must agree within 1°), or neither (60°
-assumed, with a warning). `--fov-v` is rejected because it follows from the aspect ratio.
+omitted, any `--fov-h`/`--fov-v` selects `equirect`; otherwise it is `panorama`. With
+`panorama`, the image is read as a `PANORAMA_310` capture and the command exits with status 1
+if its aspect ratio differs from 310/160 by more than 1%. An explicit `--projection panorama`
+rejects `--fov-*` and `--center-*`; without it, `--fov-*` selects `equirect` and `--center-*`
+alone is rejected. `equirect` needs `--fov-h` and `--fov-v` (`--center-az` and `--center-el`
+optional). `perspective` takes `--fov-h`, or `--object-width-px`, `--object-size-m` and
+`--distance-m`, or both (they must agree within 1°), or neither (60° assumed, with a
+warning). `--fov-v` is rejected because it follows from the aspect ratio.
 
-honey-factory's `PERSPECTIVE_90` frames are square 1280 × 1280 at 90°. Read them with
+honey-factory's `PERSPECTIVE_90` frames are 90° wide at any resolution and aspect (the
+default capture is square, 1280 × 1280). Read them with
 `--projection perspective --fov-h 90 --center-el <-pitch>`. Minecraft pitch is positive
 looking down, while fly-vision elevation is positive up, hence the sign flip. Azimuth is
 relative to the camera yaw, so `--center-az` stays 0. Take the pitch from the camera in the
 sample record.
+
+**Image size.** Images are sampled at full resolution; there is no resizing, by design.
+Building a sampling matrix for a 3 MP photo (2000 × 1500) takes about 13 s and about 1.4 GB of
+RAM, and both grow roughly with the pixel count (a 12 MP photo needs about 5 to 6 GB). Pass
+`--cache` to build the matrix once per image size and projection.
 
 A lattice file passed with `--lattice` is validated on load; a corrupt or inconsistent file
 gives a one-line error.

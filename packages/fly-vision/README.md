@@ -28,12 +28,17 @@ or `perspective`. `--lattice` selects a lattice file (validated on load) and `--
 directory for sampling matrices. Images and masks are read upright: the EXIF Orientation tag
 is applied on load.
 
-Perspective photos (placement is optional; `--fov-v` is not accepted):
+Equirectangular images other than the honey-factory capture:
 
 ```sh
 # equirectangular, 360 x 180
 uv run fly-vision convert --image e.png --projection equirect --fov-h 360 --fov-v 180 \
     --scene-id s --frame-id f1 --out out/
+```
+
+Perspective photos (placement is optional; `--fov-v` is not accepted):
+
+```sh
 # a camera with a known horizontal field of view
 uv run fly-vision convert --image photo.png --projection perspective --fov-h 65 \
     --scene-id s --frame-id f2 --out out/
@@ -49,6 +54,10 @@ uv run fly-vision convert --image photo.png --projection perspective \
 
 Giving only some of the object flags, or `--fov-h` and an object that disagree by more than 1°,
 is an error.
+
+Images are sampled at full resolution (no resizing, by design). Building a sampling matrix for
+a 3 MP photo takes about 13 s and about 1.4 GB of RAM, scaling roughly with the pixel count (a
+12 MP photo needs about 5 to 6 GB). Use `--cache` to build it once.
 
 Python:
 
