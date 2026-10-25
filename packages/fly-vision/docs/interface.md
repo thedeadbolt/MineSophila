@@ -87,7 +87,9 @@ lattice order (default lattice: 877 per eye).
 - `honey_coverage`: float32, `(N,)`, in [0, 1]: the honey mask through the same sampling
   matrix as the colours. This is a transformation only; fly-vision does not decide whether
   honey is "visible".
-- `meta`: `scene_id`, `frame_id`, `image_sha256`.
+- `meta`: `scene_id`, `frame_id`, `image_sha256`, plus `fly_vision_version`,
+  `lattice_hash`, `matrix_key` (the same values as the frame's) and `mask_sha256` (SHA-256
+  of the validated float64 mask array).
 
 Your own `target_status` stays in `meta["source"]`, untouched.
 

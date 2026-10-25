@@ -44,7 +44,8 @@ output has to say how it was made.
   untouched in `meta["source"]`.
 - **Frames are `.npz` with provenance.** Inputs and labels are separate files, written
   without pickle, with `meta` as JSON: package version, lattice hash, matrix key, spectral
-  hash, config hash and the SHA-256 of the pixels.
+  hash, config hash and the SHA-256 of the pixels. Labels carry the package version,
+  lattice hash, matrix key and the SHA-256 of the mask.
 - **Design rule for other image types.** The lattice is the fly and is fixed. An image is
   placed into the fly's visual field, meaning where its pixels point relative to the head.
   Ommatidia it does not cover are `valid = False`. The lattice is never adapted to an

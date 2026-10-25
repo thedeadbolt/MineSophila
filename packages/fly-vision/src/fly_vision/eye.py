@@ -104,6 +104,10 @@ class FlyEye:
         labels = FlyLabels(
             honey_coverage=coverage.astype(np.float32),
             meta={
+                "fly_vision_version": __version__,
+                "lattice_hash": self._lattice_hash,
+                "matrix_key": self.sm.key,
+                "mask_sha256": hashlib.sha256(np.ascontiguousarray(m).tobytes()).hexdigest(),
                 "scene_id": None if source is None else source.scene_id,
                 "frame_id": None if source is None else source.frame_id,
                 "image_sha256": meta["image_sha256"],

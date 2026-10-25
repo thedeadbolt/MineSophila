@@ -73,6 +73,20 @@ def test_coverage_reflects_what_the_fly_sees() -> None:
     assert edge[EYE.sm.valid].max() < 0.2
 
 
+def test_label_provenance() -> None:
+    f, lab = EYE.sample(img(), disc(30, 0, 6), REF)
+    _, other = EYE.sample(img(), disc(-30, 0, 6), REF)
+    assert lab is not None
+    assert other is not None
+    for k in ["fly_vision_version", "lattice_hash", "matrix_key", "mask_sha256"]:
+        assert isinstance(lab.meta[k], str)
+        assert lab.meta[k]
+    assert lab.meta["matrix_key"] == f.meta["matrix_key"]
+    assert lab.meta["lattice_hash"] == f.meta["lattice_hash"]
+    assert lab.meta["fly_vision_version"] == f.meta["fly_vision_version"]
+    assert lab.meta["mask_sha256"] != other.meta["mask_sha256"]
+
+
 def test_block_sizes() -> None:
     def cov(r: float) -> NDArray[np.float32]:
         _, lab = EYE.sample(img(), disc(0, 0, r), REF)
