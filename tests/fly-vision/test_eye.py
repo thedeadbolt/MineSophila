@@ -59,16 +59,18 @@ def test_labels_use_same_matrix() -> None:
     assert (lab.honey_coverage <= 1 + 1e-6).all()
 
 
-def test_visibility_states() -> None:
-    def vis(mask: NDArray[np.float64]) -> str:
+def test_coverage_reflects_what_the_fly_sees() -> None:
+    def cov(mask: NDArray[np.float64]) -> NDArray[np.float32]:
         _, lab = EYE.sample(img(), mask, REF)
         assert lab is not None
-        return lab.visibility
+        return lab.honey_coverage
 
-    assert vis(disc(30, 0, 6)) == "visible_to_fly"
-    assert vis(np.zeros((S.height, S.width))) == "not_in_image"
-    tiny = disc(30, 0, 0.5)  # a few pixels, far smaller than one cone
-    assert vis(tiny) == "in_image_not_fly"
+    assert cov(disc(30, 0, 6)).max() > 0.5
+    assert not cov(np.zeros((S.height, S.width))).any()
+    tiny = cov(disc(30, 0, 0.5))  # a few pixels, far smaller than one cone
+    assert 0 < tiny.max() < 0.05
+    edge = cov(disc(0, -69, 1))  # at the panorama's bottom edge
+    assert edge[EYE.sm.valid].max() < 0.2
 
 
 def test_block_sizes() -> None:
@@ -108,7 +110,7 @@ def test_determinism_and_roundtrip(tmp_path: Path) -> None:
     loaded = load_frame(pf)
     assert np.array_equal(loaded.activations, a.activations)
     assert loaded.meta == a.meta
-    assert load_labels(pl).visibility == "visible_to_fly"
+    assert np.array_equal(load_labels(pl).honey_coverage, lab.honey_coverage)
     EYE.reset()
 
 

@@ -10,7 +10,6 @@ def test_config_defaults() -> None:
     c = FlyVisionConfig()
     assert c.acceptance_fwhm_deg == 5.0
     assert c.adaptation == "none"
-    assert c.visible_coverage_threshold == 0.05
 
 
 def test_config_hash_stable_and_sensitive() -> None:

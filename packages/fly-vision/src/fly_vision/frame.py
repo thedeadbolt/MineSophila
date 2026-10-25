@@ -7,13 +7,12 @@ Frames (model inputs) and labels are written to separate files. Files are plain 
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
 from PIL import Image
 
-Visibility = Literal["visible_to_fly", "in_image_not_fly", "not_in_image"]
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
@@ -37,8 +36,6 @@ class FlyFrame:
 @dataclass(frozen=True)
 class FlyLabels:
     honey_coverage: NDArray[np.float32]  # (N,)
-    max_coverage: float
-    visibility: Visibility
     meta: dict[str, Any]  # ids only
 
 
@@ -65,8 +62,6 @@ def save_frame(
         np.savez(
             labels_path,
             honey_coverage=labels.honey_coverage,
-            max_coverage=np.array(labels.max_coverage),
-            visibility=np.array(labels.visibility),
             meta=np.array(json.dumps(labels.meta, sort_keys=True)),
         )
     return fly_path, labels_path
@@ -83,13 +78,10 @@ def load_frame(path: str | Path) -> FlyFrame:
 
 def load_labels(path: str | Path) -> FlyLabels:
     with np.load(path, allow_pickle=False) as d:
-        visibility = str(d["visibility"])
-        if visibility not in ("visible_to_fly", "in_image_not_fly", "not_in_image"):
-            raise ValueError(f"unknown visibility: {visibility!r}")
+        if "honey_coverage" not in d.files:
+            raise ValueError(f"{path}: labels file has no honey_coverage")
         return FlyLabels(
             honey_coverage=d["honey_coverage"],
-            max_coverage=float(d["max_coverage"]),
-            visibility=visibility,  # pyright: ignore[reportArgumentType]
             meta=json.loads(str(d["meta"])),
         )
 

@@ -15,7 +15,6 @@ class FlyVisionConfig:
     acceptance_fwhm_deg: float = 5.0
     cutoff_sigmas: float = 3.0
     valid_coverage_min: float = 0.5
-    visible_coverage_threshold: float = 0.05
     low_bit_depth_levels: int = 32
     adaptation: Literal["none", "frame_mean"] = "none"
     seed: int = 0

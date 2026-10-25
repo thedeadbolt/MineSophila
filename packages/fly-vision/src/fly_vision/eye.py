@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 from fly_vision import CHANNELS, __version__
 from fly_vision.adaptation import adapt
 from fly_vision.config import FlyVisionConfig, config_hash
-from fly_vision.frame import FlyFrame, FlyLabels, SourceRef, Visibility, load_mask, load_panorama
+from fly_vision.frame import FlyFrame, FlyLabels, SourceRef, load_mask, load_panorama
 from fly_vision.lattice import Lattice, lattice_hash
 from fly_vision.projection import Projection
 from fly_vision.sampler import SamplingMatrix, apply_sampling, build_sampling_matrix, load_or_build
@@ -101,19 +101,8 @@ class FlyEye:
                 "mask values must lie in [0, 1]; use load_mask to convert 0/255 mask files"
             )
         coverage = apply_sampling(self.sm, m[..., None])[:, 0]
-        coverage = np.where(self.sm.valid, coverage, 0.0)
-        max_cov = float(coverage[self.sm.valid].max()) if self.sm.valid.any() else 0.0
-        visibility: Visibility
-        if max_cov >= self.cfg.visible_coverage_threshold:
-            visibility = "visible_to_fly"
-        elif bool((m > 0).any()):
-            visibility = "in_image_not_fly"
-        else:
-            visibility = "not_in_image"
         labels = FlyLabels(
             honey_coverage=coverage.astype(np.float32),
-            max_coverage=max_cov,
-            visibility=visibility,
             meta={
                 "scene_id": None if source is None else source.scene_id,
                 "frame_id": None if source is None else source.frame_id,
