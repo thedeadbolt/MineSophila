@@ -29,8 +29,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.Future;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -152,6 +152,8 @@ public final class EnvironmentRuntime {
 	private ArenaExecutor.@Nullable ResetResult lastReset;
 	private @Nullable Runnable deferredCapture;
 	private @Nullable PoseSequence poseSequence;
+	/** Wall time of each batched pose since the last drain, from moving the camera to the finished capture. */
+	private final List<Long> poseNanos = new ArrayList<>();
 	private boolean poseStepQueued;
 
 	private EnvironmentRuntime(Timing timing) {
@@ -204,6 +206,13 @@ public final class EnvironmentRuntime {
 		this.scene = null;
 		this.layoutSha256 = null;
 		this.sceneOperationId = null;
+	}
+
+	/** The wall time of each batched pose since the last call, from moving the camera to the finished capture, and forgets them. */
+	public long[] drainPoseNanos() {
+		long[] drained = this.poseNanos.stream().mapToLong(Long::longValue).toArray();
+		this.poseNanos.clear();
+		return drained;
 	}
 
 	public OperationCoordinator.Status status() {
@@ -367,6 +376,7 @@ public final class EnvironmentRuntime {
 		 * tick, so until then a frame shows the previous pose's colours.
 		 */
 		private boolean environmentSampled;
+		private long movedAtNanos;
 
 		PoseSequence(Operation operation, CaptureProjection projection, @Nullable BlockPos target, List<CameraPose> poses) {
 			this.operation = operation;
@@ -391,6 +401,7 @@ public final class EnvironmentRuntime {
 					player.snapTo(pose.x(), pose.y(), pose.z(), pose.yawDegrees(), pose.pitchDegrees());
 					player.setDeltaMovement(Vec3.ZERO);
 					this.movedAtFrame = EnvironmentRuntime.this.frames;
+					this.movedAtNanos = System.nanoTime();
 					this.environmentSampled = false;
 					return false;
 				}
@@ -400,6 +411,7 @@ public final class EnvironmentRuntime {
 				}
 
 				this.observations.add(capture(minecraft, this.operation, this.projection, this.target));
+				EnvironmentRuntime.this.poseNanos.add(System.nanoTime() - this.movedAtNanos);
 				this.index++;
 				this.movedAtFrame = -1;
 				if (this.index == this.poses.size()) {

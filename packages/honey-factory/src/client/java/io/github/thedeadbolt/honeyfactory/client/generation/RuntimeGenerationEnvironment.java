@@ -6,6 +6,7 @@ import com.mojang.renderpearl.api.device.DeviceInfo;
 import io.github.thedeadbolt.honeyfactory.BuildInfo;
 import io.github.thedeadbolt.honeyfactory.HoneyFactory;
 import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
+import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
 import io.github.thedeadbolt.honeyfactory.contract.DatasetManifest;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
@@ -16,6 +17,7 @@ import io.github.thedeadbolt.honeyfactory.scene.PreparedPatch;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
 import io.github.thedeadbolt.honeyfactory.world.Baseline;
 import io.github.thedeadbolt.honeyfactory.world.NaturalPatches;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -31,6 +33,8 @@ public final class RuntimeGenerationEnvironment implements GenerationEnvironment
 	private final EnvironmentRuntime runtime;
 	/** Captures so far and their summed render, readback and reprojection nanoseconds. */
 	private final long[] captureTotals = new long[4];
+	/** Per capture: the pose's wall time, then render, readback and reprojection nanoseconds. */
+	private final List<long[]> captures = new ArrayList<>();
 
 	public RuntimeGenerationEnvironment(EnvironmentRuntime runtime) {
 		this.runtime = runtime;
@@ -69,7 +73,15 @@ public final class RuntimeGenerationEnvironment implements GenerationEnvironment
 				"requested target " + Arrays.toString(target) + " is not the current scene's " + Arrays.toString(sceneTarget)));
 		}
 
-		return this.runtime.observeAll(projection, poses).thenApply(observations -> observations.stream().map(observation -> {
+		return this.runtime.observeAll(projection, poses).thenApply(observations -> {
+			long[] poseNanos = this.runtime.drainPoseNanos();
+			for (int i = 0; i < observations.size(); i++) {
+				CaptureService.Capture capture = observations.get(i).capture();
+				this.captures.add(new long[] {i < poseNanos.length ? poseNanos[i] : 0L, capture.renderNanos(), capture.readbackNanos(), capture.assembleNanos()});
+			}
+
+			return observations;
+		}).thenApply(observations -> observations.stream().map(observation -> {
 			this.captureTotals[0]++;
 			this.captureTotals[1] += observation.capture().renderNanos();
 			this.captureTotals[2] += observation.capture().readbackNanos();
@@ -84,6 +96,11 @@ public final class RuntimeGenerationEnvironment implements GenerationEnvironment
 				observation.blockLight()
 			);
 		}).toList());
+	}
+
+	/** Per capture so far: the pose's wall time, then render, readback and reprojection, in nanoseconds. */
+	public List<long[]> captureSamples() {
+		return this.captures.stream().map(long[]::clone).toList();
 	}
 
 	/** Captures so far, then their total render, readback and reprojection seconds. */

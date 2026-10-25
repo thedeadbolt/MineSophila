@@ -125,7 +125,47 @@ equals the stored mask. It also lists RGB differences and any render settings th
 differ from the dataset's. Fresh images are written to `honey-factory-replay/` in the
 game directory.
 
-## 7. Clean up
+## 7. Acceptance runs
+
+The specification's acceptance gates run from the repository as client game tests. They
+write to `/mnt/fastvault/minesophila/acceptance/<label>/`, which must exist and be
+writable; `-Dhoneyfactory.acceptanceRoot` changes the root. Nothing is overwritten.
+
+```sh
+just mod-build && just mod-gametest          # gate 1: every automated fixture
+cd packages/honey-factory
+./gradlew runClientGameTest -Dhoneyfactory.gametests=M9Matrix -Dhoneyfactory.acceptanceLabel=<label>
+./gradlew runClientGameTest -Dhoneyfactory.gametests=M9Pilot -Dhoneyfactory.acceptanceLabel=<label>
+```
+
+- **The matrix** generates 10 scenes × 8 viewpoints for levels 1–5 in both modes, 800
+  samples.
+- **The pilot** generates one level-5 panorama dataset of 1,000 scenes and 8,000 samples.
+- Each run writes its datasets, `metrics/<dataset>.json` (timings, percentiles, memory) and
+  a copy of its dataset world under `worlds/`. Open that copy in the development client to
+  replay level-5 scenes.
+- Neither test runs in an ordinary `mod-gametest` run; each runs only when named.
+
+Then audit 200 pilot samples. In the inspector, set **Mode** to *stratified*, enter the
+seed and a count of 200, review every sample, and build the report:
+
+```sh
+uv run honey-factory-tools inspect <label>/pilot/<dataset id> --reviews <review root>
+uv run honey-factory-tools acceptance-report --reviews <review root> --audit-seed <seed> \
+    --output <label>/report <acceptance root>/<label>
+```
+
+The report:
+
+- validates every dataset again;
+- lists quotas, splits, hashes, PNG sizes, disk use, durations, percentiles, rejections
+  and peak memory;
+- checks that the audit selection covers every split, status, ratio range, low pixel
+  counts, seams and several source patches.
+
+It exits 0 only when every dataset is complete and valid and every audited sample passed.
+
+## 8. Clean up
 
 `/honeyfactory world release` restores the game rules, time, weather and player state
 that scenes changed. The arena stays claimed for the next run.

@@ -127,7 +127,9 @@ async function applyFilters(openFirst) {
   state.selection = page.selection;
   state.results = page.samples;
   const shown = page.total > page.samples.length ? `, first ${page.samples.length} shown` : "";
-  $("result-count").textContent = `${page.total} samples${shown}. Selection ${page.selection.sha256.slice(0, 10)}.`;
+  const reviewed = page.samples.filter((sample) => sample.review).length;
+  const progress = state.dataset.reviews ? `, ${reviewed} reviewed` : "";
+  $("result-count").textContent = `${page.total} samples${shown}${progress}. Selection ${page.selection.sha256.slice(0, 10)}.`;
   const list = $("results");
   list.replaceChildren();
   for (const sample of page.samples) {
@@ -463,4 +465,15 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-loadDataset().then(() => applyFilters(true)).catch(report);
+/** Fills the filter form from the page URL, such as ?mode=stratified&seed=2026&count=200. */
+function filtersFromUrl() {
+  const form = $("filters");
+  for (const [name, value] of new URLSearchParams(location.search)) {
+    if (form.elements[name]) form.elements[name].value = value;
+  }
+}
+
+loadDataset().then(() => {
+  filtersFromUrl();
+  return applyFilters(true);
+}).catch(report);

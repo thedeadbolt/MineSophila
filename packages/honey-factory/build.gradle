@@ -40,6 +40,12 @@ loom {
 			property("honeyfactory.regenerateGolden", providers.systemProperty("honeyfactory.regenerateGolden").getOrElse("false"))
 			// Comma-separated test name prefixes, such as M6; empty runs every test.
 			property("honeyfactory.gametests", providers.systemProperty("honeyfactory.gametests").getOrElse(""))
+			// Where the M9 acceptance runs write, and the label of this run's folder; empty uses the defaults.
+			property("honeyfactory.acceptanceRoot", providers.systemProperty("honeyfactory.acceptanceRoot").getOrElse(""))
+			property("honeyfactory.acceptanceLabel", providers.systemProperty("honeyfactory.acceptanceLabel").getOrElse(""))
+			// Where the production runner writes and which of its datasets it runs; empty uses the defaults and runs all.
+			property("honeyfactory.productionRoot", providers.systemProperty("honeyfactory.productionRoot").getOrElse(""))
+			property("honeyfactory.productionRuns", providers.systemProperty("honeyfactory.productionRuns").getOrElse(""))
 		}
 	}
 }

@@ -8,6 +8,7 @@ import io.github.thedeadbolt.honeyfactory.generation.DatasetGenerator;
 import io.github.thedeadbolt.honeyfactory.generation.GenerationTimings;
 import java.io.IOException;
 import java.time.Clock;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import net.minecraft.client.Minecraft;
 import org.jspecify.annotations.Nullable;
@@ -18,6 +19,7 @@ public final class DatasetRuns {
 	private static DatasetGenerator.@Nullable Result last;
 	private static @Nullable GenerationTimings lastTimings;
 	private static double @Nullable [] lastCaptureTotals;
+	private static List<long[]> lastCaptureSamples = List.of();
 
 	private DatasetRuns() {
 	}
@@ -46,6 +48,7 @@ public final class DatasetRuns {
 			last = value;
 			lastTimings = generator.timings();
 			lastCaptureTotals = environment.captureTotals();
+			lastCaptureSamples = environment.captureSamples();
 			if (error != null) {
 				HoneyFactory.LOGGER.error("Dataset generation ended with an error", error);
 			}
@@ -63,6 +66,11 @@ public final class DatasetRuns {
 	/** Where the last run's time went. */
 	public static @Nullable GenerationTimings lastTimings() {
 		return lastTimings;
+	}
+
+	/** Per capture of the last run: the pose's wall time, then render, readback and reprojection, in nanoseconds. */
+	public static List<long[]> lastCaptureSamples() {
+		return lastCaptureSamples;
 	}
 
 	/** The last run's captures, then their render, readback and reprojection seconds. */

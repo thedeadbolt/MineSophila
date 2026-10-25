@@ -306,6 +306,14 @@ match these rules. Exact equality defines `fully_visible` initially. If prototyp
 tests reveal legitimate one-pixel instability, introduce an explicit, recorded
 tolerance later rather than silently changing the meaning.
 
+Agreed 2026-10-25, after the M9 audit: an accepted present target lies wholly inside the
+frame. The visible and unoccluded masks only cover the image, so a target cut by the frame
+edge would be labelled by its in-frame part alone; a target mostly below a panorama's
+elevation floor could then read `fully_visible`. The generator therefore rejects any
+capture whose unoccluded mask touches the first or last row or column (`frame_clipped`).
+A recorded in-frame fraction, which would allow such samples, comes with the frame
+streams of M11–M13.
+
 Use Minecraft/Fabric render-target and render-pipeline abstractions rather than raw
 OpenGL so the implementation remains compatible with the supported rendering
 backends. The first implementation should reuse Minecraft's block-model renderer
