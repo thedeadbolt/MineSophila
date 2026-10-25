@@ -52,15 +52,22 @@ public class M11ControlLoopTest implements FabricClientGameTest {
 			bumping(context, failures);
 			invalidCommand(context, failures);
 			leavingTheArena(context, failures);
+			mouseHeld(context, failures);
+			paused(context, failures);
+			staleEnd(context, failures);
+			failedReset(context, failures);
 
 			reset(context, FixturePlans.Lane.STEP);
 			context.runOnClient(minecraft -> EnvironmentRuntime.get().controlEnd());
 			context.waitFor(minecraft -> !minecraft.level.tickRateManager().isFrozen(), 200);
-			boolean keyboard = context.computeOnClient(minecraft -> minecraft.player.input instanceof KeyboardInput);
-			boolean autoJump = context.computeOnClient(minecraft -> minecraft.options.autoJump().get());
-			if (!keyboard || autoJump != USER_AUTO_JUMP) {
-				failures.add("controlEnd left keyboard input " + keyboard + " and auto-jump " + autoJump);
-			}
+			checkRestored(context, failures, "controlEnd");
+			// Leave the world in the middle of a session: the user's option must come back.
+			reset(context, FixturePlans.Lane.STEP);
+		}
+
+		boolean autoJump = context.computeOnClient(minecraft -> minecraft.options.autoJump().get());
+		if (autoJump != USER_AUTO_JUMP) {
+			failures.add("leaving the world mid-session left auto-jump " + autoJump);
 		}
 
 		if (!failures.isEmpty()) {
@@ -180,6 +187,64 @@ public class M11ControlLoopTest implements FabricClientGameTest {
 		}
 
 		failures.add("200 forward steps off the platform never left the arena");
+	}
+
+	private static void checkRestored(ClientGameTestContext context, List<String> failures, String what) {
+		boolean keyboard = context.computeOnClient(minecraft -> minecraft.player.input instanceof KeyboardInput);
+		boolean autoJump = context.computeOnClient(minecraft -> minecraft.options.autoJump().get());
+		if (!keyboard || autoJump != USER_AUTO_JUMP) {
+			failures.add(what + " left keyboard input " + keyboard + " and auto-jump " + autoJump);
+		}
+	}
+
+	/** Mouse turns, which arrive every frame through LocalPlayer.turn, do not move a held body. */
+	private static void mouseHeld(ClientGameTestContext context, List<String> failures) {
+		CameraPose before = reset(context, FixturePlans.Lane.STEP).step().truth().pose();
+		context.runOnClient(minecraft -> minecraft.player.turn(200.0, 80.0));
+		context.waitTicks(2);
+		float yaw = context.computeOnClient(minecraft -> minecraft.player.getYRot());
+		float pitch = context.computeOnClient(minecraft -> minecraft.player.getXRot());
+		if (yaw != before.yawDegrees() || pitch != before.pitchDegrees()) {
+			failures.add("a mouse turn moved the held body from " + before.yawDegrees() + "/" + before.pitchDegrees() + " to " + yaw + "/" + pitch);
+		}
+	}
+
+	/** A paused game refuses steps at once instead of timing out and applying the tick later. */
+	private static void paused(ClientGameTestContext context, List<String> failures) {
+		reset(context, FixturePlans.Lane.STEP);
+		context.runOnClient(minecraft -> minecraft.pauseGame(false));
+		context.waitFor(minecraft -> minecraft.isPaused(), 200);
+		EnvironmentException.Reason reason = GameTestSupport.rejection(context, runtime -> runtime.controlStep(MotorCommand.IDLE, null, ControlStep.Executed.STUDENT));
+		context.runOnClient(minecraft -> minecraft.gui.setScreen(null));
+		context.waitFor(minecraft -> !minecraft.isPaused(), 200);
+		expect(failures, "a step while paused", EnvironmentException.Reason.INVALID_STATE, reason);
+	}
+
+	/** Ending a session that a newer reset has replaced leaves the newer one running. */
+	private static void staleEnd(ClientGameTestContext context, List<String> failures) {
+		long first = reset(context, FixturePlans.Lane.STEP).session();
+		long second = reset(context, FixturePlans.Lane.STEP).session();
+		context.runOnClient(minecraft -> EnvironmentRuntime.get().controlEnd(first));
+		boolean running = context.computeOnClient(minecraft -> EnvironmentRuntime.get().lastControlStep() != null);
+		if (first == second || !running) {
+			failures.add("ending stale session " + first + " also ended session " + second);
+		}
+	}
+
+	/**
+	 * A reset that fails in the middle of a session, here because the start lies outside the
+	 * arena, ends the session and gives the input back instead of leaving it borrowed.
+	 */
+	private static void failedReset(ClientGameTestContext context, List<String> failures) {
+		reset(context, FixturePlans.Lane.STEP);
+		EnvironmentException.Reason reason = GameTestSupport.rejection(context, runtime -> runtime.controlReset(FixturePlans.ARENA, FixturePlans.course(),
+			new CameraPose(0.0, 400.0, 0.0, 0.0F, 0.0F), PROJECTION, SEED));
+		expect(failures, "a control reset outside the arena", EnvironmentException.Reason.INVALID_REQUEST, reason);
+		context.waitFor(minecraft -> !minecraft.level.tickRateManager().isFrozen(), 200);
+		checkRestored(context, failures, "a failed control reset");
+		if (context.computeOnClient(minecraft -> EnvironmentRuntime.get().lastControlStep()) != null) {
+			failures.add("a failed control reset left its session running");
+		}
 	}
 
 	private static void expect(List<String> failures, String what, EnvironmentException.Reason expected, EnvironmentException.Reason actual) {

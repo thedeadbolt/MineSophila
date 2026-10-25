@@ -103,6 +103,7 @@ public final class TickStepper {
 		server.execute(() -> {
 			ServerPlayer player = local == null ? null : server.getPlayerList().getPlayer(local.getUUID());
 			if (player == null) {
+				Minecraft.getInstance().execute(this::cancel);
 				step.completeExceptionally(new EnvironmentException(EnvironmentException.Reason.NO_LOCAL_RUNTIME, "no server player to step"));
 				return;
 			}
@@ -112,6 +113,16 @@ public final class TickStepper {
 			this.targetGameTime = before + 1;
 		});
 		return step;
+	}
+
+	/**
+	 * Abandons a running step without releasing the hold, so a step that failed cannot apply
+	 * its input later, unrecorded. The step's future fails.
+	 */
+	public void cancel() {
+		boolean held = this.held;
+		forget();
+		this.held = held;
 	}
 
 	/** Stops holding: the server ticks normally again and so does the player. A running step fails. */

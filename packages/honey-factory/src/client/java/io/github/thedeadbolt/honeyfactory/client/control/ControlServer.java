@@ -43,6 +43,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.server.IntegratedServer;
 import org.jspecify.annotations.Nullable;
@@ -122,6 +124,12 @@ public final class ControlServer {
 		if (server != null) {
 			server.close();
 		}
+	}
+
+	/** Stops the server whenever the player leaves a world or the game closes, so it never outlives the claimed world. */
+	public static void initialize() {
+		ClientPlayConnectionEvents.DISCONNECT.register((handler, minecraft) -> stop());
+		ClientLifecycleEvents.CLIENT_STOPPING.register(minecraft -> stop());
 	}
 
 	public static @Nullable ControlServer running() {
@@ -226,14 +234,17 @@ public final class ControlServer {
 		} catch (IOException e) {
 			HoneyFactory.LOGGER.debug("Control connection ended: {}", e.getMessage());
 		} finally {
-			if (session.controlling) {
-				onClient(() -> {
-					EnvironmentRuntime.get().controlEnd();
-					return CompletableFuture.completedFuture(null);
-				});
+			try {
+				if (session.controlled >= 0) {
+					long owned = session.controlled;
+					onClient(() -> {
+						EnvironmentRuntime.get().controlEnd(owned);
+						return CompletableFuture.completedFuture(null);
+					});
+				}
+			} finally {
+				this.active.set(null);
 			}
-
-			this.active.set(null);
 		}
 	}
 
@@ -245,7 +256,8 @@ public final class ControlServer {
 
 	private static final class Session {
 		private boolean greeted;
-		private boolean controlling;
+		/** The runtime's control session this connection started, or -1. */
+		private long controlled = -1;
 	}
 
 	private Reply handle(Session session, ControlProtocol.Message request) {
@@ -258,8 +270,9 @@ public final class ControlServer {
 			return switch (type) {
 				case "hello" -> hello(session, JsonFields.of(request.header()));
 				case "reset" -> {
-					session.controlling = true;
-					yield observation(reset(JsonFields.of(request.header())));
+					EnvironmentRuntime.ControlResult result = reset(JsonFields.of(request.header()));
+					session.controlled = result.session();
+					yield observation(result);
 				}
 				case "step" -> observation(step(JsonFields.of(request.header())));
 				case "close" -> {
@@ -270,13 +283,25 @@ public final class ControlServer {
 				default -> Reply.of(ControlProtocol.error("BAD_MESSAGE", "a client does not send " + type));
 			};
 		} catch (EnvironmentException e) {
-			return Reply.of(ControlProtocol.error(e.reason().name(), e.getMessage()));
+			// Messages can name positions; a student learns only what went wrong.
+			return Reply.of(ControlProtocol.error(e.reason().name(), this.privileged ? e.getMessage() : studentMessage(e.reason())));
 		} catch (ContractException | IllegalArgumentException e) {
 			return Reply.of(ControlProtocol.error("BAD_MESSAGE", e.getMessage()));
 		} catch (RuntimeException e) {
 			HoneyFactory.LOGGER.warn("Control request failed", e);
-			return Reply.of(ControlProtocol.error("INTERNAL", String.valueOf(e)));
+			return Reply.of(ControlProtocol.error("INTERNAL", this.privileged ? String.valueOf(e) : "the request failed; see the game log"));
 		}
+	}
+
+	private static String studentMessage(EnvironmentException.Reason reason) {
+		return switch (reason) {
+			case OUT_OF_ARENA -> "the step left the arena; reset to continue";
+			case NOT_RESET -> "reset first";
+			case INVALID_STATE -> "not possible now; reset, and make sure the game is not paused";
+			case INVALID_REQUEST -> "the request is outside its limits";
+			case TIMEOUT -> "the game was not ready in time";
+			default -> reason.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+		};
 	}
 
 	private Reply hello(Session session, JsonFields request) {

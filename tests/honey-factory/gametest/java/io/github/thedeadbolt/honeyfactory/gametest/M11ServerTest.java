@@ -71,6 +71,13 @@ public class M11ServerTest implements FabricClientGameTest {
 			GameTestSupport.claim(world, WORLD_NAME);
 			student(context, failures);
 			privileged(context, failures);
+			start(context, false);
+		}
+
+		boolean running = context.computeOnClient(minecraft -> ControlServer.running() != null);
+		boolean file = context.computeOnClient(minecraft -> Files.exists(minecraft.gameDirectory.toPath().resolve(ControlServer.CONNECTION_FILE)));
+		if (running || file) {
+			failures.add("leaving the world left the server running " + running + " with its connection file " + file);
 		}
 
 		this.io.shutdownNow();
@@ -107,6 +114,20 @@ public class M11ServerTest implements FabricClientGameTest {
 				failures.add("the first step came back as index " + step.header().get("index"));
 			}
 
+			// Walk a student off the platform's west edge: its error must not reveal where it is.
+			first.request(context, message("{\"type\": \"reset\", \"scene\": {\"preset\": \"level1\"}, \"seed\": 3, \"capture\": {\"mode\": \"PERSPECTIVE_90\", \"width\": 64, \"height\": 48},"
+				+ " \"start\": {\"x\": 0.5, \"y\": 1.0, \"z\": 16.5, \"yaw\": 90.0, \"pitch\": 0.0}}"));
+			JsonObject failed = null;
+			for (int i = 0; i < 200 && failed == null; i++) {
+				JsonObject reply = first.request(context, message("{\"type\": \"step\", \"student\": {\"forward\": 1.0}}")).header();
+				failed = "error".equals(reply.get("type").getAsString()) ? reply : null;
+			}
+
+			if (failed == null || !"OUT_OF_ARENA".equals(failed.get("code").getAsString()) || failed.get("message").getAsString().matches(".*\\d+\\.\\d+.*")) {
+				failures.add("a student walking off the arena got " + failed);
+			}
+
+			first.request(context, message(RESET));
 			expectError(failures, "teacher command from a student", "INVALID_REQUEST",
 				first.request(context, message("{\"type\": \"step\", \"student\": {}, \"teacher\": {\"turn_rate\": 1}, \"executed\": \"teacher\"}")));
 			// Vanish right after sending a step.

@@ -132,8 +132,8 @@ public final class EnvironmentRuntime {
 	) {
 	}
 
-	/** One control step and the capture it returned. */
-	public record ControlResult(ControlStep step, CaptureService.Capture capture) {
+	/** One control step, the capture it returned, and the control session it belongs to. */
+	public record ControlResult(ControlStep step, CaptureService.Capture capture, long session) {
 	}
 
 	private static final EnvironmentRuntime INSTANCE = new EnvironmentRuntime(Timing.DEFAULT);
@@ -215,7 +215,13 @@ public final class EnvironmentRuntime {
 		}
 
 		endStep();
+		ControlSession session = this.control;
 		this.control = null;
+		if (session != null) {
+			// The user's auto-jump option is saved to disk; give it back even as the world closes.
+			session.restore(Minecraft.getInstance());
+		}
+
 		this.coordinator = new OperationCoordinator();
 		this.deferredCapture = null;
 		this.poseSequence = null;
@@ -346,6 +352,10 @@ public final class EnvironmentRuntime {
 	 */
 	public CompletableFuture<ControlResult> controlReset(ArenaLayout layout, ScenePlan plan, CameraPose start, CaptureProjection projection, long seed) {
 		Minecraft minecraft = Minecraft.getInstance();
+		if (minecraft.isPaused()) {
+			return CompletableFuture.failedFuture(paused());
+		}
+
 		if (this.control != null) {
 			this.control.input.set(MotorCommand.IDLE);
 		}
@@ -353,16 +363,16 @@ public final class EnvironmentRuntime {
 		releaseStill(minecraft);
 		return reset(layout, plan, start).thenCompose(state -> start(OperationKind.CONTROL_RESET, (server, operation) -> {
 			ControlSession session = this.control == null ? new ControlSession(minecraft) : this.control.restart();
-			this.control = null;
 			session.install(minecraft, projection, seed, this.settings.autoJump());
+			// Held from here on, so a failure gives the input back (see onFailure).
+			this.control = session;
 			TickStepper.get().hold(server);
 			CompletableFuture<Long> work = server.submit(() -> ArenaExecutor.embody(server, player(server), layout));
 			RenderStability stability = new RenderStability();
-			Pending<Long, ControlResult> pending = new Pending<>(operation, work, 0, this.timing.resetTimeoutTicks(), embodied -> stability.holds(
+			Pending<Long, ControlResult> pending = new Pending<>(operation, work, 0, this.timing.viewpointTimeoutTicks(), embodied -> stability.holds(
 				minecraft.level.tickRateManager().isFrozen() && minecraft.gameMode.getPlayerMode() == GameType.ADVENTURE && inArena(minecraft) && sectionsCompiled(minecraft)
 			), (embodied, settled) -> {
 				this.coordinator.advance(operation, OperationState.CAPTURING);
-				this.control = session;
 				return session.record(minecraft, operation, controlStep(minecraft, operation, session, 0, null, null, ControlStep.Executed.STUDENT, MotorState.ZERO, levelTime(server), new double[3]));
 			});
 			pending.afterWork = () -> this.coordinator.advance(operation, OperationState.SETTLING);
@@ -377,8 +387,12 @@ public final class EnvironmentRuntime {
 	 */
 	public CompletableFuture<ControlResult> controlStep(@Nullable MotorCommand student, @Nullable MotorCommand teacher, ControlStep.Executed executed) {
 		ControlSession session = this.control;
-		if (session == null) {
+		if (session == null || session.last == null) {
 			return CompletableFuture.failedFuture(new EnvironmentException(EnvironmentException.Reason.NOT_RESET, "control steps need a control reset first"));
+		}
+
+		if (Minecraft.getInstance().isPaused()) {
+			return CompletableFuture.failedFuture(paused());
 		}
 
 		MotorCommand command = executed == ControlStep.Executed.STUDENT ? student : teacher;
@@ -423,9 +437,21 @@ public final class EnvironmentRuntime {
 		});
 	}
 
+	/** A paused game ticks neither the server nor the player, so a step could never finish. */
+	private static EnvironmentException paused() {
+		return new EnvironmentException(EnvironmentException.Reason.INVALID_STATE, "the game is paused; close the menu, and turn off Pause on Lost Focus to control it from another window");
+	}
+
 	/** The last control step, or null when no control session runs. */
 	public @Nullable ControlResult lastControlStep() {
 		return this.control == null ? null : this.control.last;
+	}
+
+	/** Ends control session {@code session} if it is still the running one; a newer session is left alone. */
+	public void controlEnd(long session) {
+		if (this.control != null && this.control.id == session) {
+			controlEnd();
+		}
 	}
 
 	/** Ends the control session: the world ticks again and the user's input and auto-jump option are back. */
@@ -494,6 +520,8 @@ public final class EnvironmentRuntime {
 
 	/** A control session's state; the user's input and auto-jump option are kept to restore. */
 	private static final class ControlSession {
+		private static long sessions;
+		private final long id = ++sessions;
 		private final MotorInput input = new MotorInput();
 		private @Nullable ClientInput savedInput;
 		private @Nullable Boolean savedAutoJump;
@@ -503,15 +531,15 @@ public final class EnvironmentRuntime {
 		private MotorCommand lastExecuted = MotorCommand.IDLE;
 		private @Nullable ControlResult last;
 
-		ControlSession(Minecraft minecraft) {
+		ControlSession(@Nullable Minecraft minecraft) {
 		}
 
-		/** The same session after a new reset: the borrowed input stays borrowed, the body's state starts over. */
+		/** A new session after a new reset; the input borrowed by the old one stays borrowed and is handed on. */
 		ControlSession restart() {
-			this.motor = MotorState.ZERO;
-			this.lastExecuted = MotorCommand.IDLE;
-			this.last = null;
-			return this;
+			ControlSession next = new ControlSession(null);
+			next.savedInput = this.savedInput;
+			next.savedAutoJump = this.savedAutoJump;
+			return next;
 		}
 
 		void install(Minecraft minecraft, CaptureProjection projection, long seed, boolean autoJump) {
@@ -528,13 +556,13 @@ public final class EnvironmentRuntime {
 		}
 
 		ControlResult record(Minecraft minecraft, Operation operation, Captured captured) {
-			this.last = new ControlResult(captured.step(), captured.capture());
+			this.last = new ControlResult(captured.step(), captured.capture(), this.id);
 			return this.last;
 		}
 
 		void restore(Minecraft minecraft) {
-			if (this.savedInput != null && minecraft.player != null) {
-				minecraft.player.input = this.savedInput;
+			if (minecraft.player != null && minecraft.player.input == this.input) {
+				minecraft.player.input = this.savedInput != null ? this.savedInput : new KeyboardInput(minecraft.options);
 			}
 
 			if (this.savedAutoJump != null) {
@@ -981,6 +1009,13 @@ public final class EnvironmentRuntime {
 
 	private void onFailure(Operation operation, RuntimeException error) {
 		endStep();
+		if (operation.kind() == OperationKind.CONTROL_STEP) {
+			TickStepper.get().cancel();
+		} else if ((operation.kind() == OperationKind.CONTROL_RESET || operation.kind() == OperationKind.RESET) && this.control != null) {
+			// A reset that fails mid-session, or a control reset that fails after borrowing the input, gives everything back.
+			controlEnd();
+		}
+
 		this.coordinator.fail(operation, error.getMessage(), this.tick);
 		if (operation.kind() == OperationKind.RESET) {
 			this.scene = null;

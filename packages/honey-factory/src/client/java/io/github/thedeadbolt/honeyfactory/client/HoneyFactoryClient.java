@@ -1,6 +1,7 @@
 package io.github.thedeadbolt.honeyfactory.client;
 
 import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
+import io.github.thedeadbolt.honeyfactory.client.control.ControlServer;
 import io.github.thedeadbolt.honeyfactory.client.generation.DatasetCommands;
 import io.github.thedeadbolt.honeyfactory.client.replay.ReplayCommands;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentCommands;
@@ -18,6 +19,7 @@ public class HoneyFactoryClient implements ClientModInitializer {
 		CaptureService.initialize();
 		EnvironmentRuntime.initialize();
 		TickStepper.initialize();
+		ControlServer.initialize();
 		EnvironmentCommands.initialize();
 		DatasetCommands.initialize();
 		ReplayCommands.initialize();

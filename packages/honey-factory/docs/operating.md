@@ -198,7 +198,10 @@ with ControlClient.connect(path) as client:
     observation = client.step(Command(forward=1.0, turn_rate=3.0))
 ```
 
-The world stays frozen while the program thinks. The protocol, for other languages, is
+The world stays frozen while the program thinks. A paused game refuses steps, so turn off
+*Options → Controls → Pause on Lost Focus* when the program runs in another window. While
+the server holds the player, the mouse does not turn it. Leaving the world stops the server
+and deletes its connection file. The protocol, for other languages, is
 [control-protocol.md](control-protocol.md).
 
 ## 9. Clean up

@@ -6,6 +6,7 @@
 		"AtmosphericFogAccessor",
 		"CameraMixin",
 		"ClientLevelMixin",
+		"EntityMixin",
 		"ClientLevelAccessor",
 		"FogRendererAccessor",
 		"LevelRendererMixin",
