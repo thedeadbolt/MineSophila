@@ -290,3 +290,10 @@ def test_panorama_alias_still_works(tmp_path: Path) -> None:
     assert main(_args(tmp_path)) == 0
     meta = load_frame(tmp_path / "out" / "f.fly.npz").meta
     assert meta["placement"] == {"method": "honey_factory_contract", "assumed": False}
+
+
+def test_omitted_projection_with_fov_selects_equirect(tmp_path: Path) -> None:
+    _photo(tmp_path)
+    assert main(_args(tmp_path, "--fov-h", "90", "--fov-v", "90", panorama="photo.png")) == 0
+    meta = load_frame(tmp_path / "out" / "f.fly.npz").meta
+    assert meta["projection"]["type"] == "equirect"

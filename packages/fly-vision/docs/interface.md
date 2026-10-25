@@ -50,10 +50,11 @@ The command line records only `scene_id`, `frame_id` and the panorama path, and 
 
 ### Projections and placement
 
-`fly-vision convert --projection` selects `panorama` (default), `equirect` or `perspective`.
-With `panorama`, `fly-vision convert` reads the image as a `PANORAMA_310` capture and exits
+`fly-vision convert --projection` selects `panorama`, `equirect` or `perspective`. When it is
+omitted, any `--fov-h`/`--fov-v` selects `equirect`; otherwise it is `panorama`. With `panorama`, `fly-vision convert` reads the image as a `PANORAMA_310` capture and exits
 with status 1 if its aspect ratio differs from 310/160 by more than 1%; `--fov-*` and
-`--center-*` are rejected. `equirect` needs `--fov-h` and `--fov-v` (`--center-az` and
+`--center-*` are rejected when `--projection panorama` is given explicitly (without it,
+`--fov-*` selects `equirect`; `--center-*` alone is rejected). `equirect` needs `--fov-h` and `--fov-v` (`--center-az` and
 `--center-el` optional). `perspective` takes `--fov-h`, or `--object-width-px`,
 `--object-size-m` and `--distance-m`, or both (they must agree within 1°), or neither (60°
 assumed, with a warning). `--fov-v` is rejected because it follows from the aspect ratio.
@@ -64,10 +65,8 @@ looking down, while fly-vision elevation is positive up, hence the sign flip. Az
 relative to the camera yaw, so `--center-az` stays 0. Take the pitch from the camera in the
 sample record.
 
-### Guards
-
- A lattice file passed
-with `--lattice` is validated on load; a corrupt or inconsistent file gives a one-line error.
+A lattice file passed with `--lattice` is validated on load; a corrupt or inconsistent file
+gives a one-line error.
 
 ## Output
 
