@@ -9,7 +9,8 @@ from fly_vision.cli import main
 from fly_vision.config import FlyVisionConfig
 from fly_vision.frame import load_frame
 from fly_vision.lattice import default_lattice
-from fly_vision.projection import honey_factory_panorama
+from fly_vision.placement import DEFAULT_FOV_H_DEG, perspective_fov_for_object
+from fly_vision.projection import PerspectiveSpec, honey_factory_panorama
 from fly_vision.sampler import matrix_key
 
 
@@ -211,3 +212,81 @@ def test_frame_records_source_file_hash(tmp_path: Path) -> None:
     frame = load_frame(tmp_path / "out" / "f.fly.npz")
     expected = hashlib.sha256((tmp_path / "p.png").read_bytes()).hexdigest()
     assert frame.meta["source_file_sha256"] == expected
+
+
+def _photo(tmp_path: Path) -> None:
+    Image.fromarray(np.full((400, 300, 3), 100, np.uint8)).save(tmp_path / "photo.png")
+
+
+def _persp(tmp_path: Path, *extra: str) -> list[str]:
+    return _args(tmp_path, "--projection", "perspective", *extra, panorama="photo.png")
+
+
+_OBJECT = ("--object-width-px", "120", "--object-size-m", "0.3", "--distance-m", "1.0")
+
+
+def test_convert_perspective_fov(tmp_path: Path) -> None:
+    _photo(tmp_path)
+    assert main(_persp(tmp_path, "--fov-h", "50")) == 0
+    meta = load_frame(tmp_path / "out" / "f.fly.npz").meta
+    assert meta["projection"] == PerspectiveSpec(300, 400, 50.0).describe()
+    assert meta["placement"] == {"method": "fov_h", "assumed": False}
+
+
+def test_convert_perspective_object(tmp_path: Path) -> None:
+    _photo(tmp_path)
+    assert main(_persp(tmp_path, *_OBJECT)) == 0
+    meta = load_frame(tmp_path / "out" / "f.fly.npz").meta
+    assert meta["projection"]["fov_h_deg"] == perspective_fov_for_object(300, 120, 0.3, 1.0)
+    assert meta["placement"]["method"] == "object"
+    assert meta["placement"]["assumed"] is False
+    assert meta["placement"]["object_width_px"] == 120
+    assert meta["placement"]["object_size_m"] == 0.3
+    assert meta["placement"]["distance_m"] == 1.0
+
+
+def test_perspective_fov_and_object_agree(tmp_path: Path) -> None:
+    _photo(tmp_path)
+    fov = round(perspective_fov_for_object(300, 120, 0.3, 1.0), 2)
+    assert main(_persp(tmp_path, "--fov-h", str(fov), *_OBJECT)) == 0
+    meta = load_frame(tmp_path / "out" / "f.fly.npz").meta
+    assert meta["projection"]["fov_h_deg"] == fov
+    assert meta["placement"]["method"] == "fov_h+object"
+    assert "object_fov_h_deg" in meta["placement"]
+
+
+def test_perspective_default_fov_is_marked(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _photo(tmp_path)
+    assert main(_persp(tmp_path)) == 0
+    assert "60" in capsys.readouterr().err
+    meta = load_frame(tmp_path / "out" / "f.fly.npz").meta
+    assert meta["projection"]["fov_h_deg"] == DEFAULT_FOV_H_DEG
+    assert meta["placement"] == {"method": "default", "assumed": True}
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ("--object-width-px", "120", "--object-size-m", "0.3"),
+        ("--fov-h", "30", *_OBJECT),
+        ("--fov-v", "40", "--fov-h", "50"),
+    ],
+)
+def test_perspective_placement_errors(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], extra: tuple[str, ...]
+) -> None:
+    _photo(tmp_path)
+    assert main(_persp(tmp_path, *extra)) == 1
+    err = capsys.readouterr().err.strip()
+    assert err.startswith("fly-vision: error:")
+    assert "\n" not in err
+    assert not (tmp_path / "out").exists()
+
+
+def test_panorama_alias_still_works(tmp_path: Path) -> None:
+    _write_inputs(tmp_path)
+    assert main(_args(tmp_path)) == 0
+    meta = load_frame(tmp_path / "out" / "f.fly.npz").meta
+    assert meta["placement"] == {"method": "honey_factory_contract", "assumed": False}

@@ -6,6 +6,9 @@ photo. From that, the photo's horizontal field of view follows by pinhole geomet
 
 import math
 
+DEFAULT_FOV_H_DEG = 60.0  # chosen: assumed when a perspective image has no placement
+FOV_AGREEMENT_DEG = 1.0  # --fov-h and the object-derived field of view must agree this closely
+
 
 def _require_positive(name: str, value: float) -> None:
     if not math.isfinite(value) or value <= 0.0:

@@ -14,15 +14,38 @@ and the [assumptions register](docs/assumptions.md) (every parameter and its pro
 Command line, for a honey-factory panorama (`equirectangular-310x160-v1`):
 
 ```sh
-uv run fly-vision convert --panorama p.png --mask m.png \
+uv run fly-vision convert --image p.png --mask m.png \
     --scene-id scene-0001 --frame-id frame-0001 --out out/ --plot
 ```
 
 This writes `frame-0001.fly.npz`, `frame-0001.labels.npz` and, with `--plot`,
-`frame-0001.png`. The mask is optional. For another equirectangular layout give
-`--fov-h` and `--fov-v` together (and `--center-az`, `--center-el`, which need them). Without
-them, an image whose aspect ratio is not 310/160 (within 1%) is rejected. `--lattice` selects a
-lattice file (validated on load) and `--cache` a directory for sampling matrices.
+`frame-0001.png`. The mask is optional (`--panorama` is a hidden alias of `--image`).
+`--projection` is `panorama` (default; an image whose aspect ratio is not 310/160 within 1% is
+rejected), `equirect` (needs `--fov-h` and `--fov-v`, optional `--center-az`/`--center-el`)
+or `perspective`. `--lattice` selects a lattice file (validated on load) and `--cache` a
+directory for sampling matrices.
+
+Perspective photos (placement is optional; `--fov-v` is not accepted):
+
+```sh
+# equirectangular, 360 x 180
+uv run fly-vision convert --image e.png --projection equirect --fov-h 360 --fov-v 180 \
+    --scene-id s --frame-id f1 --out out/
+# a camera with a known horizontal field of view
+uv run fly-vision convert --image photo.png --projection perspective --fov-h 65 \
+    --scene-id s --frame-id f2 --out out/
+# a phone photo placed by an object: a 0.3 m object 1 m away spans 120 px
+uv run fly-vision convert --image photo.png --projection perspective \
+    --object-width-px 120 --object-size-m 0.3 --distance-m 1.0 \
+    --scene-id s --frame-id f3 --out out/
+# no placement: assumes 60 degrees and marks the frame
+uv run fly-vision convert --image photo.png --projection perspective \
+    --scene-id s --frame-id f4 --out out/
+# fly-vision: warning: no placement given; assuming a 60 deg horizontal field of view ...
+```
+
+Giving only some of the object flags, or `--fov-h` and an object that disagree by more than 1°,
+is an error.
 
 Python:
 

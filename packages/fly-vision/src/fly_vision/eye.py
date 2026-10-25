@@ -62,6 +62,7 @@ class FlyEye:
         panorama: NDArray[np.uint8] | NDArray[np.uint16],
         mask: NDArray[np.floating[Any]] | None = None,
         source: SourceRef | None = None,
+        placement: dict[str, str | bool | float] | None = None,
     ) -> tuple[FlyFrame, FlyLabels | None]:
         h, w = self.projection.height, self.projection.width
         if panorama.shape != (h, w, 3):
@@ -86,6 +87,7 @@ class FlyEye:
             "lattice_hash": self._lattice_hash,
             "matrix_key": self.sm.key,
             "projection": self.projection.describe(),
+            "placement": None if placement is None else dict(placement),
             "spectral_hash": self.spectral.hash,
             "config_hash": config_hash(self.cfg),
             "adaptation": self.cfg.adaptation,

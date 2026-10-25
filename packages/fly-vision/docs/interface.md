@@ -48,12 +48,25 @@ split results later, and we never edit them:
 The command line records only `scene_id`, `frame_id` and the panorama path, and adds
 `source_file_sha256` (the hash of the PNG file's bytes).
 
+### Projections and placement
+
+`fly-vision convert --projection` selects `panorama` (default), `equirect` or `perspective`.
+With `panorama`, `fly-vision convert` reads the image as a `PANORAMA_310` capture and exits
+with status 1 if its aspect ratio differs from 310/160 by more than 1%; `--fov-*` and
+`--center-*` are rejected. `equirect` needs `--fov-h` and `--fov-v` (`--center-az` and
+`--center-el` optional). `perspective` takes `--fov-h`, or `--object-width-px`,
+`--object-size-m` and `--distance-m`, or both (they must agree within 1°), or neither (60°
+assumed, with a warning). `--fov-v` is rejected because it follows from the aspect ratio.
+
+honey-factory's `PERSPECTIVE_90` frames are square 1280 × 1280 at 90°. Read them with
+`--projection perspective --fov-h 90 --center-el <-pitch>`. Minecraft pitch is positive
+looking down, while fly-vision elevation is positive up, hence the sign flip. Azimuth is
+relative to the camera yaw, so `--center-az` stays 0. Take the pitch from the camera in the
+sample record.
+
 ### Guards
 
-Without `--fov-h/--fov-v`, `fly-vision convert` reads the image as a `PANORAMA_310` capture
-and exits with status 1 if its aspect ratio differs from 310/160 by more than 1%. Pass
-`--fov-h` and `--fov-v` for other equirectangular images; perspective images are not
-supported. `--center-az` and `--center-el` also need `--fov-h/--fov-v`. A lattice file passed
+ A lattice file passed
 with `--lattice` is validated on load; a corrupt or inconsistent file gives a one-line error.
 
 ## Output
@@ -81,7 +94,8 @@ lattice order (default lattice: 863 per eye).
 | `fly_vision_version` | installed package version |
 | `lattice_version`, `lattice_hash` | which eye and its content hash |
 | `matrix_key` | identifies the sampling matrix (lattice, projection, acceptance settings) |
-| `projection` | the projection as a JSON dict: `type` plus every field (equirect: `width`, `height`, `fov_h_deg`, `fov_v_deg`, `center_az_deg`, `center_el_deg`) |
+| `projection` | the projection as a JSON dict: `type` plus every field (equirect: `width`, `height`, `fov_h_deg`, `fov_v_deg`, `center_az_deg`, `center_el_deg`; perspective: `width`, `height`, `fov_h_deg`, `center_az_deg`, `center_el_deg`) |
+| `placement` | how the image was placed, or `null` when the caller gave none. `method` is `honey_factory_contract` (panorama), `fov` (equirect), `fov_h`, `object`, `fov_h+object` or `default` (perspective); `assumed` is `true` only for `default` (60°). `object` and `fov_h+object` add `object_width_px`, `object_size_m`, `distance_m`; `fov_h+object` also `object_fov_h_deg` |
 | `spectral_hash` | hash of the spectral model (rhodopsin peaks, RGB primaries) |
 | `config_hash` | hash of the run configuration and package version |
 | `adaptation` | `none` (default) or `frame_mean` (experimental) |

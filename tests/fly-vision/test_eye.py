@@ -218,7 +218,7 @@ def test_source_file_sha256_is_null_without_a_path() -> None:
 def test_meta_records_projection() -> None:
     f, _ = EYE.sample(img(), None, REF)
     assert f.meta["projection"] == S.describe()
-    assert len(f.meta) == 16
+    assert len(f.meta) == 17
 
 
 def test_perspective_dot_reaches_expected_ommatidium() -> None:
@@ -238,3 +238,12 @@ def test_perspective_behind_fly_is_all_invalid() -> None:
     f, _ = FlyEye(default_lattice(), p).sample(np.full((81, 101, 3), 128, np.uint8))
     assert not f.valid.any()
     assert (f.activations == 0).all()
+
+
+def test_placement_recorded() -> None:
+    assert EYE.sample(img())[0].meta["placement"] is None
+    placement: dict[str, str | bool | float] = {"method": "fov_h", "assumed": False}
+    f, _ = EYE.sample(img(), placement=placement)
+    assert f.meta["placement"] == placement
+    assert f.meta["placement"] is not placement
+    assert len(f.meta) == 17

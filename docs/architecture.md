@@ -3,8 +3,10 @@
 This document describes the overall design. `fly-vision` implements a v0 virtual eye
 (panorama in, per-ommatidium activations out; see below), and
 `honey-factory` implements its roadmap through M5, a dataset runner for levels 1–3 in perspective and 310-degree panorama modes
-(see its [roadmap](../packages/honey-factory/docs/roadmap.md)). The adapter, other
-projections and further vision modes are proposed.
+(see its [roadmap](../packages/honey-factory/docs/roadmap.md)). A perspective projection
+(`PerspectiveSpec`, with optional placement from a field of view or object size and distance;
+[ADR 0020](adr/0020-image-placement.md)) is implemented. The adapter and further vision modes
+are proposed.
 
 ## Overview
 

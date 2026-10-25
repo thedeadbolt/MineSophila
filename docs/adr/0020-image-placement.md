@@ -24,8 +24,15 @@ image on the wrong ommatidia, so orientation and solid angle have to be exact.
 - **D4. Pinhole model only.** No lens distortion and no roll. The image's vertical axis
   stays in the vertical plane through its centre, so the image is level, as honey-factory's
   camera is in perspective mode with pitch applied.
-- **D5. Placement is required for perspective images.** There is no default field of view.
-  The CLI demands exactly one of `--fov-h`, or the three object-geometry flags.
+- **D5. Placement is opt-in; a missing placement is assumed and marked, not refused.**
+  (The user revised this on 2026-10-25; the first draft required a placement.)
+  `--fov-h` and the three object flags (`--object-width-px`, `--object-size-m`,
+  `--distance-m`) are each optional. With neither, a perspective image uses
+  `DEFAULT_FOV_H_DEG = 60`, the CLI prints a one-line warning, and `meta["placement"]`
+  records `assumed: true`. The CLI errors only on contradictions: only some of the three
+  object flags, or `--fov-h` and the object geometry differing by more than
+  `FOV_AGREEMENT_DEG = 1`. When both agree, `--fov-h` sets the projection and the object
+  geometry is recorded.
 - **D6. Out of scope:** cube maps (honey-factory's cube faces are debug-only), fisheye
   lenses, stretching an image to fill the eye, and synthetic surrounds or backgrounds.
 
