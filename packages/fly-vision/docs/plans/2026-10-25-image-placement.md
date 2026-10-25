@@ -21,7 +21,11 @@
 
 **Decided in this plan (confirm in review):**
 - **D4. Pinhole model only.** No lens distortion and no roll. The image's vertical axis stays in the vertical plane through its centre, so the image is level, as honey-factory's camera is in perspective mode with pitch applied.
-- **D5. Placement is required for perspective images.** There is no default field of view. The CLI demands exactly one of `--fov-h`, or the three object-geometry flags.
+- **D5 (revised by the user, 2026-10-25). Placement is opt-in; a missing placement is assumed and marked, not refused.**
+  - `--fov-h` and the three object-geometry flags (`--object-width-px`, `--object-size-m`, `--distance-m`) are each optional.
+  - With neither, a perspective image uses `DEFAULT_FOV_H_DEG = 60.0`. A one-line stderr warning is printed, and the frame records `meta["placement"]["assumed"] = true`.
+  - The CLI errors only on contradictions: only some of the three object flags given, or both `--fov-h` and object geometry given with the derived field of view more than `FOV_AGREEMENT_DEG = 1.0`° from `--fov-h`.
+  - When both are given and agree, `--fov-h` sets the projection and the object geometry is recorded.
 - **D6. Out of scope:** cube maps (honey-factory's cube faces are debug-only), fisheye lenses, stretching an image to fill the eye, and synthetic surrounds or backgrounds.
 
 ## Global Constraints
@@ -30,7 +34,8 @@
 - No 2D image operations before sampling (no resize, warp, pad or crop); perspective geometry lives only in `rays()` and `solid_angle()`.
 - Head frame and axes unchanged: `to_unit(az, el) = (cos el cos az, cos el sin az, sin el)` = (forward, right, up); azimuth positive right, elevation positive up.
 - Image pixel (x, y): x grows to the right, y grows downward, pixel centres at `+ 0.5`.
-- No default field of view for perspective images (D5); `honey_factory_panorama` stays the only implicit projection, and only for images whose aspect is within 1% of 310/160 (existing CLI guard).
+- A perspective image without placement uses `DEFAULT_FOV_H_DEG = 60.0` and is marked `meta["placement"]["assumed"] = true` (D5, revised). The default panorama path still applies only to images whose aspect is within 1% of 310/160 (existing CLI guard).
+- Every frame's meta records how the placement was obtained in `meta["placement"]`, a JSON dict or null when the caller gave none. It is passed through `FlyEye.sample(..., placement=...)`.
 - Every frame's meta records the projection as a JSON dict (`meta["projection"]`); `Projection.key()` is derived from the same dict so the two cannot drift.
 - Repository rules: `just lint`, `just typecheck` (pyright strict, includes `tests/`) and `just test fly-vision` pass before each commit; tests in `tests/fly-vision/`; commits `feat(fly-vision): …` / `docs(fly-vision): …` with the session's Co-Authored-By trailer; never edit `CHANGELOG.md` or versions.
 - Every new assumption gets a row in `packages/fly-vision/docs/assumptions.md` in the task that introduces it.
@@ -40,7 +45,11 @@
 1. **Mirrored or upside-down perspective rays.** Uniform and centre-pixel tests pass with a flipped x or y. Expected: the top-left pixel looks up-left (az < 0, el > 0 when centred at (0, 0)), and a dot at a known pixel excites the ommatidium pointing there. Pinned: Task 2, `test_perspective_orientation` and `test_perspective_dot_reaches_expected_ommatidium`.
 2. **Wrong pixel solid angle at wide fields.** A per-pixel `1/F²` without `cos³θ` biases edge weights. Expected: summed pixel solid angle equals the exact rectangular-pyramid solid angle, including at 120°. Pinned: Task 2, `test_perspective_solid_angle_total`.
 3. **Stale cache after moving the image.** Two placements of the same image differing only in `center_az` must not share a sampling matrix. Pinned: Task 2, `test_perspective_key_covers_placement`.
-4. **Conflicting or missing placement in the CLI.** Both `--fov-h` and object geometry, partial object flags, or none at all for `--projection perspective`. Expected: exit 1 with one stderr line, no output files. Pinned: Task 4, `test_perspective_placement_errors`.
+4. **Contradictory, partial or missing placement in the CLI.** Expected:
+   - partial object flags, or `--fov-h` disagreeing with the object geometry by more than 1°: exit 1 with one stderr line and no output files;
+   - no placement at all: exit 0, a stderr warning, and `meta["placement"]["assumed"] is True` with a 60° projection.
+
+   Pinned: Task 4, `test_perspective_placement_errors` and `test_perspective_default_fov_is_marked`.
 5. **An image placed where the fly has no ommatidia** (straight behind, centre azimuth 180°). Expected: no crash, every ommatidium `valid = False`, all activations 0. Pinned: Task 2, `test_perspective_behind_fly_is_all_invalid`.
 
 ---
@@ -233,35 +242,60 @@ def test_placement_validation() -> None:
 
 ---
 
-### Task 4: CLI projections and docs
+### Task 4: CLI projections, opt-in placement and docs
 
 **Files:**
-- Modify: `packages/fly-vision/src/fly_vision/cli.py`
-- Modify: `packages/fly-vision/README.md`, `packages/fly-vision/docs/interface.md`, `docs/architecture.md`, `tests/README.md`
-- Test: `tests/fly-vision/test_cli.py`
+- Modify: `packages/fly-vision/src/fly_vision/cli.py`, `packages/fly-vision/src/fly_vision/eye.py` (`placement` argument), `packages/fly-vision/src/fly_vision/placement.py` (two constants)
+- Modify: `packages/fly-vision/README.md`, `packages/fly-vision/docs/interface.md`, `packages/fly-vision/docs/assumptions.md`, `docs/adr/0020-image-placement.md` (D5 wording), `docs/architecture.md`, `tests/README.md`
+- Test: `tests/fly-vision/test_cli.py`, `tests/fly-vision/test_eye.py`
 
 **Interfaces:**
 - Consumes: `PerspectiveSpec`, `EquirectSpec`, `honey_factory_panorama`, `perspective_fov_for_object`.
-- Produces: `fly-vision convert … --projection {panorama,equirect,perspective}`, default `panorama`. Rename `--panorama` to `--image`, and keep `--panorama` as a hidden alias so existing commands still work.
-  - `panorama`: today's default path, including its aspect guard. `--fov-*` and `--center-*` are rejected.
-  - `equirect`: requires `--fov-h` and `--fov-v`, which is today's explicit path.
-  - `perspective`: requires exactly one of `--fov-h` or the full set `--object-width-px`, `--object-size-m`, `--distance-m`. `--fov-v` is rejected because it follows from the aspect ratio. Accepts `--center-az` and `--center-el`.
+- Produces:
+  - `placement.py`: `DEFAULT_FOV_H_DEG = 60.0`, `FOV_AGREEMENT_DEG = 1.0`.
+  - `FlyEye.sample(panorama, mask=None, source=None, placement: dict[str, str | bool | float] | None = None)` stores a copy as `meta["placement"]`, or null. Frame meta then has 17 keys; update the Task 1 test from 16 to 17.
+  - `fly-vision convert … --projection {panorama,equirect,perspective}`, default `panorama`. Rename `--panorama` to `--image`, and keep `--panorama` as a hidden alias so existing commands still work.
+    - `panorama`: today's default path with its aspect guard; `--fov-*` and `--center-*` are rejected. Placement: `{"method": "honey_factory_contract", "assumed": false}`.
+    - `equirect`: requires `--fov-h` and `--fov-v` (today's explicit path). Placement: `{"method": "fov", "assumed": false}`.
+    - `perspective`: everything is opt-in (D5, revised); `--fov-v` is rejected because it follows from the aspect ratio; accepts `--center-az` and `--center-el`.
 
-- [ ] **Step 1: Write the failing tests** in `tests/fly-vision/test_cli.py`.
-  - `test_convert_perspective_fov`: a 300×400 photo with `--projection perspective --fov-h 50` gives rc 0, and the frame's `meta["projection"] == PerspectiveSpec(300, 400, 50.0).describe()`.
-  - `test_convert_perspective_object`: object flags 120 px, 0.3 m, 1.0 m give rc 0, and `meta["projection"]["fov_h_deg"] == perspective_fov_for_object(300, 120, 0.3, 1.0)`.
+      | Given | Field of view | `meta["placement"]` |
+      |---|---|---|
+      | `--fov-h` only | `--fov-h` | `{"method": "fov_h", "assumed": false}` |
+      | all 3 object flags only | `perspective_fov_for_object(W, …)` | `{"method": "object", "assumed": false, "object_width_px", "object_size_m", "distance_m"}` |
+      | both, agreeing within `FOV_AGREEMENT_DEG` | `--fov-h` | `{"method": "fov_h+object", "assumed": false, ` + the three object fields + `"object_fov_h_deg"}` |
+      | neither | `DEFAULT_FOV_H_DEG`; a stderr warning naming 60° | `{"method": "default", "assumed": true}` |
+      | 1–2 of the 3 object flags | — exit 1 | — |
+      | both, disagreeing by more than `FOV_AGREEMENT_DEG` | — exit 1 (stderr names both values) | — |
+
+- [ ] **Step 1: Write the failing tests.**
+
+  In `tests/fly-vision/test_eye.py`:
+  - `test_placement_recorded`: `sample(img())` gives `meta["placement"] is None`. `sample(img(), placement={"method": "fov_h", "assumed": False})` records an equal dict, and `len(meta) == 17`.
+
+  In `tests/fly-vision/test_cli.py`, all on a 300×400 RGB photo:
+  - `test_convert_perspective_fov`: `--projection perspective --fov-h 50` gives rc 0. Assert `meta["projection"] == PerspectiveSpec(300, 400, 50.0).describe()` and `meta["placement"] == {"method": "fov_h", "assumed": False}`.
+  - `test_convert_perspective_object`: object flags 120, 0.3, 1.0 give rc 0. Assert `meta["projection"]["fov_h_deg"] == perspective_fov_for_object(300, 120, 0.3, 1.0)` and `meta["placement"]["method"] == "object"`. The object fields equal the inputs.
+  - `test_perspective_fov_and_object_agree`: `--fov-h` set to `round(perspective_fov_for_object(300, 120, 0.3, 1.0), 2)` plus the same object flags gives rc 0. Assert `meta["projection"]["fov_h_deg"]` equals the given `--fov-h` and `meta["placement"]["method"] == "fov_h+object"`.
+  - `test_perspective_default_fov_is_marked`: `--projection perspective` with no placement gives rc 0. Assert `"60" in stderr`, `meta["projection"]["fov_h_deg"] == DEFAULT_FOV_H_DEG` and `meta["placement"] == {"method": "default", "assumed": True}`.
   - `test_perspective_placement_errors`: each case gives rc 1, a single-line stderr message and no output directory. The cases are:
-    - no placement;
-    - both `--fov-h` and object flags;
-    - only 2 of the 3 object flags;
-    - `--fov-v` given with `--projection perspective`.
+    - only `--object-width-px 120 --object-size-m 0.3`;
+    - `--fov-h 30` with object flags 120, 0.3, 1.0 (41.1° derived, so they disagree);
+    - `--fov-v 40` with `--projection perspective --fov-h 50`.
   - `test_panorama_alias_still_works`: an existing `--panorama` invocation still gives rc 0.
 - [ ] **Step 2: Run** `just test fly-vision`. Expected: the new tests FAIL.
-- [ ] **Step 3: Implement** the argument handling in `cli.py`. Placement validation stays in one function that returns a `Projection` or an error message.
-- [ ] **Step 4: Run** `just test fly-vision`, `just lint`, `just typecheck`, `uv run fly-vision convert --help`. Expected: PASS, and the help lists the three projections.
+- [ ] **Step 3: Implement.**
+  - Add the `placement` argument to `FlyEye.sample`.
+  - Add the two constants to `placement.py`.
+  - Add the argument handling to `cli.py`. Projection and placement resolution stay in one function that returns `(Projection, placement dict)` or an error message, and prints the default-FOV warning.
+- [ ] **Step 4: Run** `just test fly-vision`, `just lint`, `just typecheck`, `uv run --isolated --package fly-vision pytest tests/fly-vision -W error -q`, and `uv run fly-vision convert --help`. Expected: PASS, and the help lists the three projections and says perspective placement is optional, defaulting to 60°.
 - [ ] **Step 5: Docs.**
-  - README: one example per projection, including a phone photo placed by object size and distance.
-  - `interface.md`: honey-factory `PERSPECTIVE_90` frames are square 1280×1280 at 90°. Read them with `--projection perspective --fov-h 90 --center-el <−pitch>`, because Minecraft pitch is positive looking down. Azimuth is relative to the camera yaw, so `--center-az` stays 0. Take the pitch from the sample record's camera, and state the sign convention in the doc.
+  - ADR 0020: rewrite D5 as revised, with a one-line note that the user revised it on 2026-10-25.
+  - `assumptions.md`: add a row for the 60° default field of view (chosen; frames are marked `assumed`), and add `FOV_AGREEMENT_DEG`.
+  - README: one example per projection, including a phone photo placed by object size and distance, and one with no placement that shows the warning.
+  - `interface.md`:
+    - Document `meta["placement"]`.
+    - honey-factory `PERSPECTIVE_90` frames are square 1280×1280 at 90°. Read them with `--projection perspective --fov-h 90 --center-el <−pitch>`, because Minecraft pitch is positive looking down. Azimuth is relative to the camera yaw, so `--center-az` stays 0. Take the pitch from the sample record's camera, and state the sign convention in the doc.
   - `architecture.md`: replace "other projections are proposed" with the perspective adapter and ADR 0020.
   - `tests/README.md`: update coverage.
-- [ ] **Step 6: Commit** `feat(fly-vision): place perspective images from the CLI`
+- [ ] **Step 6: Commit** `feat(fly-vision): place perspective images from the CLI, opt-in`
