@@ -1,6 +1,7 @@
 import numpy as np
 
 from fly_vision.projection import (
+    Projection,
     direction_to_pixel,
     honey_factory_panorama,
     pixel_directions,
@@ -51,7 +52,8 @@ def test_to_unit_axes() -> None:
 
 
 def test_projection_protocol() -> None:
-    r = S.rays()
+    p: Projection = S
+    r = p.rays()
     assert r.shape == (1280, 2480, 3)
     assert np.allclose(np.linalg.norm(r, axis=-1), 1.0)
     assert S.solid_angle().shape == (1280, 2480)

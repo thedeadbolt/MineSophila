@@ -16,8 +16,15 @@ type FloatArray = NDArray[np.float64]
 class Projection(Protocol):
     """Maps every image pixel to a unit direction and a solid angle."""
 
-    width: int
-    height: int
+    @property
+    def width(self) -> int:
+        """Image width in pixels."""
+        ...
+
+    @property
+    def height(self) -> int:
+        """Image height in pixels."""
+        ...
 
     def rays(self) -> FloatArray:
         """Unit vectors in the eye frame, shape (H, W, 3)."""
