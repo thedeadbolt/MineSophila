@@ -402,7 +402,8 @@ def test_shift_by_one_column():
     idx = idx[np.argsort(L.hex_uv[idx, 1])]
     step = float(np.diff(L.direction_deg[idx, 0]).mean())
     a, b = apply_sampling(SM, scene(0.0))[:, 0], apply_sampling(SM, scene(step))[:, 0]
-    ok = SM.valid[idx[:-1]] & SM.valid[idx[1:]]
+    full = SM.coverage_fraction >= 0.95  # cones cut by the image edge are not shift-equivariant
+    ok = full[idx[:-1]] & full[idx[1:]]
     assert ok.sum() > 20
     assert np.allclose(b[idx[1:]][ok], a[idx[:-1]][ok], atol=0.02)
     assert np.abs(b[idx] - a[idx]).max() > 0.1  # the shift is visible

@@ -21,3 +21,7 @@ Types: **measured** (with citation), **estimated**, **chosen**.
 | DRA (dorsal rim area) | top lattice row of each eye | chosen | n/a | `lattice.py` (`generate_hex_lattice`) |
 | Dorsal yellow third | non-DRA ommatidia with elevation ≥ el_max − (el_max − el_min)/3 are `pale` or `dorsal_yellow` | chosen | n/a | `lattice.py` (`generate_hex_lattice`) |
 | Eye frame | level panorama frame of honey-factory (head assumed level, A1) | chosen | honey-factory contract | `lattice.py`, `projection.py` (`to_unit`) |
+| Acceptance FWHM | 5° (sigma = FWHM / 2.3548) | measured, approximate | literature | `config.py` (`acceptance_fwhm_deg`), `sampler.py` |
+| Acceptance cutoff | 3 sigma; weights beyond are dropped | chosen | n/a | `config.py` (`cutoff_sigmas`), `sampler.py` |
+| Valid ommatidium threshold | coverage fraction (summed weight / 2 pi sigma²) ≥ 0.5; invalid rows are zero | chosen | n/a | `config.py` (`valid_coverage_min`), `sampler.py` |
+| Edge-truncated cones | ommatidia with 0.5 ≤ coverage < ~0.95 (near the ±155° edges and the −70° bottom) are valid but renormalised over the visible part of their cone, so they are biased toward what is in view | chosen | n/a | `sampler.py` (`valid_coverage_min`) |
