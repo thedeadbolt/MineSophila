@@ -10,11 +10,11 @@ Types: **measured** (with citation), **estimated**, **chosen**.
 | Acceptance angle | ~5° FWHM | measured, approximate | literature | `config.py` (`acceptance_fwhm_deg`) |
 | Pale / yellow ratio | 30 / 70, random per ommatidium (seeded) | measured | Wernet & Desplan 2004 | `lattice.py` (`_PALE_FRACTION`) |
 | Panorama field of view | 310° × 160°, elevation −70…+90°, level frame (honey-factory `equirectangular-310x160-v1`, ADR 0010) | chosen by honey-factory; check against literature and the eye map's own coverage | honey-factory contract | `projection.py` (planned) |
-| Rhodopsin curves | Salcedo et al. 1999 or Govardovskii template | measured / model | Salcedo et al. 1999 | `spectral.py` (planned) |
-| RGB primaries | sRGB standard | chosen | sRGB | `spectral.py` (planned) |
-| R7 (UV) | Rh3/Rh4 catch from RGB primaries via visible-light curve tails; true UV missing (`uv_modelled = False`) | chosen (RGB has no UV); curves measured | Salcedo et al. 1999 | `spectral.py` (planned) |
+| Rhodopsin curves | Govardovskii A1 template (alpha + beta band), peak-normalised; peaks Rh1 478, Rh3 345, Rh4 375, Rh5 437, Rh6 508 nm | template: model; peaks: measured (verified against the paper's Results text for Rh1/Rh5/Rh6 and Figure 5 legend for Rh3/Rh4) | Govardovskii et al. 2000, Vis Neurosci 17:509-528; Salcedo et al. 1999, J Neurosci 19(24):10716-10726 | `spectral.py` (`RHODOPSIN_PEAKS_NM`, `govardovskii_a1`) |
+| RGB primaries | Gaussian emission spectra, peaks 610 / 545 / 465 nm, FWHM 30 / 40 / 25 nm, each scaled so its luminance equals the sRGB weight (0.2126 / 0.7152 / 0.0722) under V; sRGB defines chromaticities, not spectra, so R7 is sensitive to the blue peak | chosen | sRGB (IEC 61966-2-1) weights | `spectral.py` (`PrimaryConfig`, `build_spectral_model`) |
+| R7 (UV) | Rh3/Rh4 catch from the visible tails of the curves over 300-800 nm; true UV missing (`uv_modelled = False`); values are tiny (white pale R7 ~8e-6, yellow ~1.6e-3 relative to Rh1 = 1) | chosen (RGB has no UV); curves measured | Salcedo et al. 1999 | `spectral.py` (`SpectralModel.receptors`) |
 | `eps` in receptor ratios | small constant at computation time, not stored | chosen (numerical) | n/a | at point of computation |
-| R1–R6 pooled as one channel per direction | neural superposition approximation | chosen | n/a | `spectral.py` (planned) |
+| R1–R6 pooled as one channel per direction | neural superposition approximation | chosen | n/a | `spectral.py` (`SpectralModel.receptors`) |
 | Male vs female eye | FlyGym is female; MaleCNS is male | known mismatch, phase 2 | n/a | n/a |
 | Eye azimuth ranges | right eye −15…155°, left eye mirrored (−155…15°) | chosen, to match the 310° panorama; check against FlyGym / literature | n/a | `lattice.py` (`_AZ_RIGHT`) |
 | Eye elevation range | ±75° (below −70° falls outside the panorama, so those ommatidia are invalid) | chosen | n/a | `lattice.py` (`_EL_RANGE`) |
@@ -25,3 +25,8 @@ Types: **measured** (with citation), **estimated**, **chosen**.
 | Acceptance cutoff | 3 sigma; weights beyond are dropped | chosen | n/a | `config.py` (`cutoff_sigmas`), `sampler.py` |
 | Valid ommatidium threshold | coverage fraction (summed weight / 2 pi sigma²) ≥ 0.5; invalid rows are zero | chosen | n/a | `config.py` (`valid_coverage_min`), `sampler.py` |
 | Edge-truncated cones | ommatidia with 0.5 ≤ coverage < ~0.95 (near the ±155° edges and the −70° bottom) are valid but renormalised over the visible part of their cone, so they are biased toward what is in view | chosen | n/a | `sampler.py` (`valid_coverage_min`) |
+| Luminous efficiency V(λ) | Gaussian, peak 555 nm, FWHM 100 nm (approximation of the photopic curve) | chosen | n/a | `spectral.py` (`build_spectral_model`) |
+| Catch normalisation | one constant for all receptors: the whole matrix is divided by the Rh1 catch of white; ignores differences in absolute receptor sensitivity | chosen | n/a | `spectral.py` (`build_spectral_model`) |
+| Wavelength grid | 300-800 nm, 1 nm steps | chosen | n/a | `spectral.py` (`WAVELENGTHS_NM`) |
+| Subtype to channel mapping | pale: R7 Rh3, R8 Rh5; yellow: R7 Rh4, R8 Rh6; dorsal_yellow: R7 mean(Rh3, Rh4), R8 Rh6; dra: R7 Rh3, R8 Rh3 | chosen | n/a | `spectral.py` (`SpectralModel.receptors`) |
+| Reflectance-upsampling model | Minecraft colours as surface reflectances under daylight via spectral upsampling | later option, not implemented | n/a | n/a |
