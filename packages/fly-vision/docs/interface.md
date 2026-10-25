@@ -93,14 +93,14 @@ Your own `target_status` stays in `meta["source"]`, untouched.
 
 ## Calibration capture
 
-Orientation and half-pixel mistakes on either side would silently shift everything, so we
+Orientation and sign mistakes on either side would silently shift everything, so we
 would like one capture with honey at known directions. Honey-factory's M5 known-direction
 gate fixtures may already serve; if so, please point us to them.
 
 Request:
 
-- Honey blocks centred at azimuth / elevation (0, 0), (90, 0), (−90, 0) and (0, 45)
-  degrees, each 5 blocks from the camera. Azimuth is positive to the right, elevation
+- Honey blocks centred at azimuth / elevation (0, 0), (60, 0), (−90, 0), (0, 45) and
+  (−45, 20) degrees, each 5 blocks from the camera. Azimuth is positive to the right, elevation
   positive up, in the level frame of the contract.
 - Weather off, daylight.
 - A panorama PNG, the matching visible mask PNG, and a `targets.json`:
@@ -110,10 +110,22 @@ Request:
   "fov_h": 310,
   "fov_v": 160,
   "center_el": 10,
-  "targets": [{"az": 0, "el": 0}, {"az": 90, "el": 0}, {"az": -90, "el": 0}, {"az": 0, "el": 45}]
+  "targets": [
+    {"az": 0, "el": 0},
+    {"az": 60, "el": 0},
+    {"az": -90, "el": 0},
+    {"az": 0, "el": 45},
+    {"az": -45, "el": 20}
+  ]
 }
 ```
 
 Place the files in `tests/fly-vision/fixtures/calibration/` as `panorama.png`, `mask.png`
-and `targets.json`. `tests/fly-vision/test_calibration.py` then checks that an ommatidium
-within 5° of each target has `honey_coverage >= 0.2`. It skips until the files exist.
+and `targets.json`. `tests/fly-vision/test_calibration.py` builds the eye from the panorama
+size with the `equirectangular-310x160-v1` preset (the path the CLI uses) and requires
+`targets.json` to agree with it. For each target, the coverage-weighted centroid of the valid
+ommatidia within 8° must lie within 2° of the target, and (for |azimuth| of 10° or more)
+the coverage within 5° of the azimuth-mirrored position must stay below 0.05. The targets are
+asymmetric in azimuth on purpose. This catches sign flips and offsets of about 2° or more;
+it does not resolve half-pixel errors. The test skips until the files exist; a synthetic
+capture exercises the same check meanwhile.
