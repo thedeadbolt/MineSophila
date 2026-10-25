@@ -52,7 +52,7 @@ this package.
 | M6 | Constructed and natural scenes | M4–M5 | Exit gate passed; [findings](m6-constructed-natural.md), ADRs 0011–0013 |
 | M7 | Movement actions and environment completion | M2–M6 | Exit gate passed; [findings](m7-movement-actions.md), ADR 0014 |
 | M8 | Dataset inspector and exact replay | M4–M7 | Exit gate passed; [findings](m8-inspector-and-replay.md), ADR 0015 |
-| M9 | Acceptance matrix and production pilot | M0–M8 | Planned |
+| M9 | Acceptance matrix and production pilot | M0–M8 | Exit gate passed; [findings](m9-acceptance.md) |
 | M10 | Phase-1 production datasets | M9 | Planned |
 | M11 | Animal-like control: lock-step continuous commands, one frame per tick | M7, M9 | Planned |
 | M12 | Motion clips generated through that control | M10, M11 | Planned |
