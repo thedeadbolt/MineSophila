@@ -91,13 +91,22 @@ class FlyEye:
         if mask is None:
             return frame, None
 
-        coverage = apply_sampling(self.sm, np.asarray(mask, dtype=np.float64)[..., None])[:, 0]
+        m = np.asarray(mask, dtype=np.float64)
+        if m.ndim != 2:
+            raise ValueError(f"mask must be 2-D (H, W), got {m.ndim}-D shape {m.shape}")
+        if not np.isfinite(m).all():
+            raise ValueError("mask contains NaN or infinite values")
+        if m.min() < 0.0 or m.max() > 1.0:
+            raise ValueError(
+                "mask values must lie in [0, 1]; use load_mask to convert 0/255 mask files"
+            )
+        coverage = apply_sampling(self.sm, m[..., None])[:, 0]
         coverage = np.where(self.sm.valid, coverage, 0.0)
         max_cov = float(coverage[self.sm.valid].max()) if self.sm.valid.any() else 0.0
         visibility: Visibility
         if max_cov >= self.cfg.visible_coverage_threshold:
             visibility = "visible_to_fly"
-        elif bool((np.asarray(mask) > 0).any()):
+        elif bool((m > 0).any()):
             visibility = "in_image_not_fly"
         else:
             visibility = "not_in_image"

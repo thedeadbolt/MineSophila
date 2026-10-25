@@ -156,3 +156,14 @@ def test_loaders_reject_and_convert(tmp_path: Path) -> None:
     (tmp_path / "w.png").write_bytes(png)
     with pytest.raises(ValueError, match="16-bit"):
         load_panorama(tmp_path / "w.png")
+
+
+def test_mask_validation() -> None:
+    bad_nan = disc(30, 0, 6)
+    bad_nan[5, 5] = np.nan
+    with pytest.raises(ValueError, match="NaN"):
+        EYE.sample(img(), bad_nan, REF)
+    with pytest.raises(ValueError, match="load_mask"):
+        EYE.sample(img(), disc(30, 0, 6) * 255, REF)
+    with pytest.raises(ValueError, match="2-D"):
+        EYE.sample(img(), np.zeros((S.height, S.width, 3)), REF)
