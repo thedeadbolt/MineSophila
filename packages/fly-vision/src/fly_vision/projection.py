@@ -5,6 +5,7 @@ elevation positive up; azimuth 0, elevation 0 is forward on the horizon.
 """
 
 import json
+import math
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -87,6 +88,73 @@ class EquirectSpec:
             "height": self.height,
             "fov_h_deg": self.fov_h_deg,
             "fov_v_deg": self.fov_v_deg,
+            "center_az_deg": self.center_az_deg,
+            "center_el_deg": self.center_el_deg,
+        }
+
+    def key(self) -> str:
+        return json.dumps(self.describe(), sort_keys=True)
+
+
+@dataclass(frozen=True)
+class PerspectiveSpec:
+    """Pinhole camera placed in the eye frame: an ordinary photo, level (no roll).
+
+    The optical axis points at (`center_az_deg`, `center_el_deg`). The image's vertical
+    axis stays in the vertical plane through that axis. `fov_h_deg` is a measurement
+    supplied by the user (camera field of view); there is no default. No lens distortion.
+    """
+
+    width: int
+    height: int
+    fov_h_deg: float
+    center_az_deg: float = 0.0
+    center_el_deg: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.width <= 0 or self.height <= 0:
+            raise ValueError(f"width and height must be > 0, got {self.width}x{self.height}")
+        if not 0.0 < self.fov_h_deg < 180.0:
+            raise ValueError(f"fov_h_deg must be in (0, 180), got {self.fov_h_deg}")
+
+    @property
+    def focal_px(self) -> float:
+        """Focal length in pixels."""
+        return (self.width / 2.0) / math.tan(math.radians(self.fov_h_deg) / 2.0)
+
+    @property
+    def fov_v_deg(self) -> float:
+        """Vertical field of view in degrees, implied by square pixels."""
+        return math.degrees(2.0 * math.atan((self.height / 2.0) / self.focal_px))
+
+    def _offsets(self) -> tuple[FloatArray, FloatArray]:
+        cx = np.arange(self.width) + 0.5 - self.width / 2.0
+        cy = np.arange(self.height) + 0.5 - self.height / 2.0
+        return (
+            np.broadcast_to(cx[None, :], (self.height, self.width)).astype(np.float64),
+            np.broadcast_to(cy[:, None], (self.height, self.width)).astype(np.float64),
+        )
+
+    def rays(self) -> FloatArray:
+        cx, cy = self._offsets()
+        forward = to_unit(np.array(self.center_az_deg), np.array(self.center_el_deg))
+        right = to_unit(np.array(self.center_az_deg + 90.0), np.array(0.0))
+        up = to_unit(np.array(self.center_az_deg), np.array(self.center_el_deg + 90.0))
+        v = self.focal_px * forward + cx[..., None] * right - cy[..., None] * up
+        return v / np.linalg.norm(v, axis=-1, keepdims=True)
+
+    def solid_angle(self) -> FloatArray:
+        cx, cy = self._offsets()
+        f = self.focal_px
+        cos_t = f / np.sqrt(f * f + cx * cx + cy * cy)
+        return cos_t**3 / (f * f)
+
+    def describe(self) -> dict[str, str | int | float]:
+        return {
+            "type": "perspective",
+            "width": self.width,
+            "height": self.height,
+            "fov_h_deg": self.fov_h_deg,
             "center_az_deg": self.center_az_deg,
             "center_el_deg": self.center_el_deg,
         }

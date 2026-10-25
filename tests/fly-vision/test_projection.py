@@ -5,6 +5,7 @@ import pytest
 
 from fly_vision.projection import (
     EquirectSpec,
+    PerspectiveSpec,
     Projection,
     direction_to_pixel,
     honey_factory_panorama,
@@ -14,6 +15,7 @@ from fly_vision.projection import (
 )
 
 S = honey_factory_panorama(width=2480, height=1280)
+P = PerspectiveSpec(101, 81, 50.0)
 
 
 def test_preset_fields() -> None:
@@ -103,3 +105,54 @@ def test_describe_and_key_agree() -> None:
         "center_el_deg": 10.0,
     }
     assert json.loads(s.key()) == d
+
+
+def test_perspective_protocol_and_centre() -> None:
+    p: Projection = P
+    r = p.rays()
+    assert r.shape == (81, 101, 3)
+    assert np.allclose(np.linalg.norm(r, axis=-1), 1.0)
+    assert np.allclose(r[40, 50], [1.0, 0.0, 0.0])  # centre pixel looks straight ahead
+
+
+def test_perspective_orientation() -> None:
+    r = P.rays()
+    assert r[0, 0, 1] < 0  # top-left: left and up
+    assert r[0, 0, 2] > 0
+    assert r[80, 100, 1] > 0  # bottom-right: right and down
+    assert r[80, 100, 2] < 0
+    az_edge = np.degrees(np.arctan2(r[40, 0, 1], r[40, 0, 0]))
+    assert np.isclose(az_edge, -np.degrees(np.arctan(50.0 / P.focal_px)))  # pixel-centre convention
+
+
+def test_perspective_solid_angle_total() -> None:
+    for fov in (50.0, 120.0):
+        p = PerspectiveSpec(400, 300, fov)
+        a, b = np.radians(fov / 2), np.radians(p.fov_v_deg / 2)
+        exact = 4 * np.arcsin(np.sin(a) * np.sin(b))  # rectangular pyramid
+        assert np.isclose(p.solid_angle().sum(), exact, rtol=1e-4)
+
+
+def test_perspective_rotated_placement() -> None:
+    p = PerspectiveSpec(101, 81, 50.0, center_az_deg=30.0, center_el_deg=20.0)
+    r = p.rays()
+    assert np.allclose(r[40, 50], to_unit(np.array(30.0), np.array(20.0)))
+    top = r[0, 50]  # top-centre: same azimuth, higher
+    assert np.isclose(np.degrees(np.arctan2(top[1], top[0])), 30.0)
+    assert np.degrees(np.arcsin(top[2])) > 20.0
+
+
+def test_perspective_key_covers_placement() -> None:
+    assert P.key() != PerspectiveSpec(101, 81, 50.0, center_az_deg=1.0).key()
+    assert P.describe()["type"] == "perspective"
+
+
+def test_perspective_validation() -> None:
+    with pytest.raises(ValueError, match="must be"):
+        PerspectiveSpec(101, 81, 0.0)
+    with pytest.raises(ValueError, match="must be"):
+        PerspectiveSpec(101, 81, 180.0)
+    with pytest.raises(ValueError, match="must be"):
+        PerspectiveSpec(0, 81, 50.0)
+    with pytest.raises(ValueError, match="must be"):
+        PerspectiveSpec(101, -1, 50.0)

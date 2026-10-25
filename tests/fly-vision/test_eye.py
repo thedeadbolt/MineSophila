@@ -9,8 +9,8 @@ from PIL import Image
 
 from fly_vision.eye import FlyEye, linearise, load_mask, load_panorama
 from fly_vision.frame import SourceRef, load_frame, load_labels, save_frame
-from fly_vision.lattice import generate_hex_lattice
-from fly_vision.projection import honey_factory_panorama, pixel_directions, to_unit
+from fly_vision.lattice import default_lattice, generate_hex_lattice
+from fly_vision.projection import PerspectiveSpec, honey_factory_panorama, pixel_directions, to_unit
 from fly_vision.sampler import apply_sampling
 from fly_vision.spectral import srgb_to_linear
 
@@ -219,3 +219,22 @@ def test_meta_records_projection() -> None:
     f, _ = EYE.sample(img(), None, REF)
     assert f.meta["projection"] == S.describe()
     assert len(f.meta) == 16
+
+
+def test_perspective_dot_reaches_expected_ommatidium() -> None:
+    p = PerspectiveSpec(301, 401, 50.0)
+    eye = FlyEye(default_lattice(), p)
+    img = np.zeros((401, 301, 3), np.uint8)
+    img[100:106, 220:226] = 255  # dot right of centre, above
+    f, _ = eye.sample(img)
+    target = p.rays()[103, 223]
+    hit = int(np.argmax(f.activations[:, 0]))
+    d = to_unit(*eye.lattice.direction_deg[hit])
+    assert np.degrees(np.arccos(np.clip(d @ target, -1, 1))) < 4.0
+
+
+def test_perspective_behind_fly_is_all_invalid() -> None:
+    p = PerspectiveSpec(101, 81, 50.0, center_az_deg=180.0)
+    f, _ = FlyEye(default_lattice(), p).sample(np.full((81, 101, 3), 128, np.uint8))
+    assert not f.valid.any()
+    assert (f.activations == 0).all()
