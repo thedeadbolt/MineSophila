@@ -1,5 +1,60 @@
 # fly-vision v0: agent brief
 
+> **Status: historical, synced 2026-10-25.** This brief was written before implementation.
+> The plan (`docs/plans/2026-10-25-fly-vision-v0.md`), [ADR 0016](../../../docs/adr/0016-fly-vision-v0-eye-model.md),
+> the [assumptions register](assumptions.md) and the [interface note](interface.md) supersede it where
+> they differ. The sections below are kept as written; this block records the differences.
+
+## Sync with the implementation
+
+**Decisions and amendments**
+
+- **Panorama geometry (A1; supersedes sections 1 and 3).** The "1600 × 825, ~160°, horizon at
+  mid-height" description is outdated collaborator documentation. fly-vision follows
+  honey-factory's current contract `equirectangular-310x160-v1`: level, longitude −155…+155°,
+  elevation −70…+90°, image centre at elevation **+10°**, default size 2480 × 1280. The
+  formulas in section 3 with centre elevation 0 do not apply; use `honey_factory_panorama()`.
+- **A2.** The sampler takes a `Projection` protocol (`width`, `height`, `rays()`,
+  `solid_angle()`, `key()`); only `EquirectSpec` exists in v0.
+- **A3, A4, A5.** Package in `packages/fly-vision/`, tests in `tests/fly-vision/`, lattice as
+  package data (`lattices/generated_v1.npz`), version read from package metadata.
+- **A6, A8.** Milestone pauses with hex plots; real-capture smoke runs are done by hand.
+- **A7.** A rotation test (shift by one interommatidial angle moves the output by one column).
+- **A9 (supersedes decision 1).** Labels are a pure transformation: `FlyLabels` holds only
+  `honey_coverage` plus id metadata. No `visibility` field, no thresholds, no detection.
+- **A10.** The generated lattice's binocular overlap is nearly redundant (median partner
+  distance about 1.2°); see assumptions.
+- **Decision 2.** Four subtypes: `pale`, `yellow`, `dorsal_yellow` (R7 mean of Rh3 and Rh4,
+  R8 Rh6) and `dra` (R7 and R8 both Rh3).
+- **Decision 3.** RGB primaries are assumed Gaussians (610 / 545 / 465 nm, FWHM 30 / 40 /
+  25 nm), luminance-matched to sRGB under a Gaussian V(λ).
+- **Decision 4.** Level frame and a calibration capture (see the interface note).
+- **Decision 5.** `input_levels` and `low_bit_depth` (< 32 distinct levels) in frame meta.
+- **Decision 6.** Cache keys name every input; a panorama of the wrong shape raises.
+- **Decision 7.** `FlyEye.sample(...)` and `FlyEye.reset()` from day one.
+- **Decision 8.** A metamer diagnostic compares honey and distractor colours in receptor space.
+- **Decision 9.** Provenance is required on every frame.
+- **Decision 10.** R7 is not an informative feature in v0 until `r7_blue_sensitivity()` and
+  the real-frame check say so.
+- **Decision 11.** Adaptation defaults to `none`; `frame_mean` is experimental.
+- **Other image types.** Perspective photos and cube maps are deferred. The lattice is the
+  fly and stays fixed; an image is placed in the fly's visual field and uncovered ommatidia
+  are `valid = False`.
+
+**Answers to the open questions (section 9)**
+
+1. Panorama conventions: level frame, 310° × 160°, elevation −70…+90°, image centre at
+   +10°, sRGB 8-bit; the spans are fixed by the contract name and given in code, not read
+   per frame.
+3. Lattice: generated for v0; FlyGym or real lattice later.
+4. Nonlinearity and contrast normalisation: off by default (`adaptation = "none"`).
+5. Storage: `.npz` files (no pickle) with JSON `meta`, inputs and labels separate.
+
+Question 2 (camera pose and head frame) is closed by assumption: the head is level and pose
+is not used.
+
+---
+
 You are helping build `fly-vision`, one package of **MineSophila**, a project that models
 *Drosophila melanogaster* vision and uses it to find honey blocks in Minecraft. Read this whole
 brief before writing code. When something here is marked **open**, ask the user instead of

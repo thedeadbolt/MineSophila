@@ -1,9 +1,10 @@
 # Architecture
 
-This document describes the overall design. `fly-vision` is still version metadata only;
+This document describes the overall design. `fly-vision` implements a v0 virtual eye
+(panorama in, per-ommatidium activations out; see below), and
 `honey-factory` implements its roadmap through M5, a dataset runner for levels 1–3 in perspective and 310-degree panorama modes
-(see its [roadmap](../packages/honey-factory/docs/roadmap.md)). Everything else here is
-proposed.
+(see its [roadmap](../packages/honey-factory/docs/roadmap.md)). The adapter, other
+projections and further vision modes are proposed.
 
 ## Overview
 
@@ -20,19 +21,38 @@ proposed.
 
 ## fly-vision
 
-The proposed `Scene` input contains an RGB image and optional metadata (depth, per-pixel block
-ids, sky mask, sun position).
+### Implemented in v0
 
-For a plain image, supply RGB alone. The proposed honey-factory capture would add scene
-metadata. R7 photoreceptors respond to UV; modelling polarisation and the ocelli's horizon
-cues requires sky information. Define and validate the assumptions behind synthetic channels,
-and distinguish measured inputs from estimates and missing values. RGB frames and block
-labels do not measure UV or polarisation.
+`FlyEye` (`eye.py`) turns a panorama and an optional honey mask into a `FlyFrame`
+(activations `(N, 3)` in the order `R1_6`, `R7`, `R8`, validity, provenance) and `FlyLabels`
+(`honey_coverage` only). It is built from:
+
+| Component | Responsibility |
+|---|---|
+| `Projection` protocol, `EquirectSpec` (`projection.py`) | pixel to unit ray and pixel solid angle; `honey_factory_panorama` is honey-factory's `equirectangular-310x160-v1` |
+| `Lattice` (`lattice.py`) | generated ommatidium directions, eye and subtype (`pale`, `yellow`, `dorsal_yellow`, `dra`), stored as package data |
+| Sampling matrix (`sampler.py`) | sparse Gaussian weights in direction space, cached by key; the same matrix serves colours and mask |
+| Spectral model (`spectral.py`) | linear RGB to Rh1/Rh3/Rh4/Rh5/Rh6 catches and then to channels; R7 from the visible curve tails |
+| `adapt` (`adaptation.py`) | off by default; `frame_mean` is experimental |
+| `frame.py`, `diagnostics.py`, `plot.py`, `cli.py` | `.npz` files, coverage and metamer checks, hex plots, `fly-vision convert` |
+
+The decisions are in [ADR 0016](adr/0016-fly-vision-v0-eye-model.md). The input contract for
+honey-factory is in the [interface note](../packages/fly-vision/docs/interface.md).
+
+**Design rule for other image types.** The lattice is the fly and is fixed. An adapter for
+another image type (a perspective photo, a cube map) places the image in the fly's visual
+field, meaning where its pixels point relative to the head, by implementing `Projection`.
+Ommatidia the image does not cover are `valid = False`. The lattice is never adapted to the
+image. These adapters are deferred.
+
+### Proposed
+
+The vision-mode interface below remains a proposal; add modules when implementing it.
 
 | Proposed component | Responsibility |
 |---|---|
-| `Eye` | Ommatidial lattice, viewing directions, interommatidial and acceptance angles, and sampling of a Scene |
-| `Receptor` subclasses | One per receptor type (R1–R6, R7/R8 pale and yellow, DRA, ocelli), each with a spectral sensitivity |
+| `Scene` | RGB image plus optional metadata (depth, per-pixel block ids, sky mask, sun position); R7 and polarisation need sky information, which RGB frames and block labels do not measure |
+| `Receptor` subclasses | One per receptor type (R1-R6, R7/R8 pale and yellow, DRA, ocelli), each with a spectral sensitivity |
 | `VisionMode` subclasses + registry | `human`, `compound`, `photoreceptor`, `ocelli` |
 | `FlyVision` facade | `render(scene, mode)`, `compare(scene, a, b)`, `pairs(scene)` |
 
@@ -41,7 +61,8 @@ The four proposed modes are `human` (RGB baseline), `compound` (ommatidial sampl
 `pairs()` would yield the six combinations of those modes. The class hierarchy and registry
 remain open choices. Revisit them while implementing the first modes.
 
-Add source modules with working code and tests. Keep future design notes here.
+Distinguish measured inputs from estimates and missing values; the assumptions register
+records which is which.
 
 ### Eye-model sampling
 

@@ -19,7 +19,11 @@ recipes accept extra pytest arguments, for example `just test fly-vision -v`.
 
 ## Current coverage
 
-The fly-vision test checks version metadata; the workspace smoke test imports every
+The fly-vision tests cover version metadata, configuration, projections, the generated
+lattice, the sampling matrix (uniform, dot, rotation, grating and cache checks), the spectral
+model, adaptation, frame files and `FlyEye`, the diagnostics, the hex plot and the
+`fly-vision convert` CLI. The calibration test skips until a honey-factory capture is placed
+in `tests/fly-vision/fixtures/calibration/`. The workspace smoke test imports every
 workspace package after installation. The Java tests cover the honey-factory configuration
 resolver, data contract records, ID/seed/scene-slot algorithms and the M1 exit gate. The
 honey-factory-tools tests cover its schema validation, the whole-dataset validator, its
