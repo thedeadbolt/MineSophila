@@ -1,5 +1,7 @@
 package io.github.thedeadbolt.honeyfactory.control;
 
+import com.google.gson.JsonObject;
+
 /**
  * One tick's motor command, in the units of the control protocol.
  *
@@ -13,4 +15,16 @@ package io.github.thedeadbolt.honeyfactory.control;
 public record MotorCommand(double forward, double strafe, double turnRate, double pitchRate, boolean jump, int delayTicks) {
 	/** No movement, no turning, no jump. */
 	public static final MotorCommand IDLE = new MotorCommand(0.0, 0.0, 0.0, 0.0, false, 0);
+
+	/** The protocol's command object. */
+	public JsonObject toJson() {
+		JsonObject json = new JsonObject();
+		json.addProperty("forward", this.forward);
+		json.addProperty("strafe", this.strafe);
+		json.addProperty("turn_rate", this.turnRate);
+		json.addProperty("pitch_rate", this.pitchRate);
+		json.addProperty("jump", this.jump);
+		json.addProperty("delay_ticks", this.delayTicks);
+		return json;
+	}
 }
