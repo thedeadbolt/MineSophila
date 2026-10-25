@@ -3,6 +3,7 @@ package io.github.thedeadbolt.honeyfactory.capture;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -109,7 +110,7 @@ class PanoramicProjectionTest {
 		}
 
 		CapturedImages panorama = projection.assemble(faces);
-		assertEquals(null, panorama.maskDefect(), "masks stay 0 or 255 and visible stays inside unoccluded");
+		assertNull(panorama.maskDefect(), "masks stay 0 or 255 and visible stays inside unoccluded");
 		PanoramaSampling table = PanoramaSampling.of(projection);
 		for (int y = 0; y < 160; y++) {
 			for (int x = 0; x < 310; x++) {
@@ -179,5 +180,44 @@ class PanoramicProjectionTest {
 
 	private static double dot(double[] a, double[] b) {
 		return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+	}
+
+	@Test
+	void projectInvertsDirection() {
+		CameraFrame camera = camera(-40.0F, 20.0F);
+		for (double[] pixel : new double[][] {{1240.0, 640.0}, {10.5, 3.5}, {2470.0, 1270.0}, {600.25, 900.75}}) {
+			double[] direction = DEFAULT.direction(camera, pixel[0], pixel[1]);
+			double[] eye = camera.eye();
+			assertArrayEquals(pixel, DEFAULT.project(camera, new double[] {eye[0] + 7 * direction[0], eye[1] + 7 * direction[1], eye[2] + 7 * direction[2]}), 1e-6);
+		}
+
+		double[] eye = camera.eye();
+		double[] behind = camera.basis().forward();
+		assertNull(DEFAULT.project(camera, new double[] {eye[0] - 5 * behind[0], eye[1], eye[2] - 5 * behind[2]}), "the rear blind sector");
+		assertNull(DEFAULT.project(camera, new double[] {eye[0], eye[1] - 5, eye[2] + 0.5}), "below -70 degrees");
+	}
+
+	/** Only the column is placed: the yaw puts the direction at its longitude, at whatever row its elevation gives. */
+	@Test
+	void orientationPlacingSetsTheColumn() {
+		double[] direction = {-0.6, 0.28, 0.75};
+		double length = Math.sqrt(dot(direction, direction));
+		direction = new double[] {direction[0] / length, direction[1] / length, direction[2] / length};
+		for (double px : new double[] {0.5, 400.0, 1240.0, 2479.5}) {
+			double[] orientation = DEFAULT.orientationPlacing(direction, px, 0.0);
+			CameraFrame camera = new CameraFrame(new double[] {0.0, 0.0, 0.0}, CameraBasis.of(orientation[0], orientation[1]));
+			double[] pixel = DEFAULT.project(camera, direction);
+			assertEquals(px, pixel[0], 1e-6);
+			assertEquals((90.0 - Math.toDegrees(Math.asin(direction[1]))) / 160.0 * 1280, pixel[1], 1e-6);
+		}
+	}
+
+	@Test
+	void containsRejectsBoxesAcrossTheRearOrOverhead() {
+		CameraFrame camera = camera(0.0F, 0.0F);
+		assertTrue(DEFAULT.contains(camera, new double[] {0, 65, 8}, new double[] {1, 66, 9}, 2.0), "ahead");
+		assertFalse(DEFAULT.contains(camera, new double[] {0, 65, -9}, new double[] {1, 66, -8}, 2.0), "behind");
+		assertFalse(DEFAULT.contains(camera, new double[] {0, 60, 0}, new double[] {1, 61, 1}, 2.0), "underfoot");
+		assertFalse(DEFAULT.contains(camera, new double[] {0, 70, 0}, new double[] {1, 71, 1}, 2.0), "overhead, around every longitude");
 	}
 }

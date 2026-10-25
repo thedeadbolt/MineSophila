@@ -2,6 +2,7 @@ package io.github.thedeadbolt.honeyfactory.scene;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
 import io.github.thedeadbolt.honeyfactory.contract.Algorithms;
 import io.github.thedeadbolt.honeyfactory.contract.SceneSeeds;
@@ -19,7 +20,7 @@ import java.util.List;
  *       {@link PatchTerrain#targetSites() sites}, then a block state from the allowed list.
  *       A target-absent scene aims at the same site and leaves it as the source has it.</li>
  *   <li>Lighting, from {@code lighting/<layout seed>}: see {@link Lighting#draw}.</li>
- *   <li>Viewpoint draws as on a platform (distance, azimuth, jitter), the feet on the
+ *   <li>Viewpoint draws as on a platform (distance, azimuth, then the aim), the feet on the
  *       surface of their column. A draw is rejected when the camera leaves the core, stands
  *       in or on fluid or on a face that cannot hold it, overlaps a colliding block or the
  *       aim cell, or fails the recipe's {@link SightRule}. On terrain only full opaque cubes
@@ -38,13 +39,14 @@ public final class NaturalGenerator implements SceneGenerator {
 	private final SceneBase.NaturalTerrain base;
 	private final List<String> targetStates;
 	private final ResolvedConfig.Viewpoints viewpoints;
+	private final CaptureProjection projection;
 	private final Template template;
 
 	public NaturalGenerator(ResolvedConfig config) {
-		this(config.scene(), config.target().allowedBlockStates(), config.viewpoints());
+		this(config.scene(), config.target().allowedBlockStates(), config.viewpoints(), config.projection());
 	}
 
-	public NaturalGenerator(SceneSpec spec, List<String> targetStates, ResolvedConfig.Viewpoints viewpoints) {
+	public NaturalGenerator(SceneSpec spec, List<String> targetStates, ResolvedConfig.Viewpoints viewpoints, CaptureProjection projection) {
 		if (!(spec.base() instanceof SceneBase.NaturalTerrain natural)) {
 			throw new IllegalArgumentException("A natural generator needs a natural_patch base, got " + spec.base());
 		}
@@ -53,6 +55,7 @@ public final class NaturalGenerator implements SceneGenerator {
 		this.base = natural;
 		this.targetStates = List.copyOf(targetStates);
 		this.viewpoints = viewpoints;
+		this.projection = projection;
 		this.template = new Template(TEMPLATE_ID, TEMPLATE_VERSION, natural.coreWidth(), natural.coreLength(), natural.height(), List.of());
 	}
 
@@ -175,10 +178,7 @@ public final class NaturalGenerator implements SceneGenerator {
 			return new ViewpointCandidate.Rejected(sight);
 		}
 
-		ViewpointPlan base = ViewpointPlan.lookingAt(x, feet, z, settings.eyeHeightBlocks(), aim[0], aim[1], aim[2]);
-		float yaw = (float) ViewpointPlan.wrapDegrees(base.yawDegrees() + yawJitter);
-		float pitch = (float) Math.clamp(base.pitchDegrees() + pitchJitter, -90.0, 90.0);
-		return new ViewpointCandidate.Placeable(new ViewpointPlan(x, feet, z, yaw, pitch));
+		return ViewpointAims.orient(settings, this.projection, random, x, feet, z, aim, yawJitter, pitchJitter);
 	}
 
 	private static SeededRandom random(String purpose) {

@@ -11,6 +11,7 @@ import io.github.thedeadbolt.honeyfactory.contract.CaptureMode;
 import io.github.thedeadbolt.honeyfactory.contract.Ids;
 import io.github.thedeadbolt.honeyfactory.contract.MaskStatistics;
 import io.github.thedeadbolt.honeyfactory.contract.SplitGrouping;
+import io.github.thedeadbolt.honeyfactory.contract.ViewpointAim;
 import io.github.thedeadbolt.honeyfactory.contract.VisibilityRule;
 import io.github.thedeadbolt.honeyfactory.scene.SceneSpec;
 import java.nio.file.Path;
@@ -50,6 +51,7 @@ public record ResolvedConfig(
 		int count,
 		double distanceMinBlocks,
 		double distanceMaxBlocks,
+		ViewpointAim aim,
 		double yawJitterDegrees,
 		double pitchJitterDegrees,
 		int attemptsPerViewpoint,
@@ -57,8 +59,15 @@ public record ResolvedConfig(
 	) {
 	}
 
-	/** The selected level's visibility rule; ratio bounds are inclusive and null where unbounded. */
-	public record Visibility(VisibilityRule rule, @Nullable Double minRatio, @Nullable Double maxRatio) {
+	/**
+	 * The selected level's visibility rule; ratio bounds are inclusive and null where
+	 * unbounded. A present target must also show at least {@code minVisiblePixels} visible
+	 * pixels; 0 sets no minimum.
+	 */
+	public record Visibility(VisibilityRule rule, @Nullable Double minRatio, @Nullable Double maxRatio, int minVisiblePixels) {
+		public Visibility(VisibilityRule rule, @Nullable Double minRatio, @Nullable Double maxRatio) {
+			this(rule, minRatio, maxRatio, 0);
+		}
 	}
 
 	/** {@code cubeFaceSize} is set only for {@link CaptureMode#PANORAMA_310}. */
@@ -80,6 +89,11 @@ public record ResolvedConfig(
 
 	public Path outputRoot() {
 		return this.output.root();
+	}
+
+	/** The projection of the configured capture mode and size. */
+	public CaptureProjection projection() {
+		return CaptureProjection.of(this.capture.mode(), this.capture.width(), this.capture.height(), this.capture.cubeFaceSize());
 	}
 
 	public String sha256() {
@@ -130,6 +144,10 @@ public record ResolvedConfig(
 		visibility.addProperty("rule", this.visibility.rule().jsonName());
 		visibility.add("min_ratio", this.visibility.minRatio() == null ? JsonNull.INSTANCE : new JsonPrimitive(this.visibility.minRatio()));
 		visibility.add("max_ratio", this.visibility.maxRatio() == null ? JsonNull.INSTANCE : new JsonPrimitive(this.visibility.maxRatio()));
+		// Recorded only when set, so configurations from before it keep their hash.
+		if (this.visibility.minVisiblePixels() > 0) {
+			visibility.addProperty("min_visible_pixels", this.visibility.minVisiblePixels());
+		}
 		generator.add("visibility", visibility);
 		JsonObject algorithms = new JsonObject();
 		algorithms.addProperty("config_hash", Algorithms.CONFIG_HASH);
@@ -158,6 +176,11 @@ public record ResolvedConfig(
 		viewpoints.addProperty("count", this.viewpoints.count());
 		viewpoints.addProperty("distance_min_blocks", this.viewpoints.distanceMinBlocks());
 		viewpoints.addProperty("distance_max_blocks", this.viewpoints.distanceMaxBlocks());
+		// Recorded only when not the default, so configurations from before it keep their hash.
+		if (this.viewpoints.aim() != ViewpointAim.TARGET_JITTER) {
+			viewpoints.addProperty("aim", this.viewpoints.aim().jsonName());
+		}
+
 		viewpoints.addProperty("yaw_jitter_degrees", this.viewpoints.yawJitterDegrees());
 		viewpoints.addProperty("pitch_jitter_degrees", this.viewpoints.pitchJitterDegrees());
 		viewpoints.addProperty("attempts_per_viewpoint", this.viewpoints.attemptsPerViewpoint());
@@ -168,7 +191,7 @@ public record ResolvedConfig(
 	}
 
 	private JsonObject projectionJson() {
-		JsonObject projection = CaptureProjection.of(this.capture.mode(), this.capture.width(), this.capture.height(), this.capture.cubeFaceSize()).metadata();
+		JsonObject projection = projection().metadata();
 		projection.addProperty("pixel_centre", "half-pixel");
 		return projection;
 	}

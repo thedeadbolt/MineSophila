@@ -8,6 +8,7 @@ import io.github.thedeadbolt.honeyfactory.contract.Ids;
 import io.github.thedeadbolt.honeyfactory.contract.JsonFields;
 import io.github.thedeadbolt.honeyfactory.contract.SceneSeeds;
 import io.github.thedeadbolt.honeyfactory.contract.SplitGrouping;
+import io.github.thedeadbolt.honeyfactory.contract.ViewpointAim;
 import io.github.thedeadbolt.honeyfactory.contract.VisibilityRule;
 import io.github.thedeadbolt.honeyfactory.scene.SceneBase;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePresets;
@@ -33,11 +34,13 @@ import org.jspecify.annotations.Nullable;
  * dataset        name (required), difficulty (required, 1-5), seed (drawn at random when absent)
  * target         block_id, allowed_block_states, present_fraction
  * arena          width, length, height, margin (platform bases only)
- * viewpoints     count, distance_min_blocks, distance_max_blocks, yaw_jitter_degrees,
- *                pitch_jitter_degrees, attempts_per_viewpoint
+ * viewpoints     count, distance_min_blocks, distance_max_blocks, aim (target_jitter or
+ *                image_uniform), yaw_jitter_degrees, pitch_jitter_degrees (target_jitter
+ *                only), attempts_per_viewpoint
  * scene          preset (default level&lt;difficulty&gt;), base, parts, sight, lighting; see
  *                {@link SceneSpec#read}. A natural_patch base groups splits by source region.
- * visibility     min_ratio, max_ratio (levels 3-5; defaults 0.2-0.8 for level 3, 0.1 minimum for 4-5)
+ * visibility     min_ratio, max_ratio (levels 3-5; defaults 0.2-0.8 for level 3, 0.1 minimum for 4-5),
+ *                min_visible_pixels (default 0, no minimum)
  * capture        mode, width, height, cube_face_size (PANORAMA_310 only)
  * quotas         accepted_scenes, scene_attempts_per_accepted_scene
  * splits         train, validation, test
@@ -145,10 +148,17 @@ public final class ConfigResolver {
 		JsonObject viewpointInput = viewpoints.raw().deepCopy();
 		viewpointInput.remove("eye_height_blocks");
 		input.add("viewpoints", viewpointInput);
+		JsonObject visibilityInput = new JsonObject();
 		if (recorded.integer32("difficulty", 1, 5) > 2) {
-			JsonObject visibilityInput = new JsonObject();
 			visibilityInput.add("min_ratio", visibility.raw().get("min_ratio"));
 			visibilityInput.add("max_ratio", visibility.raw().get("max_ratio"));
+		}
+
+		if (visibility.has("min_visible_pixels")) {
+			visibilityInput.add("min_visible_pixels", visibility.raw().get("min_visible_pixels"));
+		}
+
+		if (!visibilityInput.isEmpty()) {
 			input.add("visibility", visibilityInput);
 		}
 
@@ -219,7 +229,7 @@ public final class ConfigResolver {
 
 	private static ResolvedConfig.Viewpoints viewpoints(JsonFields viewpoints) {
 		viewpoints.rejectUnknown(Set.of(
-			"count", "distance_min_blocks", "distance_max_blocks", "yaw_jitter_degrees", "pitch_jitter_degrees", "attempts_per_viewpoint"
+			"count", "distance_min_blocks", "distance_max_blocks", "aim", "yaw_jitter_degrees", "pitch_jitter_degrees", "attempts_per_viewpoint"
 		));
 		double min = viewpoints.decimal("distance_min_blocks", 0.5, 512.0, 3.0);
 		double max = viewpoints.decimal("distance_max_blocks", 0.5, 512.0, 16.0);
@@ -227,12 +237,22 @@ public final class ConfigResolver {
 			throw viewpoints.error("distance_min_blocks", "must not exceed distance_max_blocks (" + max + ")");
 		}
 
+		ViewpointAim aim = viewpoints.has("aim") ? viewpoints.enumValue("aim", ViewpointAim::fromJson) : ViewpointAim.TARGET_JITTER;
+		boolean jitter = aim == ViewpointAim.TARGET_JITTER;
+		// The manifest records 0 for both, so a replayed configuration may name them.
+		for (String name : List.of("yaw_jitter_degrees", "pitch_jitter_degrees")) {
+			if (!jitter && viewpoints.has(name) && viewpoints.decimal(name, 0.0, 180.0, 0.0) != 0.0) {
+				throw viewpoints.error(name, "must be 0 with aim image_uniform, which draws the target's image position instead");
+			}
+		}
+
 		return new ResolvedConfig.Viewpoints(
 			viewpoints.integer32("count", 1, Ids.MAX_VIEWPOINTS, 8),
 			min,
 			max,
-			viewpoints.decimal("yaw_jitter_degrees", 0.0, 180.0, 15.0),
-			viewpoints.decimal("pitch_jitter_degrees", 0.0, 90.0, 10.0),
+			aim,
+			jitter ? viewpoints.decimal("yaw_jitter_degrees", 0.0, 180.0, 15.0) : 0.0,
+			jitter ? viewpoints.decimal("pitch_jitter_degrees", 0.0, 90.0, 10.0) : 0.0,
 			viewpoints.integer32("attempts_per_viewpoint", 1, 10_000, 50),
 			EYE_HEIGHT_BLOCKS
 		);
@@ -244,13 +264,14 @@ public final class ConfigResolver {
 	}
 
 	private static ResolvedConfig.Visibility visibility(JsonFields visibility, int difficulty) {
-		visibility.rejectUnknown(Set.of("min_ratio", "max_ratio"));
+		visibility.rejectUnknown(Set.of("min_ratio", "max_ratio", "min_visible_pixels"));
+		int minPixels = visibility.integer32("min_visible_pixels", 0, Integer.MAX_VALUE, 0);
 		if (difficulty <= 2) {
 			if (visibility.has("min_ratio") || visibility.has("max_ratio")) {
 				throw visibility.error(visibility.has("min_ratio") ? "min_ratio" : "max_ratio", "levels 1-2 require fully visible targets; ratio bounds do not apply");
 			}
 
-			return new ResolvedConfig.Visibility(VisibilityRule.FULLY_VISIBLE, null, null);
+			return new ResolvedConfig.Visibility(VisibilityRule.FULLY_VISIBLE, null, null, minPixels);
 		}
 
 		// Initial defaults set from the M3 mask-gate evidence; null removes a bound.
@@ -273,7 +294,7 @@ public final class ConfigResolver {
 			throw visibility.error("min_ratio", "must be below max_ratio (" + max + ")");
 		}
 
-		return new ResolvedConfig.Visibility(difficulty == 3 ? VisibilityRule.PARTIALLY_VISIBLE : VisibilityRule.AT_LEAST_PARTLY_VISIBLE, min, max);
+		return new ResolvedConfig.Visibility(difficulty == 3 ? VisibilityRule.PARTIALLY_VISIBLE : VisibilityRule.AT_LEAST_PARTLY_VISIBLE, min, max, minPixels);
 	}
 
 	private static ResolvedConfig.Capture capture(JsonFields capture) {

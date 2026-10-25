@@ -1,13 +1,16 @@
 package io.github.thedeadbolt.honeyfactory.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.google.gson.JsonObject;
 import io.github.thedeadbolt.honeyfactory.contract.CaptureMode;
 import io.github.thedeadbolt.honeyfactory.contract.ContractException;
 import io.github.thedeadbolt.honeyfactory.contract.SplitGrouping;
+import io.github.thedeadbolt.honeyfactory.contract.ViewpointAim;
 import io.github.thedeadbolt.honeyfactory.contract.VisibilityRule;
 import io.github.thedeadbolt.honeyfactory.contract.Weather;
 import io.github.thedeadbolt.honeyfactory.scene.SceneBase;
@@ -33,7 +36,7 @@ class ConfigResolverTest {
 		ResolvedConfig config = ConfigResolver.resolve(MINIMAL);
 		assertEquals("minecraft:honey_block", config.target().blockId());
 		assertEquals(new ResolvedConfig.Arena(32, 32, 16, 4), config.arena());
-		assertEquals(new ResolvedConfig.Viewpoints(8, 3.0, 16.0, 15.0, 10.0, 50, 1.62), config.viewpoints());
+		assertEquals(new ResolvedConfig.Viewpoints(8, 3.0, 16.0, ViewpointAim.TARGET_JITTER, 15.0, 10.0, 50, 1.62), config.viewpoints());
 		assertEquals(ScenePresets.spec("level1"), config.scene());
 		assertEquals(new ResolvedConfig.Capture(CaptureMode.PERSPECTIVE_90, 1280, 1280, null), config.capture());
 		assertEquals(new ResolvedConfig.Quotas(1000, 800, 200, 10_000), config.quotas());
@@ -49,7 +52,10 @@ class ConfigResolverTest {
 		"{\"capture\": {\"mode\": \"PANORAMA_310\", \"width\": 1240, \"height\": 640, \"cube_face_size\": 512}}",
 		"{\"dataset\": {\"name\": \"honey-l3\", \"seed\": 9, \"difficulty\": 3}, \"visibility\": {\"min_ratio\": 0.3, \"max_ratio\": null}, \"arena\": {\"width\": 24}}",
 		"{\"dataset\": {\"name\": \"honey-l4\", \"seed\": 9, \"difficulty\": 4}, \"viewpoints\": {\"count\": 3, \"yaw_jitter_degrees\": 5}, \"quotas\": {\"accepted_scenes\": 12, \"scene_attempts_per_accepted_scene\": 4}}",
-		"{\"dataset\": {\"name\": \"honey-l5\", \"seed\": 9, \"difficulty\": 5}, \"scene\": {\"base\": {\"type\": \"natural_patch\", \"scenes_per_patch\": 4}}, \"splits\": {\"train\": 0.6, \"validation\": 0.2, \"test\": 0.2}}"
+		"{\"dataset\": {\"name\": \"honey-l5\", \"seed\": 9, \"difficulty\": 5}, \"scene\": {\"base\": {\"type\": \"natural_patch\", \"scenes_per_patch\": 4}}, \"splits\": {\"train\": 0.6, \"validation\": 0.2, \"test\": 0.2}}",
+		"{\"viewpoints\": {\"aim\": \"image_uniform\"}, \"capture\": {\"mode\": \"PANORAMA_310\"}}",
+		"{\"visibility\": {\"min_visible_pixels\": 200}}",
+		"{\"dataset\": {\"name\": \"honey-l5\", \"seed\": 9, \"difficulty\": 5}, \"visibility\": {\"min_visible_pixels\": 200}}"
 	})
 	void manifestConfigurationsResolveToTheSameHash(String overrides) {
 		com.google.gson.JsonObject input = io.github.thedeadbolt.honeyfactory.contract.JsonFields.parseObject(MINIMAL);
@@ -60,6 +66,30 @@ class ConfigResolverTest {
 		assertEquals(config.scene(), again.scene());
 		assertEquals(config.quotas(), again.quotas());
 		assertEquals(Path.of("/mnt/elsewhere"), again.outputRoot());
+	}
+
+	@Test
+	void imageUniformAimReplacesTheJitterAndIsRecordedOnlyWhenChosen() {
+		ResolvedConfig uniform = ConfigResolver.resolve(with("viewpoints", "{\"aim\": \"image_uniform\"}"));
+		assertEquals(new ResolvedConfig.Viewpoints(8, 3.0, 16.0, ViewpointAim.IMAGE_UNIFORM, 0.0, 0.0, 50, 1.62), uniform.viewpoints());
+		JsonObject recorded = uniform.toJson().getAsJsonObject("capture").getAsJsonObject("viewpoints");
+		assertEquals("image_uniform", recorded.get("aim").getAsString());
+		assertEquals(0.0, recorded.get("yaw_jitter_degrees").getAsDouble());
+		// The default is left out, so configurations from before the setting keep their hash.
+		ResolvedConfig jitter = ConfigResolver.resolve(with("viewpoints", "{\"aim\": \"target_jitter\"}"));
+		assertFalse(jitter.toJson().getAsJsonObject("capture").getAsJsonObject("viewpoints").has("aim"));
+		assertEquals(ConfigResolver.resolve(MINIMAL).sha256(), jitter.sha256());
+		assertNotEquals(jitter.sha256(), uniform.sha256());
+	}
+
+	@Test
+	void minimumVisiblePixelsIsRecordedOnlyWhenSet() {
+		ResolvedConfig set = ConfigResolver.resolve(with("visibility", "{\"min_visible_pixels\": 200}"));
+		assertEquals(new ResolvedConfig.Visibility(VisibilityRule.FULLY_VISIBLE, null, null, 200), set.visibility());
+		assertEquals(200, set.toJson().getAsJsonObject("generator").getAsJsonObject("visibility").get("min_visible_pixels").getAsInt());
+		ResolvedConfig zero = ConfigResolver.resolve(with("visibility", "{\"min_visible_pixels\": 0}"));
+		assertFalse(zero.toJson().getAsJsonObject("generator").getAsJsonObject("visibility").has("min_visible_pixels"));
+		assertEquals(ConfigResolver.resolve(MINIMAL).sha256(), zero.sha256());
 	}
 
 	@Test
@@ -126,6 +156,8 @@ class ConfigResolverTest {
 		old natural region section      | {"dataset": {"name": "a", "seed": 1, "difficulty": 5}, "output": {"root": "/x"}, "natural_region": {}}                             | /natural_region
 		arena without a target layer    | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "arena": {"height": 1}}                         | /arena/height
 		negative free-space reserve     | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x", "free_space_reserve_bytes": -1}}                 | /output/free_space_reserve_bytes
+		jitter with uniform aim         | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "viewpoints": {"aim": "image_uniform", "yaw_jitter_degrees": 15}} | /viewpoints/yaw_jitter_degrees
+		unknown aim                     | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "viewpoints": {"aim": "centre"}}                  | /viewpoints/aim
 		foreign block state             | {"dataset": {"name": "a", "seed": 1, "difficulty": 1}, "output": {"root": "/x"}, "target": {"allowed_block_states": ["minecraft:stone"]}} | /target/allowed_block_states
 		""")
 	void rejectsInvalidInputWithItsPath(String name, String json, String path) {

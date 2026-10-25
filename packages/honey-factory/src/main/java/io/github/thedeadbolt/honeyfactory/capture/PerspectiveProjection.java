@@ -59,6 +59,7 @@ public record PerspectiveProjection(int width, int height) implements CapturePro
 	}
 
 	/** Continuous pixel coordinates of a world point, or null when it is not in front of the near plane. */
+	@Override
 	public double @Nullable [] project(CameraFrame camera, double[] point) {
 		double[] local = camera.toCamera(point);
 		if (local[2] < NEAR_PLANE_BLOCKS) {
@@ -67,6 +68,32 @@ public record PerspectiveProjection(int width, int height) implements CapturePro
 
 		double focal = focalLengthPx();
 		return new double[] {this.width / 2.0 + focal * local[0] / local[2], this.height / 2.0 - focal * local[1] / local[2]};
+	}
+
+	/**
+	 * Solved in closed form. The ray through {@code (px, py)} is {@code (a, b, 1)} in camera
+	 * coordinates; at camera elevation {@code e} its world elevation satisfies
+	 * {@code sin e + b cos e = |(a, b, 1)| sin(target elevation)}, and its heading lies
+	 * {@code atan2(a, cos e - b sin e)} to the right of the camera's.
+	 */
+	@Override
+	public double @Nullable [] orientationPlacing(double[] direction, double px, double py) {
+		double focal = focalLengthPx();
+		double a = (px - this.width / 2.0) / focal;
+		double b = (this.height / 2.0 - py) / focal;
+		double sine = Math.sqrt(1.0 + a * a + b * b) * direction[1] / Math.sqrt(1.0 + b * b);
+		if (Math.abs(sine) > 1.0) {
+			return null;
+		}
+
+		double elevation = Math.asin(sine) - Math.atan(b);
+		if (Math.abs(elevation) > Math.PI / 2) {
+			return null;
+		}
+
+		double targetYaw = Math.toDegrees(Math.atan2(-direction[0], direction[2]));
+		double offset = Math.toDegrees(Math.atan2(a, Math.cos(elevation) - b * Math.sin(elevation)));
+		return new double[] {targetYaw - offset, -Math.toDegrees(elevation)};
 	}
 
 	@Override
