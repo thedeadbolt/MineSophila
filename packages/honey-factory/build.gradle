@@ -50,6 +50,9 @@ loom {
 			property("honeyfactory.productionScenes", providers.systemProperty("honeyfactory.productionScenes").getOrElse(""))
 			// Steps the M11 exit test drives through the control server; empty uses 300.
 			property("honeyfactory.controlSteps", providers.systemProperty("honeyfactory.controlSteps").getOrElse(""))
+			// The M12 benchmark's output label and the reference it is compared with; empty uses baseline for both.
+			property("honeyfactory.benchmarkLabel", providers.systemProperty("honeyfactory.benchmarkLabel").getOrElse(""))
+			property("honeyfactory.benchmarkBefore", providers.systemProperty("honeyfactory.benchmarkBefore").getOrElse(""))
 		}
 	}
 }
