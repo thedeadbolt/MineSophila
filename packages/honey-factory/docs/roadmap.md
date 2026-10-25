@@ -54,7 +54,7 @@ this package.
 | M8 | Dataset inspector and exact replay | M4–M7 | Exit gate passed; [findings](m8-inspector-and-replay.md), ADR 0015 |
 | M9 | Acceptance matrix and production pilot | M0–M8 | Exit gate passed; [findings](m9-acceptance.md) |
 | M10 | Phase-1 production datasets | M9 | Planned |
-| M11 | Animal-like control: lock-step continuous commands, one frame per tick | M7, M9 | Planned |
+| M11 | Animal-like control: lock-step continuous commands, one frame per tick | M7, M9 | Exit gate passed; [findings](m11-animal-like-control.md), ADR 0018 |
 | M12 | Motion clips generated through that control | M10, M11 | Planned |
 | M13 | Level-6 active-search environment and teacher episodes | M11, M12 | Planned |
 | M14 | Live adapter for the fly brain | M13 | Planned |
@@ -414,9 +414,9 @@ Deliverables:
 
 Deliverables:
 
-- The deferred loopback adapter over the internal API, with protocol, authentication,
-  lifecycle and equivalence tests. External code, such as the fly brain, can then drive the
-  player in lock-step and receive frames.
+- The loopback adapter itself was built in M11 (protocol, token, lifecycle and equivalence
+  tests). M14 adds live speed: the world running at game rate with `delay_ticks`, so a
+  brain must predict.
 - DAgger support: run the brain, record its frames, and relabel them with the teacher's
   actions from the episode's stored world truth.
 - Evaluation episodes on unseen scenes.

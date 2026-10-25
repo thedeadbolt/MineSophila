@@ -17,6 +17,7 @@ import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
 import io.github.thedeadbolt.honeyfactory.capture.CubeFace;
 import io.github.thedeadbolt.honeyfactory.capture.PanoramicProjection;
 import io.github.thedeadbolt.honeyfactory.capture.PerspectiveProjection;
+import io.github.thedeadbolt.honeyfactory.client.control.ControlServer;
 import io.github.thedeadbolt.honeyfactory.contract.ContractException;
 import io.github.thedeadbolt.honeyfactory.contract.Ids;
 import io.github.thedeadbolt.honeyfactory.contract.JsonFields;
@@ -169,7 +170,32 @@ public final class EnvironmentCommands {
 						+ (status.lastError() == null ? "" : ", last error: " + status.lastError())));
 					return 1;
 				})));
+			dispatcher.register(literal("honeyfactory_control")
+				.then(literal("start").executes(context -> startControl(context, false))
+					.then(literal("privileged").executes(context -> startControl(context, true))))
+				.then(literal("stop").executes(context -> {
+					ControlServer.stop();
+					context.getSource().sendFeedback(Component.literal("Control server stopped"));
+					return 1;
+				}))
+				.then(literal("status").executes(context -> {
+					ControlServer server = ControlServer.running();
+					context.getSource().sendFeedback(Component.literal(server == null ? "Control server not running"
+						: "Control server on 127.0.0.1:" + server.port() + (server.privileged() ? ", privileged" : ", student") + (server.connected() ? ", connected" : ", waiting")));
+					return 1;
+				})));
 		});
+	}
+
+	private static int startControl(CommandContext<FabricClientCommandSource> context, boolean privileged) {
+		ControlServer.start(0, privileged).whenComplete((server, error) -> {
+			if (error != null) {
+				context.getSource().sendError(Component.literal(String.valueOf(error.getCause() != null ? error.getCause() : error)));
+			} else {
+				context.getSource().sendFeedback(Component.literal("Control server on 127.0.0.1:" + server.port() + "; connection details in " + ControlServer.CONNECTION_FILE));
+			}
+		});
+		return 1;
 	}
 
 	private static int step(CommandContext<FabricClientCommandSource> context, String type, double value) {

@@ -165,7 +165,46 @@ The report:
 
 It exits 0 only when every dataset is complete and valid and every audited sample passed.
 
-## 8. Clean up
+## 8. Drive the player from Python
+
+The control server lets an external program drive the player one frozen tick at a time,
+as the fly brain later will. In a claimed dataset world:
+
+```text
+/honeyfactory_control start              student view: frame and body senses only
+/honeyfactory_control start privileged   also masks, the true state and teacher commands
+/honeyfactory_control status
+/honeyfactory_control stop
+```
+
+The server listens on 127.0.0.1. It writes its port and a fresh token to
+`honey-factory-control.json` in the game directory and accepts one connection at a time.
+Then, from the repository:
+
+```sh
+uv run honey-factory-tools control-demo --connection packages/honey-factory/run/honey-factory-control.json \
+    --steps 1000 --seed 11 --log /tmp/run.jsonl
+```
+
+The demo resets a level-1 scene and drives a reproducible mix of turns, walks, looks and
+jumps. It logs each step's command, frame and mask hashes and senses. For your own
+programs:
+
+```python
+from honey_factory_tools.control import Command, ControlClient
+
+with ControlClient.connect(path) as client:
+    observation = client.reset({"preset": "level1"}, seed=11, capture={"mode": "PERSPECTIVE_90", "width": 128, "height": 128})
+    observation = client.step(Command(forward=1.0, turn_rate=3.0))
+```
+
+The world stays frozen while the program thinks. A paused game refuses steps, so turn off
+*Options → Controls → Pause on Lost Focus* when the program runs in another window. While
+the server holds the player, the mouse does not turn it. Leaving the world stops the server
+and deletes its connection file. The protocol, for other languages, is
+[control-protocol.md](control-protocol.md).
+
+## 9. Clean up
 
 `/honeyfactory world release` restores the game rules, time, weather and player state
 that scenes changed. The arena stays claimed for the next run.

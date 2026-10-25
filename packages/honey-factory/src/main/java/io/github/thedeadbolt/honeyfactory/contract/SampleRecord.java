@@ -156,7 +156,8 @@ public record SampleRecord(
 		return json;
 	}
 
-	private static JsonObject targetJson(Target target) {
+	/** The contract's {@code target} object. */
+	public static JsonObject targetJson(Target target) {
 		JsonObject json = new JsonObject();
 		json.addProperty("target_present", target.targetPresent());
 		json.addProperty("target_in_projection", target.targetInProjection());

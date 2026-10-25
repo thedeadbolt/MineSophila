@@ -48,6 +48,8 @@ loom {
 			property("honeyfactory.productionRoot", providers.systemProperty("honeyfactory.productionRoot").getOrElse(""))
 			property("honeyfactory.productionRuns", providers.systemProperty("honeyfactory.productionRuns").getOrElse(""))
 			property("honeyfactory.productionScenes", providers.systemProperty("honeyfactory.productionScenes").getOrElse(""))
+			// Steps the M11 exit test drives through the control server; empty uses 300.
+			property("honeyfactory.controlSteps", providers.systemProperty("honeyfactory.controlSteps").getOrElse(""))
 		}
 	}
 }

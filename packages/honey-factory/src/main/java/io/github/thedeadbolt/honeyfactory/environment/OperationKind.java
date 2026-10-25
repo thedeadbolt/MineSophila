@@ -9,7 +9,11 @@ public enum OperationKind {
 	RESET(EnumSet.of(OperationState.IDLE, OperationState.READY, OperationState.FAILED), List.of(OperationState.PREPARING_SCENE)),
 	SET_VIEWPOINT(EnumSet.of(OperationState.READY), List.of(OperationState.ACTING, OperationState.SETTLING)),
 	OBSERVE(EnumSet.of(OperationState.READY), List.of(OperationState.CAPTURING)),
-	STEP(EnumSet.of(OperationState.READY), List.of(OperationState.ACTING, OperationState.SETTLING, OperationState.CAPTURING));
+	STEP(EnumSet.of(OperationState.READY), List.of(OperationState.ACTING, OperationState.SETTLING, OperationState.CAPTURING)),
+	/** Freezes the world after a reset, gives the player its body and captures step 0. */
+	CONTROL_RESET(EnumSet.of(OperationState.READY), List.of(OperationState.ACTING, OperationState.SETTLING, OperationState.CAPTURING)),
+	/** One frozen tick of a motor command, then its capture. */
+	CONTROL_STEP(EnumSet.of(OperationState.READY), List.of(OperationState.ACTING, OperationState.SETTLING, OperationState.CAPTURING));
 
 	private final Set<OperationState> startStates;
 	private final List<OperationState> path;

@@ -952,7 +952,8 @@ are the environment contract; keyboard press duration is not the public abstract
 
 Agreed with M7 ([ADR 0014](../../../docs/adr/0014-movement-actions.md)):
 
-- Turns and looks apply at once. Yaw wraps to [-180, 180) and pitch is clamped to
+- Turns and looks apply at once (superseded by M11, below: they now ramp over ticks).
+  Yaw wraps to [-180, 180) and pitch is clamped to
   [-90, 90]; the completed value is the change actually made, so a look may complete
   less than it requested.
 - Ticks are player ticks. MOVE_FORWARD holds forward for exactly its ticks and WAIT holds
@@ -990,9 +991,47 @@ new recorded controller version.
   package roadmap and implementation.
 - Run bulk generation in the mod to avoid a Python round trip for every scene/view.
 - Design for a future loopback-only external control adapter. Newline-delimited JSON
-  over local TCP is the current proposal, but its port, messages, authentication and
-  lifecycle are deferred. It must call the same environment API as other controls.
+  over local TCP was the first proposal; M11 replaced it (below).
 - The first implementation does not require the external adapter or a live model.
+
+### Lock-step control (M11)
+
+Agreed 2026-10-25 ([ADR 0018](../../../docs/adr/0018-lock-step-motor-control.md), design in
+`docs/superpowers/specs/2026-10-25-m11-animal-like-control-design.md`):
+
+- **The loop.** A control reset builds a platform scene and freezes the world. Each control
+  step applies one motor command for exactly one game tick, captures that tick and freezes
+  again. The world never advances while the caller thinks. The local player is held too,
+  because vanilla's tick freeze exempts players.
+- **The command.**
+  - `forward` and `strafe` in [-1, 1], through the player's input vector;
+  - `turn_rate` and `pitch_rate` in degrees per tick, with the actual rates moving toward
+    them by at most the acceleration limits;
+  - `jump`;
+  - `delay_ticks`, 0 only.
+  - Default limits are 9° per tick of turning and 6° of pitch, each reaching full rate in
+    5 ticks. They are recorded with the environment settings.
+- **What a student senses:**
+  - motion relative to its body;
+  - turning rates;
+  - head pitch and which way is down;
+  - contact (ground, bump, water);
+  - its last executed command.
+  - It never receives position, compass heading, masks or target metadata.
+- **The true state** is position, rotation, velocity, the scene and the target's mask
+  statistics. It goes to privileged connections and logs only. A target cut by the frame
+  edge is a valid state and is flagged (`target_touches_edge`), not rejected; the still
+  datasets' `frame_clipped` rule and pixel minimum do not apply to control steps.
+- **Mixed control:** each step records the student's command, the teacher's, and which ran.
+- **The M7 actions** keep their running-world step, but turns and looks ramp through the
+  same motor limits, one rate per player tick, landing exactly on the requested angle.
+- **The external adapter** is a loopback server (`/honeyfactory_control start
+  [privileged]`). Its protocol is `control-protocol.md`: length-prefixed JSON headers with
+  raw frame bytes, a session token, one controller at a time, claimed dataset worlds only.
+  The reference client is `honey_factory_tools.control`.
+- **Determinism:** the same reset and commands reproduce every frame, mask and true state,
+  whatever the caller's speed. RGB is exact only for scenes without animated blocks (water,
+  lava, fire), whose animation follows a client-wide counter.
 
 ## Package-wide definition of done
 
@@ -1065,7 +1104,7 @@ spec decision and must not weaken correctness, safety or integrity gates.
 Level 6 is complete only after episode length, discovery/success rules and episode
 quotas are specified, and deterministic fixtures show that targets initially marked
 `out_of_view` or `fully_occluded` can become visible through the allowed actions
-without mining. The future loopback adapter additionally requires its own protocol,
+without mining. The loopback adapter, added in M11, has its own protocol,
 authentication, lifecycle and equivalence tests against the internal API. Neither is
 required to declare the phase-1 levels 1–5 dataset generator complete.
 
