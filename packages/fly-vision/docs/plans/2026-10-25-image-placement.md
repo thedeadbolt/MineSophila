@@ -254,7 +254,7 @@ def test_placement_validation() -> None:
 - Produces:
   - `placement.py`: `DEFAULT_FOV_H_DEG = 60.0`, `FOV_AGREEMENT_DEG = 1.0`.
   - `FlyEye.sample(panorama, mask=None, source=None, placement: dict[str, str | bool | float] | None = None)` stores a copy as `meta["placement"]`, or null. Frame meta then has 17 keys; update the Task 1 test from 16 to 17.
-  - `fly-vision convert … --projection {panorama,equirect,perspective}`, default `panorama`. Rename `--panorama` to `--image`, and keep `--panorama` as a hidden alias so existing commands still work.
+  - `fly-vision convert … --projection {panorama,equirect,perspective}`, default `panorama`; when `--projection` is omitted, any `--fov-*` flag selects `equirect` (ruling R3, v0 compatibility). Rename `--panorama` to `--image`, and keep `--panorama` as a hidden alias so existing commands still work.
     - `panorama`: today's default path with its aspect guard; `--fov-*` and `--center-*` are rejected. Placement: `{"method": "honey_factory_contract", "assumed": false}`.
     - `equirect`: requires `--fov-h` and `--fov-v` (today's explicit path). Placement: `{"method": "fov", "assumed": false}`.
     - `perspective`: everything is opt-in (D5, revised); `--fov-v` is rejected because it follows from the aspect ratio; accepts `--center-az` and `--center-el`.
