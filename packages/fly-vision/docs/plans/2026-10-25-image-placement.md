@@ -169,7 +169,7 @@ def test_perspective_behind_fly_is_all_invalid() -> None:
 ```
 
 - [ ] **Step 2: Run** `just test fly-vision`. Expected: FAIL (`PerspectiveSpec` missing).
-- [ ] **Step 3: Implement `PerspectiveSpec` in `projection.py`.** `__post_init__` raises `ValueError` unless `width > 0`, `height > 0` and `0 < fov_h_deg < 180`. Rays use the camera basis from the placement, then map each pixel offset to a ray:
+- [ ] **Step 3: Implement `PerspectiveSpec` in `projection.py`.** `__post_init__` raises `ValueError` unless `width > 0`, `height > 0`, `0 < fov_h_deg < 180`, `-90 <= center_el_deg <= 90` (beyond ±90 the basis rolls the image 180°, breaking D4) and both centres finite. Rays use the camera basis from the placement, then map each pixel offset to a ray:
 
 ```text
 F = focal_px;  cx = (x + 0.5) − width/2;  cy = (y + 0.5) − height/2     (cy grows downward)
