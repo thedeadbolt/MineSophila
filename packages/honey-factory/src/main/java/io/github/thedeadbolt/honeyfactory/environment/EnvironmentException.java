@@ -11,6 +11,8 @@ public class EnvironmentException extends RuntimeException {
 		INVALID_STATE,
 		/** The request itself is malformed or out of range. */
 		INVALID_REQUEST,
+		/** A control step was requested before a control reset. */
+		NOT_RESET,
 		/** The operation or action is not implemented yet. */
 		UNSUPPORTED,
 		/** Readiness conditions were not met before the timeout. */

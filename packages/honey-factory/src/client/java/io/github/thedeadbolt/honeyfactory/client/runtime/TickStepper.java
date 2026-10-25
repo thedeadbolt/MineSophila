@@ -24,11 +24,18 @@ import org.jspecify.annotations.Nullable;
  *   <li>one tick of the local player, with the caller's input applied just before it;</li>
  *   <li>the next rendered frame, which shows that tick.</li>
  * </ol>
+ * After the player tick the body's interpolation is settled (old position and rotation set
+ * to the new ones), so frames rendered between steps show one still view. Otherwise the
+ * camera would swing between the last two positions with the frame's partial tick, and the
+ * renderer's section graph would never settle near a section boundary.
  * Everything runs on the client thread except the server's own work.
  */
 public final class TickStepper {
-	/** A completed step: the player's level game time after the server tick, and the client tick of the player tick. */
-	public record Tick(long serverTick, long clientTick) {
+	/**
+	 * A completed step: the player's level game time after the server tick, the client tick
+	 * of the player tick, and how far that tick moved the player, in blocks.
+	 */
+	public record Tick(long serverTick, long clientTick, double[] displacement) {
 	}
 
 	private enum Phase { IDLE, SERVER, PLAYER, FRAME }
@@ -45,6 +52,7 @@ public final class TickStepper {
 	private boolean permit;
 	private long clientTicks;
 	private long playerTickedAt = -1;
+	private double[] before = new double[3];
 
 	private TickStepper() {
 	}
@@ -132,6 +140,7 @@ public final class TickStepper {
 		}
 
 		this.playerTickedAt = this.clientTicks;
+		this.before = new double[] {player.getX(), player.getY(), player.getZ()};
 		return false;
 	}
 
@@ -148,6 +157,12 @@ public final class TickStepper {
 				this.phase = Phase.PLAYER;
 			}
 		} else if (this.phase == Phase.PLAYER && this.playerTickedAt >= 0) {
+			LocalPlayer player = Minecraft.getInstance().player;
+			if (player != null) {
+				this.before = new double[] {player.getX() - this.before[0], player.getY() - this.before[1], player.getZ() - this.before[2]};
+				player.setOldPosAndRot();
+			}
+
 			this.phase = Phase.FRAME;
 		}
 	}
@@ -155,7 +170,7 @@ public final class TickStepper {
 	private void frameRendered() {
 		if (this.phase == Phase.FRAME) {
 			CompletableFuture<Tick> step = this.step;
-			Tick tick = new Tick(this.targetGameTime, this.playerTickedAt);
+			Tick tick = new Tick(this.targetGameTime, this.playerTickedAt, this.before);
 			this.phase = Phase.IDLE;
 			this.step = null;
 			this.beforeTick = null;

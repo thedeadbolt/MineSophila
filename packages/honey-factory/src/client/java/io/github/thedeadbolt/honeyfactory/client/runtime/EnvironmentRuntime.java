@@ -1,13 +1,22 @@
 package io.github.thedeadbolt.honeyfactory.client.runtime;
 
+import io.github.thedeadbolt.honeyfactory.capture.CameraFrame;
 import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
+import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
 import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
 import io.github.thedeadbolt.honeyfactory.client.mixin.AtmosphericFogAccessor;
 import io.github.thedeadbolt.honeyfactory.client.mixin.ClientLevelAccessor;
 import io.github.thedeadbolt.honeyfactory.client.mixin.FogRendererAccessor;
 import io.github.thedeadbolt.honeyfactory.client.mixin.SectionOcclusionGraphAccessor;
 import io.github.thedeadbolt.honeyfactory.config.ConfigResolver;
+import io.github.thedeadbolt.honeyfactory.control.BodySenses;
+import io.github.thedeadbolt.honeyfactory.control.ControlStep;
+import io.github.thedeadbolt.honeyfactory.control.MotorCommand;
+import io.github.thedeadbolt.honeyfactory.control.MotorState;
+import io.github.thedeadbolt.honeyfactory.control.TrueState;
 import io.github.thedeadbolt.honeyfactory.contract.BlockBox;
+import io.github.thedeadbolt.honeyfactory.contract.MaskStatistics;
+import io.github.thedeadbolt.honeyfactory.contract.SampleRecord;
 import io.github.thedeadbolt.honeyfactory.contract.Weather;
 import io.github.thedeadbolt.honeyfactory.environment.Action;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
@@ -122,6 +131,10 @@ public final class EnvironmentRuntime {
 	) {
 	}
 
+	/** One control step and the capture it returned. */
+	public record ControlResult(ControlStep step, CaptureService.Capture capture) {
+	}
+
 	private static final EnvironmentRuntime INSTANCE = new EnvironmentRuntime(Timing.DEFAULT);
 	private static final double POSE_TOLERANCE = 1e-6;
 	/**
@@ -155,6 +168,8 @@ public final class EnvironmentRuntime {
 	/** Wall time of each batched pose since the last drain, from moving the camera to the finished capture. */
 	private final List<Long> poseNanos = new ArrayList<>();
 	private boolean poseStepQueued;
+	/** The running control session: its projection and seed, the body's rates and the last step; null when none runs. */
+	private @Nullable ControlSession control;
 
 	private EnvironmentRuntime(Timing timing) {
 		this.timing = timing;
@@ -199,6 +214,7 @@ public final class EnvironmentRuntime {
 		}
 
 		endStep();
+		this.control = null;
 		this.coordinator = new OperationCoordinator();
 		this.deferredCapture = null;
 		this.poseSequence = null;
@@ -319,6 +335,211 @@ public final class EnvironmentRuntime {
 			viewpoint.afterWork = () -> this.coordinator.advance(operation, OperationState.SETTLING);
 			return viewpoint;
 		});
+	}
+
+	/**
+	 * Resets {@code plan}, places the player at {@code start}, then freezes the world, gives
+	 * the player its body where it stands and captures step 0 through {@code projection}.
+	 * Every later {@link #controlStep} uses the same projection. The user's input and
+	 * auto-jump option are borrowed until {@link #controlEnd}.
+	 */
+	public CompletableFuture<ControlResult> controlReset(ArenaLayout layout, ScenePlan plan, CameraPose start, CaptureProjection projection, long seed) {
+		Minecraft minecraft = Minecraft.getInstance();
+		if (this.control != null) {
+			this.control.input.set(MotorCommand.IDLE);
+		}
+
+		releaseStill(minecraft);
+		return reset(layout, plan, start).thenCompose(state -> start(OperationKind.CONTROL_RESET, (server, operation) -> {
+			ControlSession session = this.control == null ? new ControlSession(minecraft) : this.control.restart();
+			this.control = null;
+			session.install(minecraft, projection, seed, this.settings.autoJump());
+			TickStepper.get().hold(server);
+			CompletableFuture<Long> work = server.submit(() -> ArenaExecutor.embody(server, player(server), layout));
+			RenderStability stability = new RenderStability();
+			Pending<Long, ControlResult> pending = new Pending<>(operation, work, 0, this.timing.resetTimeoutTicks(), embodied -> stability.holds(
+				minecraft.level.tickRateManager().isFrozen() && minecraft.gameMode.getPlayerMode() == GameType.ADVENTURE && inArena(minecraft) && sectionsCompiled(minecraft)
+			), (embodied, settled) -> {
+				this.coordinator.advance(operation, OperationState.CAPTURING);
+				this.control = session;
+				return session.record(minecraft, operation, controlStep(minecraft, operation, session, 0, null, null, ControlStep.Executed.STUDENT, MotorState.ZERO, levelTime(server), new double[3]));
+			});
+			pending.afterWork = () -> this.coordinator.advance(operation, OperationState.SETTLING);
+			return pending;
+		}));
+	}
+
+	/**
+	 * Runs one frozen tick with the {@code executed} side's command and captures it. Both
+	 * commands are recorded. The command is checked against the motor limits first; a
+	 * refused command advances nothing.
+	 */
+	public CompletableFuture<ControlResult> controlStep(@Nullable MotorCommand student, @Nullable MotorCommand teacher, ControlStep.Executed executed) {
+		ControlSession session = this.control;
+		if (session == null) {
+			return CompletableFuture.failedFuture(new EnvironmentException(EnvironmentException.Reason.NOT_RESET, "control steps need a control reset first"));
+		}
+
+		MotorCommand command = executed == ControlStep.Executed.STUDENT ? student : teacher;
+		try {
+			if (command == null) {
+				throw new IllegalArgumentException("the executed " + executed.jsonName() + " command is missing");
+			}
+
+			for (MotorCommand offered : new MotorCommand[] {student, teacher}) {
+				if (offered != null) {
+					this.settings.motor().check(offered);
+				}
+			}
+		} catch (IllegalArgumentException e) {
+			return CompletableFuture.failedFuture(new EnvironmentException(EnvironmentException.Reason.INVALID_REQUEST, e.getMessage()));
+		}
+
+		return start(OperationKind.CONTROL_STEP, (server, operation) -> {
+			Minecraft minecraft = Minecraft.getInstance();
+			ArenaLayout layout = this.arena;
+			MotorState[] achieved = {session.motor};
+			CompletableFuture<TickStepper.Tick> work = TickStepper.get().advance(player -> {
+				MotorState.Achieved next = session.motor.apply(command, this.settings.motor(), player.getYRot(), player.getXRot());
+				player.setYRot(next.yaw());
+				player.setXRot(next.pitch());
+				player.setYHeadRot(next.yaw());
+				session.input.set(command);
+				achieved[0] = next.state();
+			});
+			RenderStability stability = new RenderStability();
+			Pending<TickStepper.Tick, ControlResult> pending = new Pending<>(operation, work, 0, this.timing.viewpointTimeoutTicks(), tick -> {
+				requireInArena(minecraft, layout);
+				return stability.holds(sectionsCompiled(minecraft));
+			}, (tick, settled) -> {
+				this.coordinator.advance(operation, OperationState.CAPTURING);
+				session.motor = achieved[0];
+				int index = session.last.step().index() + 1;
+				return session.record(minecraft, operation, controlStep(minecraft, operation, session, index, student, teacher, executed, achieved[0], tick.serverTick(), tick.displacement()));
+			});
+			pending.afterWork = () -> this.coordinator.advance(operation, OperationState.SETTLING);
+			return pending;
+		});
+	}
+
+	/** The last control step, or null when no control session runs. */
+	public @Nullable ControlResult lastControlStep() {
+		return this.control == null ? null : this.control.last;
+	}
+
+	/** Ends the control session: the world ticks again and the user's input and auto-jump option are back. */
+	public void controlEnd() {
+		Minecraft minecraft = Minecraft.getInstance();
+		releaseStill(minecraft);
+
+		ControlSession session = this.control;
+		this.control = null;
+		if (session != null) {
+			session.restore(minecraft);
+		}
+	}
+
+	/**
+	 * Releases a held stepper with the body at rest. Otherwise the player would resume with
+	 * the momentum of its last step, and a spectator keeps drifting with it.
+	 */
+	private static void releaseStill(Minecraft minecraft) {
+		if (TickStepper.get().held() && minecraft.getSingleplayerServer() != null) {
+			if (minecraft.player != null) {
+				minecraft.player.setDeltaMovement(Vec3.ZERO);
+			}
+
+			TickStepper.get().release(minecraft.getSingleplayerServer());
+		}
+	}
+
+	/** Builds one step's record from the client player after its tick and a fresh capture. */
+	private Captured controlStep(Minecraft minecraft, Operation operation, ControlSession session, int index, @Nullable MotorCommand student, @Nullable MotorCommand teacher,
+		ControlStep.Executed executed, MotorState achieved, long serverTick, double[] velocity) {
+		int[] cell = this.scene.targetPosition(this.arena);
+		BlockPos targetPos = cell == null ? null : new BlockPos(cell[0], cell[1], cell[2]);
+		Observation observation = capture(minecraft, operation, session.projection, targetPos);
+		LocalPlayer player = minecraft.player;
+		CameraPose pose = observation.pose();
+		CapturedImages images = observation.capture().images();
+		BlockBox box = cell == null ? null : BlockBox.cell(cell);
+		CameraFrame camera = CameraFrame.of(pose, ConfigResolver.EYE_HEIGHT_BLOCKS);
+		SampleRecord.Target target = SampleRecord.Target.of(box != null, box != null && session.projection.intersects(camera, box),
+			MaskStatistics.of(images.visibleMask(), images.width(), images.height()), images.unoccludedPixels(), box == null ? null : camera.distanceTo(box.center()));
+		BodySenses senses = BodySenses.of(pose, velocity, achieved, player.onGround(), index > 0 && player.horizontalCollision, player.isInWater(), session.lastExecuted);
+		TrueState truth = new TrueState(pose, velocity, this.layoutSha256, session.seed, serverTick, target, box != null && images.unoccludedTouchesEdge());
+		ControlStep step = new ControlStep(index, student, teacher, executed, achieved, senses, truth);
+		session.lastExecuted = step.executedCommand();
+		return new Captured(step, observation.capture());
+	}
+
+	private record Captured(ControlStep step, CaptureService.Capture capture) {
+	}
+
+	private static long levelTime(IntegratedServer server) {
+		ServerPlayer player = player(server);
+		return player.level().getGameTime();
+	}
+
+	private static void requireInArena(Minecraft minecraft, ArenaLayout arena) {
+		LocalPlayer player = minecraft.player;
+		BlockBox volume = arena.resetVolume();
+		BlockPos feet = player.blockPosition();
+		BlockPos eye = BlockPos.containing(player.getEyePosition());
+		if (!inArena(minecraft) || !volume.contains(feet.getX(), feet.getY(), feet.getZ()) || !volume.contains(eye.getX(), eye.getY(), eye.getZ())) {
+			throw new EnvironmentException(EnvironmentException.Reason.OUT_OF_ARENA, "a control step took the player to " + clientPose(minecraft) + ", outside the arena reset volume " + volume);
+		}
+	}
+
+	/** A control session's state; the user's input and auto-jump option are kept to restore. */
+	private static final class ControlSession {
+		private final MotorInput input = new MotorInput();
+		private @Nullable ClientInput savedInput;
+		private @Nullable Boolean savedAutoJump;
+		private CaptureProjection projection;
+		private long seed;
+		private MotorState motor = MotorState.ZERO;
+		private MotorCommand lastExecuted = MotorCommand.IDLE;
+		private @Nullable ControlResult last;
+
+		ControlSession(Minecraft minecraft) {
+		}
+
+		/** The same session after a new reset: the borrowed input stays borrowed, the body's state starts over. */
+		ControlSession restart() {
+			this.motor = MotorState.ZERO;
+			this.lastExecuted = MotorCommand.IDLE;
+			this.last = null;
+			return this;
+		}
+
+		void install(Minecraft minecraft, CaptureProjection projection, long seed, boolean autoJump) {
+			this.projection = projection;
+			this.seed = seed;
+			if (this.savedInput == null) {
+				this.savedInput = minecraft.player.input;
+				this.savedAutoJump = minecraft.options.autoJump().get();
+			}
+
+			this.input.set(MotorCommand.IDLE);
+			minecraft.player.input = this.input;
+			minecraft.options.autoJump().set(autoJump);
+		}
+
+		ControlResult record(Minecraft minecraft, Operation operation, Captured captured) {
+			this.last = new ControlResult(captured.step(), captured.capture());
+			return this.last;
+		}
+
+		void restore(Minecraft minecraft) {
+			if (this.savedInput != null && minecraft.player != null) {
+				minecraft.player.input = this.savedInput;
+			}
+
+			if (this.savedAutoJump != null) {
+				minecraft.options.autoJump().set(this.savedAutoJump);
+			}
+		}
 	}
 
 	/**
