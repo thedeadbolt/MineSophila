@@ -136,7 +136,7 @@ def _save(sm: SamplingMatrix, path: Path) -> None:
 
 
 def _load(path: Path) -> SamplingMatrix:
-    with np.load(path, allow_pickle=False) as d:
+    with Path(path).open("rb") as fh, np.load(fh, allow_pickle=False) as d:
         shape = (int(d["shape"][0]), int(d["shape"][1]))
         w = sparse.csr_matrix((d["data"], d["indices"], d["indptr"]), shape=shape)
         return SamplingMatrix(

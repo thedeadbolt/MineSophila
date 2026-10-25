@@ -152,7 +152,7 @@ def _from_npz(data: "np.lib.npyio.NpzFile") -> Lattice:
 
 def load_lattice(path: str | Path) -> Lattice:
     """Read a lattice written by `save_lattice` and validate it."""
-    with np.load(path, allow_pickle=False) as data:
+    with Path(path).open("rb") as fh, np.load(fh, allow_pickle=False) as data:
         lattice = _from_npz(data)
     validate_lattice(lattice)
     return lattice

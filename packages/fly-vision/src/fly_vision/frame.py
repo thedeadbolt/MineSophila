@@ -68,7 +68,7 @@ def save_frame(
 
 
 def load_frame(path: str | Path) -> FlyFrame:
-    with np.load(path, allow_pickle=False) as d:
+    with Path(path).open("rb") as fh, np.load(fh, allow_pickle=False) as d:
         return FlyFrame(
             activations=d["activations"],
             valid=d["valid"],
@@ -77,7 +77,7 @@ def load_frame(path: str | Path) -> FlyFrame:
 
 
 def load_labels(path: str | Path) -> FlyLabels:
-    with np.load(path, allow_pickle=False) as d:
+    with Path(path).open("rb") as fh, np.load(fh, allow_pickle=False) as d:
         if "honey_coverage" not in d.files:
             raise ValueError(f"{path}: labels file has no honey_coverage")
         return FlyLabels(
