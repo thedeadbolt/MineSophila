@@ -53,6 +53,22 @@ final class GameTestSupport {
 		return true;
 	}
 
+	/**
+	 * Whether an expensive acceptance test is left out: unlike {@link #skipped}, it runs only
+	 * when {@code -Dhoneyfactory.gametests} names it, never in a full run.
+	 */
+	static boolean skippedUnlessNamed(Object test) {
+		String name = test.getClass().getSimpleName();
+		for (String prefix : System.getProperty("honeyfactory.gametests", "").split(",")) {
+			if (!prefix.isBlank() && name.startsWith(prefix.trim())) {
+				return false;
+			}
+		}
+
+		HoneyFactory.LOGGER.info("Skipping {}; name it in honeyfactory.gametests to run it", name);
+		return true;
+	}
+
 	/** Creates a world of the Honey Factory Dataset type named {@code name}; it is not claimed yet. */
 	static TestSingleplayerContext datasetWorld(ClientGameTestContext context, String name) {
 		return datasetWorld(context, name, null);

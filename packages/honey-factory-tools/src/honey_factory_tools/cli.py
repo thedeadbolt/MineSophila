@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from honey_factory_tools import __version__, dataset, inspector, selection
+from honey_factory_tools import __version__, dataset, inspector, report, selection
 from honey_factory_tools.canonical import Json, loads
 from honey_factory_tools.catalog import Catalog
 from honey_factory_tools.reviews import ReviewError, ReviewStore
@@ -71,6 +71,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     report.add_argument("--reviews", type=Path, required=True, help="sidecar review root")
     report.add_argument("--json", action="store_true", help="print the summary as JSON")
     report.add_argument("directory", type=Path, help="the dataset directory holding dataset.json")
+    acceptance = commands.add_parser(
+        "acceptance-report", help="report on an acceptance folder of runs and datasets"
+    )
+    acceptance.add_argument(
+        "--schemas", type=Path, help="schema directory for one contract version"
+    )
+    acceptance.add_argument("--reviews", type=Path, help="sidecar review root for the audit")
+    acceptance.add_argument("--audit-seed", type=int, help="seed of the stratified audit selection")
+    acceptance.add_argument("--audit-count", type=int, default=200)
+    acceptance.add_argument(
+        "--output", type=Path, help="write <output>.md and <output>.json instead of printing"
+    )
+    acceptance.add_argument("directory", type=Path, help="the acceptance folder")
     args = parser.parse_args(argv)
 
     try:
@@ -82,6 +95,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _validate_dataset(
             schemas, cast(Path, args.directory), cast(bool, args.allow_generating)
         )
+    if args.command == "acceptance-report":
+        return _acceptance(schemas, args)
     if args.command in ("inspect", "select", "reviews"):
         try:
             catalog = Catalog(cast(Path, args.directory), schemas)
@@ -199,6 +214,23 @@ def _reviews(catalog: Catalog, args: argparse.Namespace) -> int:
     for subject in summary.uncertain:
         print(f"uncertain: {subject}")
     return 0
+
+
+def _acceptance(schemas: Schemas, args: argparse.Namespace) -> int:
+    reports = report.build(
+        cast(Path, args.directory),
+        schemas,
+        cast(Path | None, args.reviews),
+        cast(int | None, args.audit_seed),
+        cast(int, args.audit_count),
+    )
+    output = cast(Path | None, args.output)
+    if output is None:
+        print(report.to_markdown(reports), end="")
+    else:
+        report.write(reports, output)
+        print(f"Wrote {output.with_suffix('.md')} and {output.with_suffix('.json')}")
+    return 0 if reports and all(r.passed for r in reports) else 1
 
 
 def _records(path: Path) -> list[tuple[str, Json | _Unreadable]]:

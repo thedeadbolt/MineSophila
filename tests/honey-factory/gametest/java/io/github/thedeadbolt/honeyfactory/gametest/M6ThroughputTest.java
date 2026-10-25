@@ -132,8 +132,10 @@ public class M6ThroughputTest implements FabricClientGameTest {
 	/**
 	 * Captures every plan both ways. The masks must match. RGB may differ by no more than two
 	 * captures of the first pose the usual way, 20 ticks apart, differ from each other, which
-	 * is nothing in a static scene. On terrain, whose animated textures such as water may be
-	 * out of sight from the first pose, up to 0.1 % of the bytes may differ as well.
+	 * is nothing in a static scene. On terrain, animated textures such as distant water change
+	 * between any two captures, and how much water a patch shows varies with the world. There,
+	 * bytes that also change when the pose is captured again 20 and 31 ticks later (two other
+	 * animation frames) are not counted, and up to 0.1 % of the rest may differ.
 	 */
 	private static JsonObject compare(ClientGameTestContext context, ArenaLayout arena, GeneratedScene scene, List<ViewpointPlan> plans, CaptureProjection projection, List<String> failures) {
 		List<CameraPose> poses = plans.stream().map(plan -> plan.pose(arena)).toList();
@@ -155,6 +157,14 @@ public class M6ThroughputTest implements FabricClientGameTest {
 			CapturedImages moved = batched.get(i).capture().images();
 			boolean masks = java.util.Arrays.equals(placed.visibleMask(), moved.visibleMask()) && java.util.Arrays.equals(placed.unoccludedMask(), moved.unoccludedMask());
 			int bytes = differing(placed.rgb(), moved.rgb());
+			if (arena.natural() && bytes > allowed) {
+				context.waitTicks(20);
+				byte[] later20 = GameTestSupport.await(context, runtime -> runtime.observe(projection)).capture().images().rgb();
+				context.waitTicks(11);
+				byte[] later31 = GameTestSupport.await(context, runtime -> runtime.observe(projection)).capture().images().rgb();
+				bytes = differingWhereStill(placed.rgb(), moved.rgb(), later20, later31);
+			}
+
 			rgb.add(bytes);
 			maskDifferences += masks ? 0 : 1;
 			if (!masks || bytes > allowed) {
@@ -173,6 +183,16 @@ public class M6ThroughputTest implements FabricClientGameTest {
 		summary.add("rgb_bytes_differing", rgb);
 		summary.addProperty("mask_differences", maskDifferences);
 		return summary;
+	}
+
+	/** Bytes where {@code a} and {@code b} differ but {@code a} matches both later captures of its pose. */
+	private static int differingWhereStill(byte[] a, byte[] b, byte[] later, byte[] latest) {
+		int count = 0;
+		for (int i = 0; i < a.length; i++) {
+			count += a[i] != b[i] && a[i] == later[i] && a[i] == latest[i] ? 1 : 0;
+		}
+
+		return count;
 	}
 
 	private static int differing(byte[] a, byte[] b) {

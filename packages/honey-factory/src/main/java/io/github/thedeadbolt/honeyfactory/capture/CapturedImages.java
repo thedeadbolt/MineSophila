@@ -41,6 +41,23 @@ public record CapturedImages(int width, int height, byte[] rgb, byte[] visibleMa
 		return null;
 	}
 
+	/** Whether any unoccluded target pixel lies in the image's first or last row or column. */
+	public boolean unoccludedTouchesEdge() {
+		for (int x = 0; x < this.width; x++) {
+			if (this.unoccludedMask[x] != 0 || this.unoccludedMask[(this.height - 1) * this.width + x] != 0) {
+				return true;
+			}
+		}
+
+		for (int y = 0; y < this.height; y++) {
+			if (this.unoccludedMask[y * this.width] != 0 || this.unoccludedMask[y * this.width + this.width - 1] != 0) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	public int unoccludedPixels() {
 		int count = 0;
 		for (byte value : this.unoccludedMask) {

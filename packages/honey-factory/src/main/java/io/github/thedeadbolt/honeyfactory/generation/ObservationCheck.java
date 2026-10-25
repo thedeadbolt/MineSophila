@@ -16,11 +16,19 @@ import org.jspecify.annotations.Nullable;
  * <p>The masks must be binary with every visible pixel inside the unoccluded mask. Whether
  * the target is in the projection is decided geometrically from its block cell, so a target
  * in view that rasterises to no pixel is {@code subpixel} rather than {@code out_of_view}.
- * Target-present captures must then satisfy the level's visibility rule.
+ * Target-present captures must then lie wholly inside the frame and satisfy the level's
+ * visibility rule.
+ *
+ * <p>The visibility ratio measures occlusion by the scene, so a target cut off by the frame
+ * would look more visible than it is: its unoccluded mask is cut off too. A capture whose
+ * unoccluded mask reaches the frame's edge is therefore rejected as {@value #FRAME_CLIPPED}.
+ * That covers a perspective view's sides and a panorama's elevation limits and blind-sector
+ * sides.
  */
 public final class ObservationCheck {
 	public static final String MASK_VALIDATION = "mask_validation";
 	public static final String VISIBILITY = "visibility";
+	public static final String FRAME_CLIPPED = "frame_clipped";
 
 	/** The capture's target metadata, or the reason it cannot become a sample. */
 	public sealed interface Outcome {
@@ -49,6 +57,10 @@ public final class ObservationCheck {
 		}
 
 		boolean present = target != null;
+		if (present && images.unoccludedTouchesEdge()) {
+			return new Outcome.Rejected(FRAME_CLIPPED, "the target reaches the edge of the frame, so part of it may lie outside");
+		}
+
 		boolean inProjection = present && projection.intersects(camera, target);
 		MaskStatistics visible = MaskStatistics.of(images.visibleMask(), images.width(), images.height());
 		int unoccluded = images.unoccludedPixels();
