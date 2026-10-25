@@ -203,8 +203,14 @@ public class M3MaskGateTest implements FabricClientGameTest {
 			failures.add(fixture + ": masks disagree with the ray check away from edges: " + rays);
 		}
 
-		boolean accepted = ObservationCheck.check(LEVEL_1, projection, camera, BlockBox.cell(target), images) instanceof ObservationCheck.Outcome.Accepted;
-		if (accepted != (status == TargetStatus.FULLY_VISIBLE)) {
+		// A target reaching the image edge may continue beyond it, so level 1 rejects it however it reads.
+		ObservationCheck.Outcome outcome = ObservationCheck.check(LEVEL_1, projection, camera, BlockBox.cell(target), images);
+		boolean accepted = outcome instanceof ObservationCheck.Outcome.Accepted;
+		if (fixture == Fixture.EDGE) {
+			if (!(outcome instanceof ObservationCheck.Outcome.Rejected rejected) || !ObservationCheck.FRAME_CLIPPED.equals(rejected.reason())) {
+				failures.add("EDGE: level 1 does not reject the frame-clipped target: " + outcome);
+			}
+		} else if (accepted != (status == TargetStatus.FULLY_VISIBLE)) {
 			failures.add(fixture + ": level-1 acceptance " + accepted + " for status " + status.jsonName());
 		}
 	}
