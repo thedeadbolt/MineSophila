@@ -19,6 +19,10 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.Function;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
@@ -31,6 +35,10 @@ import org.jspecify.annotations.Nullable;
  * decodes as an 8-bit PNG of the recorded size, masks contain only 0 and 255, and the
  * mask's pixel count, bounding box and centroid equal the sample's target metadata. Image
  * files no sample references are errors too.
+ *
+ * <p>Samples' images are checked in parallel, on as many threads as a quarter of the heap
+ * allows at three RGB images per check, at most {@value #MAX_THREADS}; errors are reported in
+ * sample order, as a sequential check would report them.
  */
 public final class DatasetValidator {
 	/** Validation result; an empty {@code errors} list means the dataset is valid. */
@@ -48,6 +56,8 @@ public final class DatasetValidator {
 	}
 
 	private static final List<String> IMAGE_ROOTS = List.of("rgb", "masks");
+	/** Image checks are I/O and decoding bound; more threads than this gain little and hold more decoded images. */
+	static final int MAX_THREADS = 16;
 
 	private DatasetValidator() {
 	}
@@ -93,15 +103,11 @@ public final class DatasetValidator {
 
 		Set<String> referenced = new HashSet<>();
 		for (SampleRecord sample : samples) {
-			String label = "sample " + sample.sampleId() + ": ";
 			referenced.add(sample.rgb().path());
 			referenced.add(sample.mask().path());
-			checkImage(root, sample.rgb(), 3, label + "rgb", errors);
-			byte[] mask = checkImage(root, sample.mask(), 1, label + "mask", errors);
-			if (mask != null) {
-				checkMask(sample, mask, label, errors);
-			}
 		}
+
+		errors.addAll(sampleFileErrors(root, samples));
 
 		for (String imageRoot : IMAGE_ROOTS) {
 			Path directory = root.resolve(imageRoot);
@@ -140,6 +146,63 @@ public final class DatasetValidator {
 		}
 
 		return records;
+	}
+
+	/** Every sample's image errors, in sample order, checked on a pool of its own. */
+	private static List<String> sampleFileErrors(Path root, List<SampleRecord> samples) throws IOException {
+		long largest = samples.stream().mapToLong(sample -> (long) sample.rgb().width() * sample.rgb().height()).max().orElse(1);
+		int threads = threads(largest, Runtime.getRuntime().maxMemory(), Runtime.getRuntime().availableProcessors());
+		ExecutorService pool = Executors.newFixedThreadPool(threads, runnable -> {
+			Thread thread = new Thread(runnable, "honey-factory-validate");
+			thread.setDaemon(true);
+			return thread;
+		});
+		try {
+			List<Future<List<String>>> checks = new ArrayList<>(samples.size());
+			for (SampleRecord sample : samples) {
+				checks.add(pool.submit(() -> sampleFileErrors(root, sample)));
+			}
+
+			List<String> errors = new ArrayList<>();
+			for (Future<List<String>> check : checks) {
+				errors.addAll(check.get());
+			}
+
+			return errors;
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new IOException("validation was interrupted", e);
+		} catch (ExecutionException e) {
+			if (e.getCause() instanceof IOException io) {
+				throw io;
+			}
+
+			throw new IllegalStateException(e.getCause());
+		} finally {
+			pool.shutdownNow();
+		}
+	}
+
+	/**
+	 * Threads for checking images of up to {@code rgbPixels} pixels: one per spare processor,
+	 * within a quarter of {@code maxHeap} at three RGB images each.
+	 */
+	static int threads(long rgbPixels, long maxHeap, int processors) {
+		long byMemory = maxHeap / 4 / Math.max(1, 3 * 3 * rgbPixels);
+		return (int) Math.max(1, Math.min(Math.min(MAX_THREADS, processors - 1), byMemory));
+	}
+
+	/** One sample's image errors: both files as recorded and the mask's statistics. */
+	private static List<String> sampleFileErrors(Path root, SampleRecord sample) throws IOException {
+		List<String> errors = new ArrayList<>();
+		String label = "sample " + sample.sampleId() + ": ";
+		checkImage(root, sample.rgb(), 3, label + "rgb", errors);
+		byte[] mask = checkImage(root, sample.mask(), 1, label + "mask", errors);
+		if (mask != null) {
+			checkMask(sample, mask, label, errors);
+		}
+
+		return errors;
 	}
 
 	/** Returns the decoded pixels when the file matches its descriptor, otherwise records why. */

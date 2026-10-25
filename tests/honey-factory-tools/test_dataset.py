@@ -108,6 +108,21 @@ def test_reports_damaged_missing_and_unreferenced_files(schemas: Schemas, copy: 
     assert any(".s000002-v00.png.tmp" in e for e in errors), "leftover temporary files are reported"
 
 
+@pytest.mark.parametrize("parallel_from", [0, 10**9], ids=["processes", "in-process"])
+def test_image_errors_come_in_sample_order(
+    schemas: Schemas, copy: Path, monkeypatch: pytest.MonkeyPatch, parallel_from: int
+) -> None:
+    monkeypatch.setattr(dataset, "PARALLEL_FROM", parallel_from)
+    samples = _lines(copy / "samples.jsonl")
+    damaged = [sample["sample_id"] for sample in samples[::2]]
+    for sample in samples[::2]:
+        (copy / sample["files"]["rgb"]["path"]).unlink()
+
+    errors = dataset.validate(copy, schemas).errors
+    missing = [e.split(": ")[0].removeprefix("sample ") for e in errors if "is missing" in e]
+    assert missing == damaged, errors
+
+
 def test_checks_mask_values_and_statistics(schemas: Schemas, copy: Path) -> None:
     samples = _lines(copy / "samples.jsonl")
     present = next(s for s in samples if s["target"]["target_present"])

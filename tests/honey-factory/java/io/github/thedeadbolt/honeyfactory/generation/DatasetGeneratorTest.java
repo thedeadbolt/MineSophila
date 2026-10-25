@@ -24,6 +24,8 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -181,6 +183,23 @@ class DatasetGeneratorTest {
 		assertTrue(errors.stream().anyMatch(error -> error.contains(second.sampleId()) && error.contains("missing")), errors::toString);
 		assertTrue(errors.stream().anyMatch(error -> error.contains("stray.png")), errors::toString);
 		assertFalse(errors.stream().anyMatch(error -> error.contains("integrity")), "the indexes themselves are unchanged");
+	}
+
+	/** Images are checked in parallel, but errors still come in sample order. */
+	@Test
+	void validationReportsImageErrorsInSampleOrder() throws IOException {
+		ScriptedEnvironment environment = new ScriptedEnvironment();
+		DatasetGenerator.Result result = run(new DatasetGenerator(config(this.temp, 6), environment, CLOCK, DISK), environment);
+		Path root = result.directory();
+		List<SampleRecord> samples = DatasetValidator.validate(root).samples();
+		List<String> damaged = new ArrayList<>();
+		for (int i = samples.size() - 1; i >= 0; i -= 3) {
+			Files.delete(root.resolve(samples.get(i).rgb().path()));
+			damaged.add(0, samples.get(i).sampleId());
+		}
+
+		List<String> errors = DatasetValidator.validate(root).errors();
+		assertEquals(damaged.stream().map(id -> "sample " + id + ": rgb").toList(), errors.stream().map(error -> error.substring(0, error.indexOf(": rgb") + 5)).toList(), errors::toString);
 	}
 
 	@Test
