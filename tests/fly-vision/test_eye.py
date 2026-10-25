@@ -89,6 +89,10 @@ def test_low_bit_depth_and_uint16() -> None:
     dark = (np.random.default_rng(0).integers(0, 10, (S.height, S.width, 3))).astype(np.uint8)
     assert EYE.sample(dark, None, REF)[0].meta["low_bit_depth"] is True
     assert EYE.sample(img(), None, REF)[0].meta["low_bit_depth"] is True  # flat image: 1 level
+    full = np.random.default_rng(1).integers(0, 256, (S.height, S.width, 3)).astype(np.uint8)
+    meta = EYE.sample(full, None, REF)[0].meta
+    assert meta["low_bit_depth"] is False
+    assert min(meta["input_levels"]) >= 32
     f16, _ = EYE.sample((img().astype(np.uint16) * 257), None, REF)
     f8, _ = EYE.sample(img(), None, REF)
     assert np.allclose(f16.activations, f8.activations, atol=1e-4)
