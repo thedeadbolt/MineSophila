@@ -85,6 +85,7 @@ class FlyEye:
             "lattice_version": self.lattice.version,
             "lattice_hash": self._lattice_hash,
             "matrix_key": self.sm.key,
+            "projection": self.projection.describe(),
             "spectral_hash": self.spectral.hash,
             "config_hash": config_hash(self.cfg),
             "adaptation": self.cfg.adaptation,

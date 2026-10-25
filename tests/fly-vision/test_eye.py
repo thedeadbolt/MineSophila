@@ -213,3 +213,9 @@ def test_source_file_sha256_is_null_without_a_path() -> None:
     assert EYE.sample(img(), None)[0].meta["source_file_sha256"] is None
     gone = SourceRef(scene_id="s", frame_id="f", image_path="/nonexistent/x.png")
     assert EYE.sample(img(), None, gone)[0].meta["source_file_sha256"] is None
+
+
+def test_meta_records_projection() -> None:
+    f, _ = EYE.sample(img(), None, REF)
+    assert f.meta["projection"] == S.describe()
+    assert len(f.meta) == 16

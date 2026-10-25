@@ -4,6 +4,7 @@ The eye frame is (forward, right, up). Azimuth is positive to the right and
 elevation positive up; azimuth 0, elevation 0 is forward on the horizon.
 """
 
+import json
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -34,8 +35,15 @@ class Projection(Protocol):
         """Pixel solid angles in steradians, shape (H, W)."""
         ...
 
+    def describe(self) -> dict[str, str | int | float]:
+        """Plain JSON record of the projection: `"type"` plus every field."""
+        ...
+
     def key(self) -> str:
-        """Stable text naming the projection type and every field (for cache keys)."""
+        """Stable text naming the projection type and every field (for cache keys).
+
+        Always `json.dumps(self.describe(), sort_keys=True)`, so the two cannot drift.
+        """
         ...
 
 
@@ -72,11 +80,19 @@ class EquirectSpec:
     def solid_angle(self) -> FloatArray:
         return pixel_solid_angle(self)
 
+    def describe(self) -> dict[str, str | int | float]:
+        return {
+            "type": "equirect",
+            "width": self.width,
+            "height": self.height,
+            "fov_h_deg": self.fov_h_deg,
+            "fov_v_deg": self.fov_v_deg,
+            "center_az_deg": self.center_az_deg,
+            "center_el_deg": self.center_el_deg,
+        }
+
     def key(self) -> str:
-        return (
-            f"equirect:w={self.width},h={self.height},fov_h={self.fov_h_deg!r},"
-            f"fov_v={self.fov_v_deg!r},az0={self.center_az_deg!r},el0={self.center_el_deg!r}"
-        )
+        return json.dumps(self.describe(), sort_keys=True)
 
 
 def honey_factory_panorama(width: int, height: int) -> EquirectSpec:

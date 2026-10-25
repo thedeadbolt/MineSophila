@@ -81,6 +81,7 @@ lattice order (default lattice: 863 per eye).
 | `fly_vision_version` | installed package version |
 | `lattice_version`, `lattice_hash` | which eye and its content hash |
 | `matrix_key` | identifies the sampling matrix (lattice, projection, acceptance settings) |
+| `projection` | the projection as a JSON dict: `type` plus every field (equirect: `width`, `height`, `fov_h_deg`, `fov_v_deg`, `center_az_deg`, `center_el_deg`) |
 | `spectral_hash` | hash of the spectral model (rhodopsin peaks, RGB primaries) |
 | `config_hash` | hash of the run configuration and package version |
 | `adaptation` | `none` (default) or `frame_mean` (experimental) |

@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pytest
 
@@ -86,3 +88,18 @@ def test_equirect_spec_rejects_invalid(kwargs: dict[str, float], match: str) -> 
 def test_equirect_spec_accepts_full_sphere_and_contract() -> None:
     EquirectSpec(10, 5, 360.0, 180.0)
     EquirectSpec(10, 5, 310.0, 160.0, center_el_deg=10.0)
+
+
+def test_describe_and_key_agree() -> None:
+    s = honey_factory_panorama(2480, 1280)
+    d = s.describe()
+    assert d == {
+        "type": "equirect",
+        "width": 2480,
+        "height": 1280,
+        "fov_h_deg": 310.0,
+        "fov_v_deg": 160.0,
+        "center_az_deg": 0.0,
+        "center_el_deg": 10.0,
+    }
+    assert json.loads(s.key()) == d
