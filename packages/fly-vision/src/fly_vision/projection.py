@@ -116,6 +116,12 @@ class PerspectiveSpec:
             raise ValueError(f"width and height must be > 0, got {self.width}x{self.height}")
         if not 0.0 < self.fov_h_deg < 180.0:
             raise ValueError(f"fov_h_deg must be in (0, 180), got {self.fov_h_deg}")
+        if not math.isfinite(self.center_az_deg):
+            raise ValueError(f"center_az_deg must be finite, got {self.center_az_deg}")
+        if not (math.isfinite(self.center_el_deg) and -90.0 <= self.center_el_deg <= 90.0):
+            raise ValueError(
+                f"center_el_deg must be finite and in [-90, 90], got {self.center_el_deg}"
+            )
 
     @property
     def focal_px(self) -> float:

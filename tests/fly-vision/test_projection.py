@@ -156,3 +156,13 @@ def test_perspective_validation() -> None:
         PerspectiveSpec(0, 81, 50.0)
     with pytest.raises(ValueError, match="must be"):
         PerspectiveSpec(101, -1, 50.0)
+    with pytest.raises(ValueError, match="must be"):
+        PerspectiveSpec(101, 81, 50.0, center_el_deg=90.5)
+    with pytest.raises(ValueError, match="must be"):
+        PerspectiveSpec(101, 81, 50.0, center_el_deg=-91.0)
+    with pytest.raises(ValueError, match="must be"):
+        PerspectiveSpec(101, 81, 50.0, center_az_deg=float("nan"))
+    with pytest.raises(ValueError, match="must be"):
+        PerspectiveSpec(101, 81, 50.0, center_el_deg=float("inf"))
+    PerspectiveSpec(101, 81, 50.0, center_el_deg=90.0)
+    PerspectiveSpec(101, 81, 50.0, center_el_deg=-90.0)
