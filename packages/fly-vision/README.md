@@ -5,7 +5,7 @@ Python package for modelling *Drosophila* vision from images and Minecraft scene
 A virtual fly eye: it samples a panorama and a honey mask through a fixed ommatidial lattice
 and writes per-ommatidium photoreceptor activations (R1-6, R7, R8) and honey labels. It does
 no detection, no optic-lobe processing and has no learned parameters. See the
-[architecture](../../docs/architecture.md), [ADR 0016](../../docs/adr/0016-fly-vision-v0-eye-model.md),
+[architecture](../../docs/architecture.md), [ADR 0019](../../docs/adr/0019-fly-vision-v0-eye-model.md),
 the [honey-factory interface](docs/interface.md), the [science notes](../../docs/science/fly-vision.md)
 and the [assumptions register](docs/assumptions.md) (every parameter and its provenance).
 

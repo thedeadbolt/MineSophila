@@ -36,7 +36,7 @@ projections and further vision modes are proposed.
 | `adapt` (`adaptation.py`) | off by default; `frame_mean` is experimental |
 | `frame.py`, `diagnostics.py`, `plot.py`, `cli.py` | `.npz` files, coverage and metamer checks, hex plots, `fly-vision convert` |
 
-The decisions are in [ADR 0016](adr/0016-fly-vision-v0-eye-model.md). The input contract for
+The decisions are in [ADR 0019](adr/0019-fly-vision-v0-eye-model.md). The input contract for
 honey-factory is in the [interface note](../packages/fly-vision/docs/interface.md).
 
 **Design rule for other image types.** The lattice is the fly and is fixed. An adapter for

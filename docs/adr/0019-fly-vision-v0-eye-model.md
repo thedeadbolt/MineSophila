@@ -1,4 +1,4 @@
-# 0016: fly-vision v0 eye model
+# 0019: fly-vision v0 eye model
 
 - **Status:** Accepted
 - **Date:** 2026-10-25

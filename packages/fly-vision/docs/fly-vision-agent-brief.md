@@ -1,7 +1,7 @@
 # fly-vision v0: agent brief
 
 > **Status: historical, synced 2026-10-25.** This brief was written before implementation.
-> The plan (`docs/plans/2026-10-25-fly-vision-v0.md`), [ADR 0016](../../../docs/adr/0016-fly-vision-v0-eye-model.md),
+> The plan (`docs/plans/2026-10-25-fly-vision-v0.md`), [ADR 0019](../../../docs/adr/0019-fly-vision-v0-eye-model.md),
 > the [assumptions register](assumptions.md) and the [interface note](interface.md) supersede it where
 > they differ. The sections below are kept as written; this block records the differences.
 

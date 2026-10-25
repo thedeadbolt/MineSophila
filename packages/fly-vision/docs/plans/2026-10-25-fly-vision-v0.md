@@ -770,7 +770,7 @@ def test_r7_sensitivity_reports():
 ### Task 9: CLI, interface doc, calibration test and repo docs
 
 **Files:**
-- Create: `packages/fly-vision/src/fly_vision/cli.py`, `packages/fly-vision/docs/interface.md`, `tests/fly-vision/test_cli.py`, `tests/fly-vision/test_calibration.py`, `docs/adr/0016-fly-vision-v0-eye-model.md`
+- Create: `packages/fly-vision/src/fly_vision/cli.py`, `packages/fly-vision/docs/interface.md`, `tests/fly-vision/test_cli.py`, `tests/fly-vision/test_calibration.py`, `docs/adr/0019-fly-vision-v0-eye-model.md`
 - Modify: `packages/fly-vision/pyproject.toml` (console script `fly-vision = "fly_vision.cli:main"`), `packages/fly-vision/docs/fly-vision-agent-brief.md` (sync decisions 1–11 and amendments A1–A10), `packages/fly-vision/README.md`, `docs/architecture.md`, `docs/adr/README.md`, `tests/README.md`
 
 **Interfaces:**
@@ -850,7 +850,7 @@ def test_known_directions():
 - [ ] **Step 5: Write docs.**
   - `packages/fly-vision/docs/interface.md` for honey-factory: input (equirectangular PNG per `equirectangular-310x160-v1`, linked, not restated; 8-bit sRGB, 16-bit accepted), mask (same projection, `> 0` = honey; honey-factory's visible mask), what fly-vision reads from the sample record (ids, `target.target_status`, conditions; copied verbatim into `meta["source"]`), the calibration request (honey blocks at az/el (0, 0), (90, 0), (−90, 0), (0, 45) at 5 blocks' distance, weather off, daylight, plus `targets.json`; note honey-factory's M5 known-direction gate fixtures may already serve), and the output format with all meta keys.
   - Sync decisions 1–11 and amendments A1–A10 into `fly-vision-agent-brief.md` (answer its open questions 1, 3, 4, 5; mark the brief as superseded where the plan differs).
-  - `docs/adr/0016-fly-vision-v0-eye-model.md` (use `docs/adr/template.md`): level contract frame, generated lattice, Gaussian sparse sampler, spectral model with R7 tails, adaptation off, npz frames with provenance. Add it to `docs/adr/README.md`.
+  - `docs/adr/0019-fly-vision-v0-eye-model.md` (use `docs/adr/template.md`): level contract frame, generated lattice, Gaussian sparse sampler, spectral model with R7 tails, adaptation off, npz frames with provenance. Add it to `docs/adr/README.md`.
   - `docs/architecture.md`: replace the proposed `Scene` / `Eye` / `Receptor` / `VisionMode` / `FlyVision` table with what v0 implements (`FlyEye`, projection, lattice, sampler, spectral) and keep the rest as proposed. Update the opening sentence that says fly-vision is version metadata only.
   - `packages/fly-vision/README.md` (usage: CLI and `FlyEye`) and `tests/README.md` "Current coverage".
 - [ ] **Step 6: Commit** `feat(fly-vision): add convert CLI, interface doc and calibration test`
