@@ -7,6 +7,8 @@ from typing import Literal
 
 from fly_vision import __version__
 
+FWHM_PER_SIGMA = 2.3548  # FWHM = 2 sqrt(2 ln 2) sigma
+
 
 @dataclass(frozen=True)
 class FlyVisionConfig:
@@ -17,7 +19,6 @@ class FlyVisionConfig:
     valid_coverage_min: float = 0.5
     low_bit_depth_levels: int = 32
     adaptation: Literal["none", "frame_mean"] = "none"
-    seed: int = 0
 
 
 def config_hash(cfg: FlyVisionConfig) -> str:

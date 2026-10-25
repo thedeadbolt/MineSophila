@@ -80,6 +80,7 @@ lattice order (default lattice: 877 per eye).
 | `input_levels` | number of distinct values in each colour channel |
 | `low_bit_depth` | true when any channel has fewer than 32 distinct values |
 | `image_sha256` | SHA-256 of the pixel array |
+| `source_file_sha256` | SHA-256 of the source image file's bytes (joins frames to honey-factory sample records, which hash the PNG); `null` when there is no readable `image_path` |
 | `source` | `{scene_id, frame_id, image_path, capture_meta}` or `null` |
 
 `.labels.npz`:

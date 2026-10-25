@@ -18,6 +18,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from fly_vision import CHANNELS
+from fly_vision.config import FWHM_PER_SIGMA
+from fly_vision.lattice import SUBTYPES
 
 RHODOPSIN_PEAKS_NM: dict[str, int] = {"Rh1": 478, "Rh3": 345, "Rh4": 375, "Rh5": 437, "Rh6": 508}
 WAVELENGTHS_NM: NDArray[np.int_] = np.arange(300, 801)
@@ -26,7 +28,6 @@ _RECEPTORS = ("Rh1", "Rh3", "Rh4", "Rh5", "Rh6")
 _SRGB_LUMINANCE = (0.2126, 0.7152, 0.0722)
 _V_PEAK_NM = 555.0
 _V_FWHM_NM = 100.0
-_FWHM_PER_SIGMA = 2.3548  # FWHM = 2 sqrt(2 ln 2) sigma
 
 
 def govardovskii_a1(
@@ -92,7 +93,7 @@ class SpectralModel:
             m = sub == name
             out[m, 1] = r7[m]
             out[m, 2] = r8[m]
-        known = np.isin(sub, ("pale", "yellow", "dorsal_yellow", "dra"))
+        known = np.isin(sub, SUBTYPES)
         if not known.all():
             bad = sorted({str(s) for s in sub[~known]})
             raise ValueError(f"unknown ommatidium subtype(s): {bad}")
@@ -103,10 +104,10 @@ def build_spectral_model(primaries: PrimaryConfig | None = None) -> SpectralMode
     """Integrate Gaussian primaries against the rhodopsin templates."""
     primaries = primaries or PrimaryConfig()
     wl = WAVELENGTHS_NM.astype(float)
-    v = np.exp(-0.5 * ((wl - _V_PEAK_NM) / (_V_FWHM_NM / _FWHM_PER_SIGMA)) ** 2)
+    v = np.exp(-0.5 * ((wl - _V_PEAK_NM) / (_V_FWHM_NM / FWHM_PER_SIGMA)) ** 2)
     emission = np.empty((wl.size, 3))
     for k in range(3):
-        sigma = primaries.fwhm_nm[k] / _FWHM_PER_SIGMA
+        sigma = primaries.fwhm_nm[k] / FWHM_PER_SIGMA
         g = np.exp(-0.5 * ((wl - primaries.peaks_nm[k]) / sigma) ** 2)
         emission[:, k] = g * _SRGB_LUMINANCE[k] / np.sum(v * g)
     sens = np.stack([govardovskii_a1(RHODOPSIN_PEAKS_NM[r], WAVELENGTHS_NM) for r in _RECEPTORS])

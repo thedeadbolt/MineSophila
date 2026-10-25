@@ -16,11 +16,10 @@ from scipy import sparse
 from scipy.spatial import cKDTree
 
 from fly_vision import __version__
-from fly_vision.config import FlyVisionConfig
+from fly_vision.config import FWHM_PER_SIGMA, FlyVisionConfig
 from fly_vision.lattice import Lattice, lattice_hash
 from fly_vision.projection import Projection, to_unit
 
-FWHM_PER_SIGMA = 2.3548  # FWHM = 2 sqrt(2 ln 2) sigma
 _ALGORITHM = "gaussian-kdtree-v1"  # bump when the sampler maths changes
 _CHUNK = 128  # ommatidia per KD-tree query, bounds the peak memory of the build
 

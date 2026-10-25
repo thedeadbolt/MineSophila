@@ -17,7 +17,19 @@ from fly_vision.projection import Projection
 from fly_vision.sampler import SamplingMatrix, apply_sampling, build_sampling_matrix, load_or_build
 from fly_vision.spectral import SpectralModel, build_spectral_model, srgb_to_linear
 
-__all__ = ["FlyEye", "load_mask", "load_panorama"]
+__all__ = ["FlyEye", "linearise", "load_mask", "load_panorama"]
+
+_LUT8 = srgb_to_linear(np.arange(256) / 255.0)
+_LUT16 = srgb_to_linear(np.arange(65536) / 65535.0)
+
+
+def linearise(panorama: NDArray[np.uint8] | NDArray[np.uint16]) -> NDArray[np.float64]:
+    """sRGB to linear light through a lookup table indexed by the raw integer values."""
+    if panorama.dtype == np.uint8:
+        return _LUT8[panorama]
+    if panorama.dtype == np.uint16:
+        return _LUT16[panorama]
+    raise ValueError(f"panorama dtype must be uint8 or uint16, got {panorama.dtype}")
 
 
 class FlyEye:
@@ -54,15 +66,12 @@ class FlyEye:
         h, w = self.projection.height, self.projection.width
         if panorama.shape != (h, w, 3):
             raise ValueError(f"panorama shape {panorama.shape} != expected {(h, w, 3)}")
-        if panorama.dtype == np.uint8:
-            full_scale = 255.0
-        elif panorama.dtype == np.uint16:
-            full_scale = 65535.0
-        else:
-            raise ValueError(f"panorama dtype must be uint8 or uint16, got {panorama.dtype}")
-
-        levels = [int(np.unique(panorama[..., c]).size) for c in range(3)]
-        linear = srgb_to_linear(panorama.astype(np.float64) / full_scale)
+        linear = linearise(panorama)  # also rejects other dtypes
+        n_values = _LUT8.size if panorama.dtype == np.uint8 else _LUT16.size
+        levels = [
+            int(np.count_nonzero(np.bincount(panorama[..., c].ravel(), minlength=n_values)))
+            for c in range(3)
+        ]
         pixels = apply_sampling(self.sm, linear)
         # `receptors` returns a fresh array, so zeroing invalid rows below cannot alias
         # anything the caller (or `adapt`'s pass-through) owns.
@@ -85,6 +94,7 @@ class FlyEye:
             "input_levels": levels,
             "low_bit_depth": bool(min(levels) < self.cfg.low_bit_depth_levels),
             "image_sha256": hashlib.sha256(np.ascontiguousarray(panorama).tobytes()).hexdigest(),
+            "source_file_sha256": _file_sha256(source),
             "source": source_dict,
         }
         frame = FlyFrame(activations=activations, valid=self.sm.valid.copy(), meta=meta)
@@ -114,3 +124,13 @@ class FlyEye:
             },
         )
         return frame, labels
+
+
+def _file_sha256(source: SourceRef | None) -> str | None:
+    """SHA-256 of the source image file's bytes, or None when there is no readable path."""
+    if source is None or source.image_path is None:
+        return None
+    try:
+        return hashlib.sha256(Path(source.image_path).read_bytes()).hexdigest()
+    except OSError:
+        return None

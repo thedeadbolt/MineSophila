@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-from fly_vision.lattice import Lattice
+from fly_vision.lattice import SUBTYPES, Lattice
 from fly_vision.sampler import SamplingMatrix
 from fly_vision.spectral import (
     PrimaryConfig,
@@ -19,7 +19,7 @@ from fly_vision.spectral import (
     srgb_to_linear,
 )
 
-_SUBTYPES = ("pale", "yellow")
+_SUBTYPES = SUBTYPES[:2]  # pale, yellow: the main-retina subtypes
 _BLUE = 2  # index of the blue primary in `PrimaryConfig.peaks_nm`
 
 

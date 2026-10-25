@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -202,3 +203,11 @@ def test_corrupt_lattice_reports_error(tmp_path: Path, capsys: pytest.CaptureFix
     err = capsys.readouterr().err
     assert err.startswith("fly-vision: error:")
     assert "Traceback" not in err
+
+
+def test_frame_records_source_file_hash(tmp_path: Path) -> None:
+    _write_inputs(tmp_path)
+    assert main(_args(tmp_path)) == 0
+    frame = load_frame(tmp_path / "out" / "f.fly.npz")
+    expected = hashlib.sha256((tmp_path / "p.png").read_bytes()).hexdigest()
+    assert frame.meta["source_file_sha256"] == expected

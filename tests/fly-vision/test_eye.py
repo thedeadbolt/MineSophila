@@ -7,11 +7,12 @@ import pytest
 from numpy.typing import NDArray
 from PIL import Image
 
-from fly_vision.eye import FlyEye, load_mask, load_panorama
+from fly_vision.eye import FlyEye, linearise, load_mask, load_panorama
 from fly_vision.frame import SourceRef, load_frame, load_labels, save_frame
 from fly_vision.lattice import generate_hex_lattice
 from fly_vision.projection import honey_factory_panorama, pixel_directions, to_unit
 from fly_vision.sampler import apply_sampling
+from fly_vision.spectral import srgb_to_linear
 
 S = honey_factory_panorama(width=620, height=320)
 EYE = FlyEye(generate_hex_lattice(), S)
@@ -187,3 +188,28 @@ def test_mask_validation() -> None:
         EYE.sample(img(), disc(30, 0, 6) * 255, REF)
     with pytest.raises(ValueError, match="2-D"):
         EYE.sample(img(), np.zeros((S.height, S.width, 3)), REF)
+
+
+def test_lookup_table_matches_formula() -> None:
+    rng = np.random.default_rng(3)
+    p8 = rng.integers(0, 256, (20, 30, 3)).astype(np.uint8)
+    p16 = rng.integers(0, 65536, (20, 30, 3)).astype(np.uint16)
+    assert np.array_equal(linearise(p8), srgb_to_linear(p8.astype(np.float64) / 255.0))
+    assert np.array_equal(linearise(p16), srgb_to_linear(p16.astype(np.float64) / 65535.0))
+    with pytest.raises(ValueError, match="dtype"):
+        linearise(p8.astype(np.float64))  # pyright: ignore[reportArgumentType]
+
+
+def test_input_levels_counts_distinct_values() -> None:
+    p = img()
+    p[0, :4, 0] = [1, 2, 3, 4]
+    p[0, 0, 1] = 7
+    assert EYE.sample(p, None, REF)[0].meta["input_levels"] == [5, 2, 1]
+    assert EYE.sample(p.astype(np.uint16) * 257, None, REF)[0].meta["input_levels"] == [5, 2, 1]
+
+
+def test_source_file_sha256_is_null_without_a_path() -> None:
+    assert EYE.sample(img(), None, REF)[0].meta["source_file_sha256"] is None
+    assert EYE.sample(img(), None)[0].meta["source_file_sha256"] is None
+    gone = SourceRef(scene_id="s", frame_id="f", image_path="/nonexistent/x.png")
+    assert EYE.sample(img(), None, gone)[0].meta["source_file_sha256"] is None
