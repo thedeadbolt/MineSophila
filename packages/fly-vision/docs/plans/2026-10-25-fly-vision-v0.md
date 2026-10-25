@@ -22,6 +22,8 @@ These override the original draft of this plan and the brief where they conflict
 - **A6. Milestone pauses** (brief §8): stop after Task 3 (M0), Task 4 (M1), Task 7 (M2 + M3) and Task 9 (M4) and show the user hex plots. `plot_hex` therefore moves to Task 3.
 - **A7. Brief rotation test** (shift by one interommatidial angle → output shifts by one column) is added to Task 4.
 - **A8. Real-capture smoke runs** (Task 9 step 6, M1/M4 checks) are done by the controller with frames the user provides; they are not automated tests.
+- **A9. Labels are a pure transformation** (user, 2026-10-25). `FlyLabels` holds only `honey_coverage` (the honey mask through the same sampling matrix) plus id meta. No thresholded summary: `visibility`, `max_coverage` and `FlyVisionConfig.visible_coverage_threshold` are removed. fly-vision transforms images into fly space; it does not classify or detect. Supersedes decision 1.
+- **A10. Binocular overlap of the generated lattice** (user, 2026-10-25). The left eye mirrors the right, so in the −15…+15° overlap many left/right ommatidia nearly coincide (median partner distance ≈ 1.2°) and sample nearly identical values. Recorded in `assumptions.md`; the lattice is unchanged for v0 (a real/FlyGym lattice replaces it later).
 
 ## Global Constraints
 
@@ -45,7 +47,7 @@ These override the original draft of this plan and the brief where they conflict
 
 These close oversights in the brief. Each is owned by a task and tested.
 
-1. **Fly-space visibility labels (Task 7).** honey-factory's mask says honey is in the *image*; that is not the same as the fly seeing it (blind zone behind, gaps between eyes, sub-ommatidium size). Labels add a frame-level `visibility` in fly space: `visible_to_fly` (max valid coverage ≥ 0.05), `in_image_not_fly` (mask non-empty but below threshold), `not_in_image` (mask empty). honey-factory's own `target_status` (absent / out_of_view / subpixel / …) passes through untouched in `meta["source"]`.
+1. **(Superseded by A9.) Fly-space visibility labels (Task 7).** honey-factory's mask says honey is in the *image*; that is not the same as the fly seeing it (blind zone behind, gaps between eyes, sub-ommatidium size). Labels add a frame-level `visibility` in fly space: `visible_to_fly` (max valid coverage ≥ 0.05), `in_image_not_fly` (mask non-empty but below threshold), `not_in_image` (mask empty). honey-factory's own `target_status` (absent / out_of_view / subpixel / …) passes through untouched in `meta["source"]`.
 2. **Complete subtype mapping (Tasks 3, 5).** The lattice uses four subtypes: `pale`, `yellow`, `dorsal_yellow`, `dra`. `dra` → R7 = Rh3, R8 = Rh3. `dorsal_yellow` → R7 = mean(Rh3, Rh4), R8 = Rh6. The brief only defined pale/yellow, which would break on the dorsal rim.
 3. **Spectra for RGB primaries are an assumption (Task 5).** sRGB defines chromaticities, not spectra, and R7 (curve tails) is especially sensitive to the blue primary's spectrum. v0 uses Gaussian primaries (peaks 610 / 545 / 465 nm, FWHM 30 / 40 / 25 nm) scaled so their luminances match sRGB weights (0.2126 / 0.7152 / 0.0722) under a Gaussian V(λ) (peak 555 nm, FWHM 100 nm). A diagnostic reports how R7 changes when the blue peak shifts ±10 nm. The alternative model (Minecraft colours as surface reflectances under daylight, via spectral upsampling) is noted in assumptions as a later option.
 4. **Level, contract-defined frame + calibration capture (Tasks 2, 9).** The panorama follows honey-factory's `equirectangular-310x160-v1` contract (A1): level, yaw-aligned, elevation −70…+90°. The eye frame is that level frame, so the fly's head is assumed level (pitch ignored) and the image centre (elevation +10°) is *not* the eye's (0, 0). A calibration test uses one capture with honey at known directions, to catch sign or half-pixel bugs on either side; it skips until that fixture exists.
@@ -60,7 +62,7 @@ These close oversights in the brief. Each is owned by a task and tested.
 ## Review Focus
 
 1. **Panorama orientation does not match the eye frame** (sign flip, half-pixel offset, or a deviation from the honey-factory contract) → honey appears in the wrong ommatidia while all synthetic tests pass. Pinned: Task 2 contract-formula test, Task 4 rotation test, calibration test in Task 9.
-2. **Honey visible in the image but not to the fly** (behind, in the 50° rear gap, below −70°, or smaller than a cone) → label must say `in_image_not_fly`, not visible. Pinned: Task 7 tests.
+2. **(Reworded by A9: `honey_coverage` must be ~0 for honey the fly cannot see; no categorical label.) Honey visible in the image but not to the fly** (behind, in the 50° rear gap, below −70°, or smaller than a cone) → label must say `in_image_not_fly`, not visible. Pinned: Task 7 tests.
 3. **Night frames in 8-bit** → quantised R7 / R8; frame must be flagged, not silently trusted. Pinned: Task 7 `low_bit_depth` test.
 4. **honey-factory changes resolution or FOV** → matrix rebuilt or a clear error, never a stale matrix. Pinned: Task 4 cache-key test and Task 7 shape-mismatch test.
 5. **Spectral assumptions drive conclusions** (blue primary, normalisation) → sensitivity is reported and the spectral hash is in every frame. Pinned: Task 5 diagnostic test and Task 7 provenance test.
