@@ -25,7 +25,8 @@ This writes `frame-0001.fly.npz`, `frame-0001.labels.npz` and, with `--plot`,
 `--center-*`; an image whose aspect ratio is not 310/160 within 1% is
 rejected), `equirect` (needs `--fov-h` and `--fov-v`, optional `--center-az`/`--center-el`)
 or `perspective`. `--lattice` selects a lattice file (validated on load) and `--cache` a
-directory for sampling matrices.
+directory for sampling matrices. Images and masks are read upright: the EXIF Orientation tag
+is applied on load.
 
 Perspective photos (placement is optional; `--fov-v` is not accepted):
 

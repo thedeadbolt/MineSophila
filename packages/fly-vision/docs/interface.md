@@ -19,6 +19,8 @@ elevation −70…+90°, so the image centre is at elevation +10°).
 
 - 8-bit RGB (alpha is dropped). The default 2480 × 1280 is fine; any size works.
 - Values are treated as sRGB and linearised.
+- The EXIF Orientation tag is applied to the image and the mask on load, so a photo stored
+  sideways is sampled upright.
 - 16-bit sRGB would be preferable at night, when few distinct levels are used. The Python
   API (`FlyEye.sample`) accepts `uint16` arrays, but `load_panorama` and the CLI reject
   16-bit PNG files for now because Pillow would silently truncate them to 8 bits.

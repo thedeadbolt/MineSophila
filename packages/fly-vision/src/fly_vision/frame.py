@@ -11,7 +11,7 @@ from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
-from PIL import Image
+from PIL import Image, ImageOps
 
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
@@ -99,12 +99,14 @@ def load_panorama(path: str | Path) -> NDArray[np.uint8]:
     """Read an 8-bit RGB image (RGBA loses its alpha) as `(H, W, 3)` uint8.
 
     Pillow truncates 16-bit RGB PNGs to 8 bits, so those raise `ValueError` instead.
-    Grayscale and palette files raise too.
+    Grayscale and palette files raise too. The EXIF Orientation tag is applied, so the
+    array is upright (a phone JPEG stored sideways is rotated back, never sampled rolled).
     """
     p = Path(path)
     if _png_bit_depth(p) == 16:
         raise ValueError(f"{p}: 16-bit PNG is not supported (Pillow would truncate it to 8 bits)")
-    with Image.open(p) as im:
+    with Image.open(p) as raw:
+        im = ImageOps.exif_transpose(raw)
         if im.mode not in ("RGB", "RGBA"):
             raise ValueError(f"{p}: expected an RGB or RGBA image, got mode {im.mode!r}")
         arr = np.asarray(im.convert("RGB"), dtype=np.uint8)
@@ -112,8 +114,12 @@ def load_panorama(path: str | Path) -> NDArray[np.uint8]:
 
 
 def load_mask(path: str | Path) -> NDArray[np.float64]:
-    """Read a mask as `(H, W)` float: 1.0 where the file is > 0, else 0.0."""
-    with Image.open(Path(path)) as im:
+    """Read a mask as `(H, W)` float: 1.0 where the file is > 0, else 0.0.
+
+    The EXIF Orientation tag is applied, as for `load_panorama`.
+    """
+    with Image.open(Path(path)) as raw:
+        im = ImageOps.exif_transpose(raw)
         arr = np.asarray(im.convert("L") if im.mode not in ("L", "I;16", "I", "F") else im)
     if arr.ndim != 2:
         raise ValueError(f"{path}: mask must be single channel")
