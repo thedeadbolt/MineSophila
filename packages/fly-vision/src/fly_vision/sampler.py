@@ -6,6 +6,7 @@ The same matrix serves images and labels.
 """
 
 import hashlib
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from fly_vision.lattice import Lattice, lattice_hash
 from fly_vision.projection import Projection, to_unit
 
 FWHM_PER_SIGMA = 2.3548  # FWHM = 2 sqrt(2 ln 2) sigma
+_ALGORITHM = "gaussian-kdtree-v1"  # bump when the sampler maths changes
 _CHUNK = 128  # ommatidia per KD-tree query, bounds the peak memory of the build
 
 
@@ -44,6 +46,7 @@ def matrix_key(lattice: Lattice, projection: Projection, cfg: FlyVisionConfig) -
         repr(cfg.cutoff_sigmas),
         repr(cfg.valid_coverage_min),
         __version__,
+        _ALGORITHM,
     )
     return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
@@ -104,7 +107,8 @@ def apply_sampling(sm: SamplingMatrix, image: NDArray[np.float64]) -> NDArray[np
 
 
 def _save(sm: SamplingMatrix, path: Path) -> None:
-    with path.open("wb") as f:
+    tmp = path.with_name(path.name + ".tmp")
+    with tmp.open("wb") as f:
         np.savez(
             f,
             data=sm.W.data,
@@ -117,6 +121,7 @@ def _save(sm: SamplingMatrix, path: Path) -> None:
             height=np.array(sm.height),
             key=np.array(sm.key),
         )
+    tmp.replace(path)
 
 
 def _load(path: Path) -> SamplingMatrix:
@@ -142,7 +147,7 @@ def load_or_build(
     if path.exists():
         try:
             cached = _load(path)
-        except (OSError, KeyError, ValueError):
+        except (OSError, KeyError, ValueError, zipfile.BadZipFile, EOFError):
             cached = None
         if cached is not None and cached.key == key:
             return cached

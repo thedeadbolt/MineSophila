@@ -106,3 +106,38 @@ def test_cache_key_and_shape_guard(tmp_path: Path) -> None:
     assert (first.W - second.W).count_nonzero() == 0
     with pytest.raises(ValueError, match="image shape"):
         apply_sampling(SM, np.zeros((10, 10, 3)))
+
+
+def _cache_path(tmp_path: Path) -> Path:
+    return tmp_path / f"{matrix_key(L, S, C)}.npz"
+
+
+def test_truncated_cache_is_rebuilt(tmp_path: Path) -> None:
+    load_or_build(L, S, C, tmp_path)
+    path = _cache_path(tmp_path)
+    path.write_bytes(path.read_bytes()[: path.stat().st_size // 2])
+    rebuilt = load_or_build(L, S, C, tmp_path)
+    assert (rebuilt.W - SM.W).count_nonzero() == 0
+    assert rebuilt.key == SM.key
+    assert (load_or_build(L, S, C, tmp_path).W - SM.W).count_nonzero() == 0  # file repaired
+    assert [p.name for p in tmp_path.iterdir()] == [path.name]  # no temporary file left
+
+
+def test_cache_with_other_key_is_rebuilt(tmp_path: Path) -> None:
+    load_or_build(L, S, C, tmp_path)
+    path = _cache_path(tmp_path)
+    with np.load(path, allow_pickle=False) as d:
+        arrays = {k: d[k] for k in d.files}
+    arrays["key"] = np.array("not-the-key")
+    with path.open("wb") as f:
+        np.savez(f, **arrays)  # pyright: ignore[reportArgumentType]
+    rebuilt = load_or_build(L, S, C, tmp_path)
+    assert rebuilt.key == SM.key
+    with np.load(path, allow_pickle=False) as d:
+        assert str(d["key"]) == SM.key
+
+
+def test_matrix_key_includes_algorithm(monkeypatch: pytest.MonkeyPatch) -> None:
+    before = matrix_key(L, S, C)
+    monkeypatch.setattr("fly_vision.sampler._ALGORITHM", "other")
+    assert matrix_key(L, S, C) != before
