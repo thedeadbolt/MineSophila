@@ -75,6 +75,13 @@ The Fabric mod:
   The initial dataset excludes depth images. Additional channels such as block IDs
   and sky buffers remain future options, subject to the collaborator's input needs.
 
+- Runs a lock-step control loop (M11): `EnvironmentRuntime.controlReset` and
+  `controlStep` advance one frozen tick per motor command and return the frame, the body's
+  senses and the true state. A loopback server (`ControlServer`) exposes the loop to
+  external programs in the protocol of
+  [control-protocol.md](../packages/honey-factory/docs/control-protocol.md);
+  `honey_factory_tools.control` is the Python client.
+
 See the [package specification](../packages/honey-factory/docs/spec.md) for agreed
 capture requirements.
 

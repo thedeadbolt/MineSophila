@@ -47,7 +47,8 @@ take as long as it likes.
    closes the connection.
 
 An `error` leaves the connection open unless the error was in the framing. A failed
-`step` (for example `OUT_OF_ARENA`) needs a new `reset` before further steps.
+`step` (for example `OUT_OF_ARENA`) needs a new `reset`: until then further steps fail with
+`INVALID_STATE`.
 
 ## Messages
 
@@ -132,7 +133,7 @@ A student never receives masks, because a mask shows where the honey is.
 
 | Field | Meaning |
 |---|---|
-| `position` | eye-less player feet position, world blocks |
+| `position` | player feet position, world blocks |
 | `yaw`, `pitch` | degrees |
 | `velocity` | blocks per tick |
 | `layout_sha256`, `seed`, `server_tick` | the scene and the time |
@@ -156,10 +157,13 @@ Either direction, no fields. The server replies `close` and ends the session.
 | `UNAUTHORISED` | wrong token or version |
 | `BUSY` | another connection is active |
 | `NOT_RESET` | `step` before a successful `reset` |
+| `INVALID_STATE` | `step` after a failed step, before the next `reset` |
 | `INVALID_REQUEST` | a command outside the limits, or a teacher command from a student connection |
 | `OUT_OF_ARENA` | the step took the player out of the arena |
 | `UNSUPPORTED` | a natural-terrain scene, or another feature this version lacks |
 | `TIMEOUT` | the game did not become ready in time |
+| `NOT_OWNED` | the world stopped being a claimed dataset world |
+| `BUSY` (after `hello`) | the game is running another environment operation |
 | `INTERNAL` | anything else |
 
 ## Versioning
