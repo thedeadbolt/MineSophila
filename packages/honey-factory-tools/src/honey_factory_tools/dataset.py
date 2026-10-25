@@ -17,8 +17,11 @@ error unless explicitly allowed.
 """
 
 import hashlib
+import os
 from collections import Counter
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
@@ -31,6 +34,10 @@ MANIFEST = "dataset.json"
 SCENES = "scenes.jsonl"
 SAMPLES = "samples.jsonl"
 IMAGE_ROOTS = ("rgb", "masks")
+# Image checks are I/O and decoding bound; more workers gain little and hold more images.
+MAX_WORKERS = 16
+# Below this many samples, starting worker processes costs more than it saves.
+PARALLEL_FROM = 200
 
 
 @dataclass
@@ -409,11 +416,21 @@ def _complete(manifest: Record, scenes: list[Record], base_samples: dict[str, in
 
 
 def _files(root: Path, samples: list[Record]) -> list[str]:
+    """Image errors in sample order, then unreferenced files. Samples are checked in worker
+    processes, a chunk at a time; small datasets are checked in this process."""
     errors: list[str] = []
     referenced: set[str] = set()
     for sample in samples:
         referenced.update((sample["files"]["rgb"]["path"], sample["files"]["mask"]["path"]))
-        errors += sample_file_errors(root, sample)
+    workers = max(1, min(MAX_WORKERS, (os.cpu_count() or 2) - 1))
+    check = partial(sample_file_errors, root)
+    if workers == 1 or len(samples) < PARALLEL_FROM:
+        for sample in samples:
+            errors += check(sample)
+    else:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            for found in pool.map(check, samples, chunksize=32):
+                errors += found
 
     for image_root in IMAGE_ROOTS:
         directory = root / image_root

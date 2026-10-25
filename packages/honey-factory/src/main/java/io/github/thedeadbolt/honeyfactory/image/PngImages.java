@@ -4,6 +4,7 @@ import java.awt.Transparency;
 import java.awt.color.ColorSpace;
 import java.awt.image.BufferedImage;
 import java.awt.image.ComponentColorModel;
+import java.awt.image.ComponentSampleModel;
 import java.awt.image.DataBuffer;
 import java.awt.image.DataBufferByte;
 import java.awt.image.Raster;
@@ -59,14 +60,38 @@ public final class PngImages {
 			throw new IllegalArgumentException("must be 8-bit grey or RGB without alpha, got " + channels + " channels of " + image.getColorModel().getPixelSize() + " bits");
 		}
 
-		// Band order is semantic (R, G, B) whatever the raster's byte layout.
-		int[] samples = raster.getPixels(0, 0, image.getWidth(), image.getHeight(), (int[]) null);
+		return new Pixels(image.getWidth(), image.getHeight(), channels, bytes(raster, image.getWidth(), image.getHeight(), channels));
+	}
+
+	/**
+	 * The raster's samples in band order (R, G, B), whatever its byte layout. An interleaved
+	 * byte raster, which ImageIO produces for these PNGs, is copied directly; anything else
+	 * goes through {@link Raster#getPixels}.
+	 */
+	private static byte[] bytes(Raster raster, int width, int height, int channels) {
+		if (raster.getSampleModel() instanceof ComponentSampleModel model && raster.getDataBuffer() instanceof DataBufferByte buffer && buffer.getNumBanks() == 1
+			&& model.getPixelStride() == channels && model.getScanlineStride() == width * channels
+			&& raster.getSampleModelTranslateX() == 0 && raster.getSampleModelTranslateY() == 0 && buffer.getOffset() == 0) {
+			byte[] source = buffer.getData();
+			int[] offsets = model.getBandOffsets();
+			byte[] data = new byte[width * height * channels];
+			for (int band = 0; band < channels; band++) {
+				int offset = offsets[band];
+				for (int i = band, j = offset; i < data.length; i += channels, j += channels) {
+					data[i] = source[j];
+				}
+			}
+
+			return data;
+		}
+
+		int[] samples = raster.getPixels(0, 0, width, height, (int[]) null);
 		byte[] data = new byte[samples.length];
 		for (int i = 0; i < samples.length; i++) {
 			data[i] = (byte) samples[i];
 		}
 
-		return new Pixels(image.getWidth(), image.getHeight(), channels, data);
+		return data;
 	}
 
 	private static byte[] encode(int width, int height, int channels, byte[] pixels, int colorSpace) {
