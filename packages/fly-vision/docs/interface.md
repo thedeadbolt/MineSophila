@@ -28,8 +28,9 @@ elevation −70…+90°, so the image centre is at elevation +10°).
 
 ### Mask
 
-A single-channel PNG of the same size and projection as the panorama. A pixel is honey when
-its value is `> 0`. Use honey-factory's visible mask (the one inside the occlusion). It goes
+A single-channel PNG of the same size and projection as the panorama: honey-factory's
+`masks/<split>/<shard>/<sample>.png` (8-bit gray, 0/255). A pixel is honey when its value is
+`> 0`. Use honey-factory's visible mask (the one inside the occlusion). It goes
 through the same sampling matrix as the colours and comes out as `honey_coverage`.
 
 ### Identifiers and provenance
@@ -44,7 +45,16 @@ split results later, and we never edit them:
   `fully_visible`, `partially_visible`);
 - `conditions` (weather, lighting and the like).
 
-The command line records only `scene_id`, `frame_id` and the panorama path.
+The command line records only `scene_id`, `frame_id` and the panorama path, and adds
+`source_file_sha256` (the hash of the PNG file's bytes).
+
+### Guards
+
+Without `--fov-h/--fov-v`, `fly-vision convert` reads the image as a `PANORAMA_310` capture
+and exits with status 1 if its aspect ratio differs from 310/160 by more than 1%. Pass
+`--fov-h` and `--fov-v` for other equirectangular images; perspective images are not
+supported. `--center-az` and `--center-el` also need `--fov-h/--fov-v`. A lattice file passed
+with `--lattice` is validated on load; a corrupt or inconsistent file gives a one-line error.
 
 ## Output
 

@@ -20,8 +20,9 @@ uv run fly-vision convert --panorama p.png --mask m.png \
 
 This writes `frame-0001.fly.npz`, `frame-0001.labels.npz` and, with `--plot`,
 `frame-0001.png`. The mask is optional. For another equirectangular layout give
-`--fov-h` and `--fov-v` together (and `--center-az`, `--center-el`). `--lattice` selects a
-lattice file and `--cache` a directory for sampling matrices.
+`--fov-h` and `--fov-v` together (and `--center-az`, `--center-el`, which need them). Without
+them, an image whose aspect ratio is not 310/160 (within 1%) is rejected. `--lattice` selects a
+lattice file (validated on load) and `--cache` a directory for sampling matrices.
 
 Python:
 

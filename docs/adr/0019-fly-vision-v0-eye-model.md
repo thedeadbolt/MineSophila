@@ -56,8 +56,8 @@ output has to say how it was made.
 - Other panorama layouts, or a 360° panorama, need only a new `Projection`.
 - Every parameter is in the assumptions register, so changes can be compared later through
   the stored hashes.
-- R7 is only as good as the assumed blue primary: a 10 nm shift changes it by a factor of
-  about 2.5. It is not an informative colour feature until checked against real frames.
+- R7 is only as good as the assumed blue primary: a 10 nm shift changes R7/R8 for white
+  (pale) by a factor of about 2.4 to 2.8. It is not an informative colour feature until checked against real frames.
 - The generated lattice mirrors the right eye, so in the −15…+15° binocular overlap many
   left and right ommatidia nearly coincide (median partner distance about 1.2°) and sample
   almost identical values. The overlap carries less independent information than its
