@@ -12,7 +12,13 @@ from fly_vision.projection import (
     pixel_directions,
     to_unit,
 )
-from fly_vision.sampler import apply_sampling, build_sampling_matrix, load_or_build, matrix_key
+from fly_vision.sampler import (
+    _save,  # pyright: ignore[reportPrivateUsage]
+    apply_sampling,
+    build_sampling_matrix,
+    load_or_build,
+    matrix_key,
+)
 
 C, L = FlyVisionConfig(), generate_hex_lattice()
 S = honey_factory_panorama(width=620, height=320)  # quarter of the default size, for speed
@@ -135,6 +141,37 @@ def test_cache_with_other_key_is_rebuilt(tmp_path: Path) -> None:
     assert rebuilt.key == SM.key
     with np.load(path, allow_pickle=False) as d:
         assert str(d["key"]) == SM.key
+
+
+def test_parallel_writers_do_not_collide(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = _cache_path(tmp_path)
+    real_savez = np.savez
+    interleaved = False
+
+    def savez_with_rival(*args: object, **kwargs: object) -> None:
+        nonlocal interleaved
+        if not interleaved:  # writer A has opened its temp file; B runs to completion
+            interleaved = True
+            _save(SM, path)
+        real_savez(*args, **kwargs)  # pyright: ignore[reportArgumentType]
+
+    monkeypatch.setattr(np, "savez", savez_with_rival)
+    _save(SM, path)
+    monkeypatch.undo()
+    assert interleaved
+    assert (load_or_build(L, S, C, tmp_path).W - SM.W).count_nonzero() == 0
+    assert [p.name for p in tmp_path.iterdir()] == [path.name]  # no temporary file left
+
+
+def test_failed_save_leaves_no_temp_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def failing_savez(*args: object, **kwargs: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(np, "savez", failing_savez)
+    with pytest.raises(OSError, match="disk full"):
+        _save(SM, _cache_path(tmp_path))
+    assert list(tmp_path.glob("*.tmp")) == []
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_matrix_key_includes_algorithm(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -6,6 +6,7 @@ The same matrix serves images and labels.
 """
 
 import hashlib
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -106,21 +107,32 @@ def apply_sampling(sm: SamplingMatrix, image: NDArray[np.float64]) -> NDArray[np
 
 
 def _save(sm: SamplingMatrix, path: Path) -> None:
-    tmp = path.with_name(path.name + ".tmp")
-    with tmp.open("wb") as f:
-        np.savez(
-            f,
-            data=sm.W.data,
-            indices=sm.W.indices,
-            indptr=sm.W.indptr,
-            shape=np.array(sm.W.shape, dtype=np.int64),
-            valid=sm.valid,
-            coverage_fraction=sm.coverage_fraction,
-            width=np.array(sm.width),
-            height=np.array(sm.height),
-            key=np.array(sm.key),
-        )
-    tmp.replace(path)
+    """Write atomically through a temp file unique to this call; the last writer wins."""
+    with tempfile.NamedTemporaryFile(
+        "wb", dir=path.parent, prefix=f"{path.stem}.", suffix=".npz.tmp", delete=False
+    ) as f:
+        tmp = Path(f.name)
+        try:
+            np.savez(
+                f,
+                data=sm.W.data,
+                indices=sm.W.indices,
+                indptr=sm.W.indptr,
+                shape=np.array(sm.W.shape, dtype=np.int64),
+                valid=sm.valid,
+                coverage_fraction=sm.coverage_fraction,
+                width=np.array(sm.width),
+                height=np.array(sm.height),
+                key=np.array(sm.key),
+            )
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
+    try:
+        tmp.replace(path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _load(path: Path) -> SamplingMatrix:
