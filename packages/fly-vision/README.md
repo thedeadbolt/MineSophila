@@ -6,6 +6,8 @@ The package exposes version metadata. See the [architecture](../../docs/architec
 for the proposed `Scene`, `Eye`, receptors, vision modes and `FlyVision` interface, and
 the [science notes](../../docs/science/fly-vision.md) for assumptions and references.
 
+Parameters and their provenance are listed in [assumptions](docs/assumptions.md).
+
 Add code in `src/fly_vision/` with tests for its behaviour. Keep API proposals in the
 architecture document.
 
