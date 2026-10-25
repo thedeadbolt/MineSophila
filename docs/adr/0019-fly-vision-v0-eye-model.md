@@ -24,9 +24,9 @@ output has to say how it was made.
   to unit ray, pixel solid angle, cache key). The panorama is never resized, filtered or
   cropped as an image. Neighbourhoods are found in direction space, so the 310° panorama
   does not wrap and a 360° one would.
-- **The lattice is generated.** A hexagonal lattice at 5° spacing, 863 ommatidia per eye (field of view from Zhao et al. 2025),
-  with pale, yellow, dorsal yellow and dorsal-rim subtypes from a recorded seed, stored as
-  package data. A FlyGym or real lattice replaces it later without code changes.
+- **The lattice is generated.** A hexagonal lattice at 5° spacing, 863 ommatidia per eye
+  (field of view from Zhao et al. 2025), with pale, yellow, dorsal yellow and dorsal-rim
+  subtypes from a recorded seed, stored as package data. A FlyGym or real lattice replaces it later without code changes.
 - **Gaussian sparse sampler.** Each ommatidium weights pixels by a Gaussian of the angle to
   its axis (5° FWHM, cut at 3 sigma) times the pixel solid angle, normalised per
   ommatidium. The sparse matrix is cached by a key naming every input. Ommatidia with too

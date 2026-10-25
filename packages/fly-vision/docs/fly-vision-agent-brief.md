@@ -22,8 +22,8 @@
 - **A7.** A rotation test (shift by one interommatidial angle moves the output by one column).
 - **A9 (supersedes decision 1).** Labels are a pure transformation: `FlyLabels` holds only
   `honey_coverage` plus id metadata. No `visibility` field, no thresholds, no detection.
-- **A10.** The generated lattice's binocular overlap is nearly redundant (median partner
-  distance about 1.2°); see assumptions.
+- **A10.** The generated lattice's binocular overlap (−10…+10°) is nearly redundant
+  (median partner distance about 1.0°); see assumptions.
 - **Decision 2.** Four subtypes: `pale`, `yellow`, `dorsal_yellow` (R7 mean of Rh3 and Rh4,
   R8 Rh6) and `dra` (R7 and R8 both Rh3).
 - **Decision 3.** RGB primaries are assumed Gaussians (610 / 545 / 465 nm, FWHM 30 / 40 /
