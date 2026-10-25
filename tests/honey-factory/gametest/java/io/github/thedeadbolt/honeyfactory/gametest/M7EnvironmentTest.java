@@ -5,6 +5,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.github.thedeadbolt.honeyfactory.capture.PerspectiveProjection;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
+import io.github.thedeadbolt.honeyfactory.control.ActionMacros;
+import io.github.thedeadbolt.honeyfactory.control.MotorLimits;
 import io.github.thedeadbolt.honeyfactory.environment.Action;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
@@ -130,7 +132,10 @@ public class M7EnvironmentTest implements FabricClientGameTest {
 			EnvironmentRuntime.StepResult result = await(context, runtime -> runtime.step(c.action(), PROJECTION));
 			CameraPose after = result.after();
 			String what = c.action().type() + " " + c.action().requested();
-			if (Math.abs(result.completed() - c.completed()) > EPSILON || result.completedTicks() != 0
+			// Turns and looks ramp over the shared motor limits: one rate per player tick.
+			Action ramped = c.action() instanceof Action.Look ? new Action.Look((float) c.completed()) : c.action();
+			int ticks = ActionMacros.expand(ramped, MotorLimits.DEFAULT).size();
+			if (Math.abs(result.completed() - c.completed()) > EPSILON || result.completedTicks() != ticks
 				|| Math.abs(Action.wrapDegrees(after.yawDegrees() - c.yaw())) > EPSILON || Math.abs(after.pitchDegrees() - c.pitch()) > EPSILON) {
 				failures.add(what + ": completed " + result.completed() + " in " + result.completedTicks() + " ticks, pose " + after);
 			}

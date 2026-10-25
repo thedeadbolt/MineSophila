@@ -23,3 +23,4 @@ Preserve accepted decisions. To change one, write a new ADR that supersedes it.
 | [0015](0015-inspector-and-replay.md) | Local inspector, sidecar reviews and in-game replay | Accepted |
 | [0016](0016-image-uniform-viewpoint-aim.md) | Image-uniform viewpoint aim | Accepted |
 | [0017](0017-minimum-visible-target-pixels.md) | Minimum visible target pixels | Accepted |
+| [0018](0018-lock-step-motor-control.md) | Lock-step motor control | Accepted |

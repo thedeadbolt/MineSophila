@@ -9,6 +9,7 @@ import io.github.thedeadbolt.honeyfactory.client.mixin.ClientLevelAccessor;
 import io.github.thedeadbolt.honeyfactory.client.mixin.FogRendererAccessor;
 import io.github.thedeadbolt.honeyfactory.client.mixin.SectionOcclusionGraphAccessor;
 import io.github.thedeadbolt.honeyfactory.config.ConfigResolver;
+import io.github.thedeadbolt.honeyfactory.control.ActionMacros;
 import io.github.thedeadbolt.honeyfactory.control.BodySenses;
 import io.github.thedeadbolt.honeyfactory.control.ControlStep;
 import io.github.thedeadbolt.honeyfactory.control.MotorCommand;
@@ -724,6 +725,11 @@ public final class EnvironmentRuntime {
 		private long startTick = -1;
 		private int startTicked;
 		private boolean collided;
+		/** A turn's or look's rates, one per player tick, from the shared motor limits; null for other actions. */
+		private @Nullable List<MotorCommand> rotation;
+		private int rotated;
+		private float fromYaw;
+		private float fromPitch;
 
 		StepDriver(Action action, boolean autoJump, ArenaLayout arena, CameraPose before) {
 			this.action = action;
@@ -786,19 +792,11 @@ public final class EnvironmentRuntime {
 			this.startTick = EnvironmentRuntime.this.tick;
 			this.startTicked = this.input.ticked();
 			switch (this.action) {
-				case Action.Turn turn -> {
-					float from = Action.wrapDegrees(player.getYRot());
-					float yaw = turn.resultingYaw(player.getYRot());
-					float turned = Action.wrapDegrees(yaw - from);
-					rotate(player, yaw, player.getXRot());
-					// A half turn wraps to -180 either way; report it with the requested sign.
-					finish(player, turned == -180.0F && turn.degrees() > 0 ? 180.0F : turned, 0);
-				}
+				case Action.Turn turn -> startRotation(player, ActionMacros.expand(turn, EnvironmentRuntime.this.settings.motor()));
 				case Action.Look look -> {
-					float pitch = look.resultingPitch(player.getXRot());
-					float looked = pitch - player.getXRot();
-					rotate(player, player.getYRot(), pitch);
-					finish(player, looked, 0);
+					// A look stops at Minecraft's pitch limits, so it ramps over the part it can complete.
+					float reachable = look.resultingPitch(player.getXRot()) - player.getXRot();
+					startRotation(player, ActionMacros.expand(new Action.Look(reachable), EnvironmentRuntime.this.settings.motor()));
 				}
 				case Action.MoveForward move -> this.input.hold(move.ticks());
 				case Action.Wait wait -> {
@@ -811,14 +809,54 @@ public final class EnvironmentRuntime {
 			}
 		}
 
+		/** Starts turning or looking: the first rate now, then one per player tick, as a control step would. */
+		private void startRotation(LocalPlayer player, List<MotorCommand> rates) {
+			this.rotation = rates;
+			this.fromYaw = player.getYRot();
+			this.fromPitch = player.getXRot();
+			if (rates.isEmpty()) {
+				finish(player, 0.0, 0);
+				return;
+			}
+
+			rotateBy(player, rates.getFirst());
+		}
+
+		private void rotateBy(LocalPlayer player, MotorCommand rates) {
+			rotate(player, Action.wrapDegrees((float) (player.getYRot() + rates.turnRate())), Math.clamp((float) (player.getXRot() + rates.pitchRate()), -90.0F, 90.0F));
+			this.rotated++;
+		}
+
 		private void progress(Minecraft minecraft) {
 			LocalPlayer player = minecraft.player;
 			this.collided |= player.horizontalCollision;
 			requireInArena(minecraft);
+			List<MotorCommand> rates = this.rotation;
+			if (rates != null) {
+				int ticked = this.input.ticked() - this.startTicked;
+				if (ticked >= this.rotated && this.rotated < rates.size()) {
+					rotateBy(player, rates.get(this.rotated));
+				} else if (ticked >= rates.size()) {
+					finishRotation(player, rates.size());
+				}
+
+				return;
+			}
+
 			int ticks = this.action instanceof Action.MoveForward ? this.input.held() : this.input.ticked() - this.startTicked;
 			if (ticks >= this.action.ticks()) {
 				this.input.release();
 				finish(player, ticks, ticks);
+			}
+		}
+
+		private void finishRotation(LocalPlayer player, int ticks) {
+			if (this.action instanceof Action.Turn turn) {
+				float turned = Action.wrapDegrees(player.getYRot() - this.fromYaw);
+				// A half turn wraps to -180 either way; report it with the requested sign.
+				finish(player, turned == -180.0F && turn.degrees() > 0 ? 180.0F : turned, ticks);
+			} else {
+				finish(player, player.getXRot() - this.fromPitch, ticks);
 			}
 		}
 
