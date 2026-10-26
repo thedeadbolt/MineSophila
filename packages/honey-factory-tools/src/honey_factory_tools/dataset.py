@@ -33,6 +33,7 @@ type Record = dict[str, Any]
 MANIFEST = "dataset.json"
 SCENES = "scenes.jsonl"
 SAMPLES = "samples.jsonl"
+CLIPS = "clips.jsonl"
 IMAGE_ROOTS = ("rgb", "masks")
 # Image checks are I/O and decoding bound; more workers gain little and hold more images.
 MAX_WORKERS = 16
@@ -48,6 +49,7 @@ class Report:
     manifest: Record | None = None
     scenes: list[Record] = field(default_factory=list[Record])
     samples: list[Record] = field(default_factory=list[Record])
+    clips: list[Record] = field(default_factory=list[Record])
     errors: list[str] = field(default_factory=list[str])
 
     @property
@@ -58,6 +60,13 @@ class Report:
 def validate(root: Path, schemas: Schemas, *, allow_generating: bool = False) -> Report:
     report = load(root, schemas)
     manifest = report.manifest
+    if manifest is not None and records.is_clips(manifest):
+        # A clip dataset's records and files are checked by the clip rules (M12-2).
+        if manifest["lifecycle"] == "generating" and not allow_generating:
+            report.errors.append(
+                f"{MANIFEST}: lifecycle is generating; the run is unfinished or was interrupted"
+            )
+        return report
     if manifest is not None:
         if manifest["lifecycle"] == "generating" and not allow_generating:
             report.errors.append(
@@ -77,10 +86,11 @@ def load(root: Path, schemas: Schemas) -> Report:
     """
     report = Report()
     manifest = _manifest(root, schemas, report.errors)
+    clips = manifest is not None and records.is_clips(manifest)
     digests: dict[str, Record] = {}
     indexes: tuple[tuple[str, Kind, list[Record]], ...] = (
         (SCENES, "scene", report.scenes),
-        (SAMPLES, "sample", report.samples),
+        (CLIPS, "clip", report.clips) if clips else (SAMPLES, "sample", report.samples),
     )
     for name, kind, target in indexes:
         data = _read(root / name, name, report.errors)
@@ -93,7 +103,8 @@ def load(root: Path, schemas: Schemas) -> Report:
         report.lifecycle = manifest["lifecycle"]
         integrity: Record | None = manifest.get("integrity")
         if integrity is not None:
-            for name, key in ((SCENES, "scenes"), (SAMPLES, "samples")):
+            items = (CLIPS, "clips") if clips else (SAMPLES, "samples")
+            for name, key in ((SCENES, "scenes"), items):
                 if name in digests and integrity["indexes"][key] != digests[name]:
                     report.errors.append(
                         f"{MANIFEST}: integrity.indexes.{key} does not match {name}"
@@ -140,10 +151,18 @@ def _record_passes(
             "dataset": records.manifest_errors,
             "scene": records.scene_errors,
             "sample": records.sample_errors,
+            "clip": records.clip_errors,
+            "frame": records.frame_errors,
         }
         found = [f"{location}: {error}" for error in rules[kind](record)]
     errors.extend(found)
     return not found
+
+
+def read_index(path: Path, kind: Kind, schemas: Schemas, errors: list[str]) -> list[Record]:
+    """The records of one JSONL index that pass their schema and single-record rules."""
+    data = _read(path, path.name, errors)
+    return [] if data is None else _index(data, path.name, kind, schemas, errors)
 
 
 def _index(data: bytes, name: str, kind: Kind, schemas: Schemas, errors: list[str]) -> list[Record]:

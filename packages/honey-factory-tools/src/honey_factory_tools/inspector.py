@@ -15,6 +15,10 @@ API (JSON unless noted):
     GET  /api/reviews               the review summary and every review of this manifest
     POST /api/reviews               record a review: kind, id, outcome, reason, note, selection
     GET  /image/<sample id>/rgb|mask   the stored PNG, or 409 with its integrity errors
+    GET  /api/clips?split=&type=&scene_id=   a clip dataset's clips (M12-2)
+    GET  /api/clips/<id>            one clip's record, every frame record and its neighbours
+    GET  /api/clips/<id>/frames/<n>.png?scale=   frame n, decoded and scaled (0.25, 0.5, 1)
+    GET  /api/clips/<id>/masks/<n>.png?scale=    frame n's visible mask, scaled nearest
 """
 
 import json
@@ -27,7 +31,7 @@ from importlib import resources
 from typing import Any, cast
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from honey_factory_tools import __version__, selection
+from honey_factory_tools import __version__, clips, records, selection
 from honey_factory_tools.catalog import Catalog, IntegrityError
 from honey_factory_tools.reviews import OUTCOMES, REASONS, ReviewError, ReviewStore
 
@@ -47,6 +51,7 @@ _STATIC = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/static/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/static/app.css": ("app.css", "text/css; charset=utf-8"),
+    "/static/clips.js": ("clips.js", "text/javascript; charset=utf-8"),
 }
 _INT_FILTERS = ("viewpoint", "min_pixels", "max_pixels")
 _FLOAT_FILTERS = ("min_ratio", "max_ratio", "min_distance", "max_distance")
@@ -81,6 +86,8 @@ class Inspector:
             "render_environment": manifest["render_environment"],
             "scene_count": len(self.catalog.scenes),
             "sample_count": len(self.catalog.samples),
+            "kind": self.catalog.kind,
+            "clip_count": len(self.catalog.clips),
             "index_errors": self.catalog.index_errors,
             "validation": {
                 "state": validation.state,
@@ -157,6 +164,43 @@ class Inspector:
             "replay_command": self._replay(scene_id),
         }
 
+    def clips(self, query: dict[str, list[str]]) -> Record:
+        split, kind, scene = _text(query, "split"), _text(query, "type"), _text(query, "scene_id")
+        if kind is not None and kind not in records.CLIP_TYPES:
+            raise ValueError(f"type must be one of {', '.join(records.CLIP_TYPES)}")
+        picked = [
+            clip
+            for clip in self.catalog.clips.values()
+            if (split is None or clip["split"] == split)
+            and (kind is None or clip["clip_type"] == kind)
+            and (scene is None or clip["scene_id"] == scene)
+        ]
+        return {"total": len(picked), "clips": [_clip_summary(clip) for clip in picked]}
+
+    def clip(self, clip_id: str) -> Record | None:
+        clip = self.catalog.clips.get(clip_id)
+        if clip is None:
+            return None
+        ids = self.catalog.clip_ids()
+        index = ids.index(clip_id)
+        return {
+            "clip": clip,
+            "scene": self.catalog.scenes.get(clip["scene_id"]),
+            "frames": self.catalog.frames(clip_id),
+            "previous": ids[index - 1] if index > 0 else None,
+            "next": ids[index + 1] if index + 1 < len(ids) else None,
+        }
+
+    def clip_png(self, clip_id: str, kind: str, frame: int, scale: float) -> bytes | None:
+        """A clip frame or mask as PNG, or None when the clip or frame does not exist."""
+        clip = self.catalog.clips.get(clip_id)
+        if clip is None or not 0 <= frame < clip["frame_count"]:
+            return None
+        decoded = self.catalog.clip_frames(clip_id)
+        return (
+            decoded.frame_png(frame, scale) if kind == "frames" else decoded.mask_png(frame, scale)
+        )
+
     def record_review(self, body: Record) -> Record:
         if self.reviews is None:
             raise ReviewError("reviews are disabled; start the inspector with --reviews DIR")
@@ -217,6 +261,24 @@ class Inspector:
 
     def _replay(self, subject_id: str) -> str:
         return f"/honeyfactory_replay load {subject_id} {self.catalog.root}"
+
+
+def _clip_summary(clip: Record) -> Record:
+    return {
+        key: clip[key]
+        for key in (
+            "clip_id",
+            "scene_id",
+            "split",
+            "clip_index",
+            "clip_type",
+            "requested_type",
+            "tick_count",
+            "frame_count",
+            "end_reason",
+            "summary",
+        )
+    }
 
 
 def parse_selection(query: dict[str, list[str]]) -> selection.Selection:
@@ -307,6 +369,28 @@ def make_server(inspector: Inspector, port: int = 0) -> ThreadingHTTPServer:
                 self._found(inspector.sample(parts[2]), f"no sample {parts[2]}")
             elif len(parts) == 3 and parts[:2] == ["api", "scenes"]:
                 self._found(inspector.scene(parts[2]), f"no scene {parts[2]}")
+            elif path == "/api/clips":
+                self._json(HTTPStatus.OK, inspector.clips(query))
+            elif len(parts) == 3 and parts[:2] == ["api", "clips"]:
+                self._found(inspector.clip(parts[2]), f"no clip {parts[2]}")
+            elif (
+                len(parts) == 5
+                and parts[:2] == ["api", "clips"]
+                and parts[3] in ("frames", "masks")
+                and parts[4].endswith(".png")
+                and parts[4].removesuffix(".png").isdigit()
+            ):
+                scale = _float(query, "scale") or 0.25
+                clips.scaled_size(1, 1, scale)
+                png = inspector.clip_png(
+                    parts[2], parts[3], int(parts[4].removesuffix(".png")), scale
+                )
+                if png is None:
+                    self._json(
+                        HTTPStatus.NOT_FOUND, {"error": f"no frame {parts[4]} of clip {parts[2]}"}
+                    )
+                else:
+                    self._send(HTTPStatus.OK, png, "image/png")
             elif len(parts) == 3 and parts[0] == "image" and parts[2] in ("rgb", "mask"):
                 if parts[1] not in inspector.catalog.by_sample:
                     self._json(HTTPStatus.NOT_FOUND, {"error": f"no sample {parts[1]}"})

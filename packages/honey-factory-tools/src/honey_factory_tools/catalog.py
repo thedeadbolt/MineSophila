@@ -14,17 +14,21 @@ ways, and neither ever changes a file:
 import hashlib
 import re
 import threading
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from honey_factory_tools import dataset
+from honey_factory_tools import dataset, records
+from honey_factory_tools.clips import ClipFrames
 from honey_factory_tools.schemas import Schemas
 
 type Record = dict[str, Any]
 
 _SUBJECT = re.compile(r"^(sample|scene) (s\d{6}(?:-v\d{2})?): ")
+# Decoded clips kept for playback; each holds its frames at the scales asked for.
+CLIP_CACHE = 8
 
 
 @dataclass
@@ -64,6 +68,12 @@ class Catalog:
             self.scene_samples.setdefault(sample["scene_id"], []).append(sample)
         for samples in self.scene_samples.values():
             samples.sort(key=lambda s: (s["viewpoint_index"], s["sample_id"]))
+        self.kind = "clips" if records.is_clips(self.manifest) else "stills"
+        self.clips: dict[str, Record] = {}
+        for clip in sorted(report.clips, key=lambda c: c["clip_id"]):
+            self.clips.setdefault(clip["clip_id"], clip)
+        self._frames: dict[str, list[Record]] = {}
+        self._decoded: OrderedDict[str, ClipFrames] = OrderedDict()
         self.validation = Validation()
         self._checked: dict[str, list[str]] = {}
         self._lock = threading.Lock()
@@ -116,6 +126,43 @@ class Catalog:
         if data is None:
             raise IntegrityError([f"sample {sample_id}: {kind} became unreadable"])
         return data
+
+    def clip_ids(self) -> list[str]:
+        return list(self.clips)
+
+    def frames(self, clip_id: str) -> list[Record]:
+        """A clip's frame records, read on first request; records that fail are left out
+        and their errors kept in ``index_errors``."""
+        with self._lock:
+            cached = self._frames.get(clip_id)
+        if cached is None:
+            clip = self.clips[clip_id]
+            errors: list[str] = []
+            path = self.root / clip["files"]["frames"]["path"]
+            cached = dataset.read_index(path, "frame", self.schemas, errors)
+            with self._lock:
+                self._frames[clip_id] = cached
+                self.index_errors.extend(f"clip {clip_id}: {error}" for error in errors)
+        return cached
+
+    def clip_frames(self, clip_id: str) -> ClipFrames:
+        """A clip's decodable videos, kept for the last few clips played."""
+        with self._lock:
+            frames = self._decoded.get(clip_id)
+            if frames is not None:
+                self._decoded.move_to_end(clip_id)
+                return frames
+            files = self.clips[clip_id]["files"]
+            frames = ClipFrames(
+                self.root / files["rgb"]["path"],
+                self.root / files["visible_mask"]["path"],
+                files["rgb"]["width"],
+                files["rgb"]["height"],
+            )
+            self._decoded[clip_id] = frames
+            while len(self._decoded) > CLIP_CACHE:
+                self._decoded.popitem(last=False)
+            return frames
 
     def start_validation(self, on_done: Callable[[], None] | None = None) -> threading.Thread:
         """Validate the whole dataset in a daemon thread."""
