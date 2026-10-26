@@ -272,9 +272,12 @@ public final class ClipConsistency {
 		return errors;
 	}
 
-	/** The frames in a video, counted by decoding ({@code ffprobe -count_frames}). */
+	/**
+	 * The frames in a video, counted from its container's packets ({@code ffprobe
+	 * -count_packets}): one packet per frame in the codecs clips use, and nothing is decoded.
+	 */
 	static int frameCount(Path video) throws IOException {
-		Process process = new ProcessBuilder("ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", video.toString())
+		Process process = new ProcessBuilder("ffprobe", "-v", "error", "-count_packets", "-select_streams", "v:0", "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", video.toString())
 			.redirectErrorStream(true).start();
 		try (InputStream in = process.getInputStream()) {
 			String text = new String(in.readAllBytes(), StandardCharsets.UTF_8).strip();

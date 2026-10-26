@@ -79,17 +79,20 @@ def decode_frames(
 
 
 def frame_count(path: Path) -> int:
-    """The number of frames in the video at ``path``, counted by decoding."""
+    """The number of frames in the video at ``path``, counted from its container's packets.
+
+    The codecs clips use store one packet per frame, so nothing is decoded.
+    """
     result = subprocess.run(
         [
             "ffprobe",
             "-v",
             "error",
-            "-count_frames",
+            "-count_packets",
             "-select_streams",
             "v:0",
             "-show_entries",
-            "stream=nb_read_frames",
+            "stream=nb_read_packets",
             "-of",
             "csv=p=0",
             str(path),

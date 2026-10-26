@@ -17,12 +17,14 @@ import io.github.thedeadbolt.honeyfactory.contract.Driver;
 import io.github.thedeadbolt.honeyfactory.contract.ClipType;
 import io.github.thedeadbolt.honeyfactory.contract.DatasetManifest;
 import io.github.thedeadbolt.honeyfactory.contract.FrameRecord;
+import io.github.thedeadbolt.honeyfactory.contract.Jsonl;
 import io.github.thedeadbolt.honeyfactory.contract.Ids;
 import io.github.thedeadbolt.honeyfactory.contract.SceneRecord;
 import io.github.thedeadbolt.honeyfactory.contract.SchemaVersion;
 import io.github.thedeadbolt.honeyfactory.contract.TeacherMode;
 import io.github.thedeadbolt.honeyfactory.control.ControlStep;
 import io.github.thedeadbolt.honeyfactory.control.MotorCommand;
+import io.github.thedeadbolt.honeyfactory.dataset.ClipConsistency;
 import io.github.thedeadbolt.honeyfactory.dataset.ClipValidator;
 import io.github.thedeadbolt.honeyfactory.dataset.DatasetWriter;
 import io.github.thedeadbolt.honeyfactory.dataset.SceneDescriptor;
@@ -50,6 +52,8 @@ import io.github.thedeadbolt.honeyfactory.teacher.TeacherInput;
 import io.github.thedeadbolt.honeyfactory.teacher.TrackBehaviour;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -61,6 +65,8 @@ import java.util.Map;
 import java.util.SplittableRandom;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -75,9 +81,17 @@ import org.jspecify.annotations.Nullable;
  * <p>A clip whose body leaves the arena, falls, or whose capture or encoding fails is removed
  * and redrawn from its next attempt; after {@code attempts_per_clip} the clip is skipped. A
  * scene is kept when any of its clips succeeded.
+ *
+ * <p>Checking the videos is slow work for ffmpeg, so it never runs on the environment's
+ * executor (the game's render thread): each accepted clip's masks are decoded and checked
+ * against its labels on {@value #CHECK_THREAD} while generation goes on, and the final
+ * validation runs there too, without decoding again. The result completes on the
+ * environment's executor.
  */
 public final class ClipGenerator implements Generator {
 	public static final String CLIP_ATTEMPTS = "clip_attempts";
+	/** The thread that checks videos and validates the dataset. */
+	public static final String CHECK_THREAD = "honey-factory-clip-checks";
 	/** How far below its start the body may drop before a clip is redrawn. */
 	static final double MAX_FALL_BLOCKS = 3.0;
 
@@ -113,6 +127,14 @@ public final class ClipGenerator implements Generator {
 	private @Nullable ClipWriter running;
 	private boolean cancelled;
 	private @Nullable Instant started;
+	private final ExecutorService checks = Executors.newSingleThreadExecutor(task -> {
+		Thread thread = new Thread(task, CHECK_THREAD);
+		thread.setDaemon(true);
+		return thread;
+	});
+	/** Accepted clips' video checks, in acceptance order; each yields its errors. */
+	private final List<CompletableFuture<List<String>>> videoChecks = new ArrayList<>();
+	private volatile @Nullable String validatedOn;
 
 	public ClipGenerator(ResolvedConfig config, ClipEnvironment environment, Clock clock) {
 		this(config, environment, clock, StorageBudget.DiskSpace.SYSTEM);
@@ -170,7 +192,15 @@ public final class ClipGenerator implements Generator {
 			slice == null ? null : new DatasetManifest.Slice(slice.index(), slice.count(), slice.world(), plan.stream().map(SceneSlots.Slot::sceneIndex).toList())
 		);
 		this.writer = DatasetWriter.create(this.config.outputRoot(), this.manifest);
-		return runSlots(plan.iterator()).handle((ignored, error) -> finish(error));
+		return runSlots(plan.iterator())
+			.handleAsync((ignored, error) -> finish(error), this.checks)
+			.whenComplete((result, error) -> this.checks.shutdown())
+			.thenApplyAsync(result -> result, this.environment.executor());
+	}
+
+	/** The thread the last validation ran on, for tests. */
+	@Nullable String validatedOn() {
+		return this.validatedOn;
 	}
 
 	private static List<SceneSlots.Slot> slots(ResolvedConfig config) {
@@ -227,6 +257,7 @@ public final class ClipGenerator implements Generator {
 
 				io(() -> this.writer.appendClipScene(outcome.scene(), outcome.clips()));
 				this.tally.acceptClips(slot.split(), outcome.clips().size());
+				outcome.clips().forEach(this::checkVideos);
 				return CompletableFuture.completedFuture(null);
 			});
 	}
@@ -282,7 +313,28 @@ public final class ClipGenerator implements Generator {
 		return operation.get().whenComplete((value, error) -> this.timings.add(phase, System.nanoTime() - begun));
 	}
 
+	/** Queues the decode-and-compare check of an accepted clip's masks on the checks thread. */
+	private void checkVideos(ClipRecord clip) {
+		Path root = this.writer.root();
+		this.videoChecks.add(CompletableFuture.supplyAsync(() -> {
+			try {
+				List<FrameRecord> frames = Jsonl.read(Files.readAllBytes(root.resolve(clip.frames().path())), clip.frames().path()).stream().map(FrameRecord::fromJson).toList();
+				return ClipConsistency.videos(root, clip, frames, true);
+			} catch (IOException | RuntimeException e) {
+				return List.of("clip " + clip.clipId() + ": its videos could not be checked: " + e.getMessage());
+			}
+		}, this.checks));
+	}
+
+	/** Errors the accepted clips' video checks found; they are all done before {@link #finish} runs on the same thread. */
+	private List<String> videoErrors() {
+		List<String> errors = new ArrayList<>();
+		this.videoChecks.forEach(check -> errors.addAll(check.join()));
+		return errors;
+	}
+
 	private DatasetGenerator.Result finish(@Nullable Throwable error) {
+		this.validatedOn = Thread.currentThread().getName();
 		long validating = System.nanoTime();
 		try {
 			this.environment.end();
@@ -291,18 +343,18 @@ public final class ClipGenerator implements Generator {
 			DatasetManifest.Counts counts = this.tally.counts();
 			if (failure != null) {
 				DatasetManifest partial = this.manifest.withState(DatasetManifest.Lifecycle.FAILED, this.clock.instant(), null, counts, null);
-				return failed(counts, ClipValidator.validate(this.writer.root(), partial), failure);
+				return failed(counts, ClipValidator.validate(this.writer.root(), partial, false), failure);
 			}
 
 			DatasetManifest candidate = this.manifest.withState(DatasetManifest.Lifecycle.COMPLETE, this.clock.instant(), this.tally.splitCounts(), counts, null);
-			ClipValidator.Report report = ClipValidator.validate(this.writer.root(), candidate);
+			ClipValidator.Report report = ClipValidator.validate(this.writer.root(), candidate, false).withErrors(videoErrors());
 			if (!report.passed()) {
 				return failed(counts, report, "validation found " + report.errors().size() + " errors");
 			}
 
 			DatasetManifest done = candidate.withState(DatasetManifest.Lifecycle.COMPLETE, candidate.completedAtUtc(), candidate.splitCounts(), counts, integrity(report));
 			this.writer.writeManifest(done);
-			ClipValidator.Report stored = ClipValidator.validate(this.writer.root());
+			ClipValidator.Report stored = ClipValidator.validate(this.writer.root(), false);
 			if (!stored.passed()) {
 				return failed(counts, stored, "the stored dataset failed validation");
 			}

@@ -20,12 +20,12 @@ import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import io.github.thedeadbolt.honeyfactory.scene.ArenaLayout;
 import io.github.thedeadbolt.honeyfactory.scene.PreparedPatch;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -40,7 +40,7 @@ public final class ScriptedClipEnvironment implements ClipEnvironment {
 	/** Blocks per tick at full forward, roughly Minecraft's walking speed. */
 	static final double WALK = 0.2158;
 
-	private final Deque<Runnable> queue = new ArrayDeque<>();
+	private final LinkedBlockingDeque<Runnable> queue = new LinkedBlockingDeque<>();
 	private int resets;
 	private long serverTick = 1000;
 	private int operations;
@@ -63,8 +63,33 @@ public final class ScriptedClipEnvironment implements ClipEnvironment {
 
 	/** Runs queued requests, including any they queue, until none remain. */
 	public void pump() {
-		while (!this.queue.isEmpty()) {
-			this.queue.removeFirst().run();
+		Runnable next;
+		while ((next = this.queue.pollFirst()) != null) {
+			next.run();
+		}
+	}
+
+	/**
+	 * Runs queued requests until {@code done} completes; work finished on other threads
+	 * (validation) queues its hand-back here, as the game's executor would receive it.
+	 */
+	public void pumpUntil(CompletableFuture<?> done) {
+		long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+		while (!done.isDone()) {
+			pump();
+			if (System.nanoTime() > deadline) {
+				throw new AssertionError("generation did not finish within 60 s");
+			}
+
+			try {
+				Runnable next = this.queue.pollFirst(10, TimeUnit.MILLISECONDS);
+				if (next != null) {
+					next.run();
+				}
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				throw new AssertionError(e);
+			}
 		}
 	}
 

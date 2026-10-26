@@ -44,13 +44,30 @@ public final class ClipValidator {
 		public boolean passed() {
 			return this.errors.isEmpty();
 		}
+
+		/** This report with {@code more} errors after its own. */
+		public Report withErrors(List<String> more) {
+			List<String> all = new ArrayList<>(this.errors);
+			all.addAll(more);
+			return new Report(this.manifest, this.scenes, this.clips, this.scenesDigest, this.clipsDigest, List.copyOf(all));
+		}
 	}
 
 	private ClipValidator() {
 	}
 
-	/** Validates the dataset as stored, including its manifest. */
+	/** Validates the dataset as stored, including its manifest and every frame's mask. */
 	public static Report validate(Path root) throws IOException {
+		return validate(root, true);
+	}
+
+	/**
+	 * Validates the dataset as stored, including its manifest.
+	 *
+	 * @param pixels whether to decode the masks and compare them with the labels; without, the
+	 *     videos' frame counts are still checked from their containers
+	 */
+	public static Report validate(Path root, boolean pixels) throws IOException {
 		List<String> errors = new ArrayList<>();
 		DatasetManifest manifest = null;
 		try {
@@ -59,15 +76,20 @@ public final class ClipValidator {
 			errors.add(DatasetWriter.MANIFEST + ": " + e.getMessage());
 		}
 
-		return validate(root, manifest, errors);
+		return validate(root, manifest, errors, pixels);
 	}
 
 	/** Validates the stored records and files against {@code manifest}, which need not be written yet. */
 	public static Report validate(Path root, DatasetManifest manifest) throws IOException {
-		return validate(root, manifest, new ArrayList<>());
+		return validate(root, manifest, true);
 	}
 
-	private static Report validate(Path root, @Nullable DatasetManifest manifest, List<String> errors) throws IOException {
+	/** As {@link #validate(Path, DatasetManifest)}; {@code pixels} as in {@link #validate(Path, boolean)}. */
+	public static Report validate(Path root, DatasetManifest manifest, boolean pixels) throws IOException {
+		return validate(root, manifest, new ArrayList<>(), pixels);
+	}
+
+	private static Report validate(Path root, @Nullable DatasetManifest manifest, List<String> errors, boolean pixels) throws IOException {
 		byte[] sceneBytes = Files.readAllBytes(root.resolve(DatasetWriter.SCENES));
 		byte[] clipBytes = Files.readAllBytes(root.resolve(DatasetWriter.CLIPS));
 		List<SceneRecord> scenes = parse(sceneBytes, DatasetWriter.SCENES, SceneRecord::fromJson, errors);
@@ -90,7 +112,7 @@ public final class ClipValidator {
 		}
 
 		for (ClipRecord clip : clips) {
-			errors.addAll(files(root, manifest, byId.get(clip.sceneId()), clip));
+			errors.addAll(files(root, manifest, byId.get(clip.sceneId()), clip, pixels));
 		}
 
 		errors.addAll(unreferenced(root, clips));
@@ -102,7 +124,7 @@ public final class ClipValidator {
 	 * {@link ClipConsistency#frames}); its videos holding every frame, with masks as labelled.
 	 * A file that differs from its record is still checked, so every problem shows.
 	 */
-	private static List<String> files(Path root, @Nullable DatasetManifest manifest, @Nullable SceneRecord scene, ClipRecord clip) throws IOException {
+	private static List<String> files(Path root, @Nullable DatasetManifest manifest, @Nullable SceneRecord scene, ClipRecord clip, boolean pixels) throws IOException {
 		List<String> errors = new ArrayList<>();
 		boolean videos = true;
 		for (String[] file : new String[][] {
@@ -128,7 +150,7 @@ public final class ClipValidator {
 		}
 
 		if (videos) {
-			errors.addAll(ClipConsistency.videos(root, clip, frames, true));
+			errors.addAll(ClipConsistency.videos(root, clip, frames, pixels));
 		}
 
 		return errors;

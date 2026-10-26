@@ -59,8 +59,7 @@ class ClipGeneratorTest {
 
 	private static DatasetGenerator.Result run(ClipGenerator generator, ScriptedClipEnvironment environment) throws IOException {
 		CompletableFuture<DatasetGenerator.Result> result = generator.start();
-		environment.pump();
-		assertTrue(result.isDone(), "generation waits on no further requests");
+		environment.pumpUntil(result);
 		return result.join();
 	}
 
@@ -197,6 +196,18 @@ class ClipGeneratorTest {
 		}
 
 		assertTrue(drifting > 0, "a drift rate of 0.3 drifts some ticks");
+	}
+
+	@Test
+	void validatesOffTheEnvironmentThreadAndCompletesOnIt() throws IOException {
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		ClipGenerator generator = new ClipGenerator(config(this.temp.resolve("h")), environment, CLOCK, DISK);
+		CompletableFuture<String> completedOn = new CompletableFuture<>();
+		CompletableFuture<DatasetGenerator.Result> result = generator.start().whenComplete((value, error) -> completedOn.complete(Thread.currentThread().getName()));
+		environment.pumpUntil(result);
+		assertEquals("complete", result.join().manifest().lifecycle().jsonName());
+		assertEquals(ClipGenerator.CHECK_THREAD, generator.validatedOn(), "validation runs on the checks thread, not the game's");
+		assertEquals(Thread.currentThread().getName(), completedOn.join(), "the result completes on the environment's executor");
 	}
 
 	@Test
