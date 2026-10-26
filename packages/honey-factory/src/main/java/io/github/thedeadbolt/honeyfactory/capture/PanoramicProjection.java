@@ -103,15 +103,6 @@ public final class PanoramicProjection implements CaptureProjection {
 		return PanoramaSampling.of(this).reproject(views);
 	}
 
-	/**
-	 * The sampling table packed for a GPU reprojection: two ints per output pixel, row-major
-	 * from the top. The first holds the face ordinal shifted left by 20 bits, ored with the
-	 * quantized x; the second holds the quantized y. See {@link PanoramaSampling}.
-	 */
-	public int[] gpuSampleTable() {
-		return PanoramaSampling.of(this).packedForGpu();
-	}
-
 	@Override
 	public double[] direction(CameraFrame camera, double px, double py) {
 		double longitude = Math.toRadians(longitudeDegrees(px));

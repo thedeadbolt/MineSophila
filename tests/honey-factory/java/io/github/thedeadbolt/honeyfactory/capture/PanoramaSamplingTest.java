@@ -1,7 +1,6 @@
 package io.github.thedeadbolt.honeyfactory.capture;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -35,23 +34,5 @@ class PanoramaSamplingTest {
 		assertArrayEquals(sequential.rgb(), parallel.rgb());
 		assertArrayEquals(sequential.visibleMask(), parallel.visibleMask());
 		assertArrayEquals(sequential.unoccludedMask(), parallel.unoccludedMask());
-	}
-
-	@Test
-	void theGpuTablePacksEachPixelsFaceAndCoordinatesExactly() {
-		PanoramicProjection projection = new PanoramicProjection(2480, 1280, 1024);
-		PanoramaSampling sampling = PanoramaSampling.of(projection);
-		int[] packed = projection.gpuSampleTable();
-		assertEquals(2480 * 1280 * 2, packed.length);
-		Random random = new Random(3);
-		for (int i = 0; i < 10_000; i++) {
-			int x = i < 4 ? (i % 2) * 2479 : random.nextInt(2480);
-			int y = i < 4 ? (i / 2) * 1279 : random.nextInt(1280);
-			int[] sample = sampling.sample(x, y);
-			int p = y * 2480 + x;
-			assertEquals(sample[0], packed[2 * p] >>> 20, "face at " + x + "," + y);
-			assertEquals(sample[1], packed[2 * p] & 0xFFFFF, "qx at " + x + "," + y);
-			assertEquals(sample[2], packed[2 * p + 1], "qy at " + x + "," + y);
-		}
 	}
 }

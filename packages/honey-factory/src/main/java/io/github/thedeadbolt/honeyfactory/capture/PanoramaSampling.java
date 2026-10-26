@@ -227,18 +227,6 @@ final class PanoramaSampling {
 		}
 	}
 
-	/** The table as two ints per output pixel: face {@code << 20 | qx}, then {@code qy}; see {@link PanoramicProjection#gpuSampleTable}. */
-	int[] packedForGpu() {
-		int[] packed = new int[this.samples.length * 2];
-		for (int p = 0; p < this.samples.length; p++) {
-			long sample = this.samples[p];
-			packed[2 * p] = (int) (sample >>> (2 * COORDINATE_BITS)) << 20 | (int) (sample >>> COORDINATE_BITS & COORDINATE_MASK);
-			packed[2 * p + 1] = (int) (sample & COORDINATE_MASK);
-		}
-
-		return packed;
-	}
-
 	/** The face and quantized face coordinates output pixel {@code (x, y)} samples, for tests. */
 	int[] sample(int x, int y) {
 		long sample = this.samples[y * this.width + x];
