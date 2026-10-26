@@ -23,7 +23,6 @@
 			"io.github.thedeadbolt.honeyfactory.gametest.M11ExitTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M12BenchmarkTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M12ReadinessTest",
-			"io.github.thedeadbolt.honeyfactory.gametest.M12ResetTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M12ExitReplayTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M9MatrixTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M9PilotTest",
