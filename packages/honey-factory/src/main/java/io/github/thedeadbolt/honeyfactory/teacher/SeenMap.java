@@ -15,7 +15,8 @@ import java.util.Set;
 
 /**
  * Which cells of the arena have ever been in view: inside the camera's projection, within
- * {@value #RANGE_BLOCKS} blocks, with a clear line from the eye to the cell's centre. Cells
+ * {@value #RANGE_BLOCKS} blocks, with a clear line from the eye to the cell's centre, or for
+ * a block to the centre of one of its faces. Cells
  * are arena-relative, as the scene's {@link SightGrid} indexes them; poses are absolute and
  * converted with the core's minimum corner.
  *
@@ -78,7 +79,8 @@ public final class SeenMap {
 					}
 
 					BlockBox cell = BlockBox.cell(new int[] {x + this.origin[0], y + this.origin[1], z + this.origin[2]});
-					if (projection.intersects(camera, cell) && SightLines.sees(grid, eye, new int[] {x, y, z})) {
+					int[] relative = {x, y, z};
+					if (projection.intersects(camera, cell) && (SightLines.sees(grid, eye, relative) || grid.solid(x, y, z) && SightLines.seesSurface(grid, eye, relative))) {
 						this.seen[index] = true;
 						this.count++;
 					}

@@ -507,6 +507,8 @@ public final class ClipGenerator implements Generator {
 		private @Nullable ClipDriver driver;
 		private @Nullable ControlStep last;
 		private double coverage;
+		/** Cells the body could reach from its start, by the true scene: the measure of search coverage, never the teacher's knowledge. */
+		private java.util.Set<Long> reachable = java.util.Set.of();
 		private int frame;
 
 		ClipRun(SceneClips scene, int index, int attempt, ClipType type, ClipSeeds seeds, Start start) {
@@ -524,8 +526,12 @@ public final class ClipGenerator implements Generator {
 		CompletableFuture<ClipRecord> run() {
 			this.driver = ClipDriver.of(this.type, this.seeds.drive(), this.start.pose(), this.scene.target, ClipGenerator.this.clips.motor());
 			this.context = new TeacherContext(this.scene.grid, ClipGenerator.this.arena.core(), ClipGenerator.this.clips.motor(), ClipGenerator.this.clips.teacher().minVisiblePixels(),
-				ClipGenerator.this.config.viewpoints().eyeHeightBlocks(), ClipGenerator.this.projection);
+				ClipGenerator.this.config.viewpoints().eyeHeightBlocks(), ClipGenerator.this.projection, ClipGenerator.this.clips.teacher().reachDistanceBlocks());
 			this.teacher.reset(this.context);
+			int[] origin = ClipGenerator.this.arena.core().min();
+			CameraPose start = this.start.pose();
+			this.reachable = SeenMap.reachable(this.scene.grid, ClipGenerator.this.arena.core(),
+				new int[] {(int) Math.floor(start.x()) - origin[0], (int) Math.floor(start.y()) - origin[1], (int) Math.floor(start.z()) - origin[2]});
 			return request(GenerationTimings.Phase.RESET, () -> ClipGenerator.this.environment.reset(ClipGenerator.this.arena, this.scene.scene.plan(), this.start.pose(),
 				ClipGenerator.this.projection, this.seeds.drive(), this.framesPerTick))
 				.thenCompose(reset -> {
@@ -568,6 +574,7 @@ public final class ClipGenerator implements Generator {
 			}
 
 			TeacherInput input = perceive(tick);
+			this.coverage = this.seen.coverage(this.reachable);
 			Teacher.Decision decision = this.teacher.decide(input);
 			MotorCommand command = this.driver.next(tick, input, decision);
 			return request(GenerationTimings.Phase.OBSERVE, () -> ClipGenerator.this.environment.step(command, decision.command())).thenCompose(step -> {
@@ -587,7 +594,6 @@ public final class ClipGenerator implements Generator {
 
 				this.executed.add(command);
 				this.modes.merge(decision.mode(), 1, Integer::sum);
-				this.coverage = decision.coverage();
 				this.last = control;
 				return tick(tick + 1);
 			});
@@ -602,7 +608,7 @@ public final class ClipGenerator implements Generator {
 
 		private FrameRecord.TickLabels labels(ControlStep step, @Nullable MotorCommand executed, Teacher.@Nullable Decision decision) {
 			return new FrameRecord.TickLabels(step.truth().serverTick(), step.truth().velocity(), step.senses(), executed, decision == null ? null : decision.command(),
-				decision == null ? null : decision.mode(), decision == null ? null : decision.belief(), false, decision == null ? this.coverage : decision.coverage());
+				decision == null ? null : decision.mode(), decision == null ? null : decision.belief(), false, this.coverage);
 		}
 
 		private void record(int tick, int subFrame, ClipEnvironment.Frame captured, FrameRecord.@Nullable TickLabels labels) {

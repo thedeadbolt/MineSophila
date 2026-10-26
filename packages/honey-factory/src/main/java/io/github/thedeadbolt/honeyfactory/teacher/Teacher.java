@@ -10,12 +10,8 @@ import io.github.thedeadbolt.honeyfactory.control.MotorCommand;
  * honey it could not have seen.
  */
 public interface Teacher {
-	/**
-	 * One tick's decision.
-	 *
-	 * @param coverage the share of reachable cells the teacher has seen so far, in [0, 1]
-	 */
-	record Decision(MotorCommand command, TeacherMode mode, FrameRecord.Belief belief, double coverage) {
+	/** One tick's decision: the command, the mode it came from, and what the teacher believed of the honey. */
+	record Decision(MotorCommand command, TeacherMode mode, FrameRecord.Belief belief) {
 	}
 
 	/** Forgets everything for a new clip. */
@@ -35,7 +31,7 @@ public interface Teacher {
 
 			@Override
 			public Decision decide(TeacherInput input) {
-				return new Decision(MotorCommand.IDLE, TeacherMode.SEARCH, new FrameRecord.Belief(FrameRecord.Belief.Source.NONE, null, input.tick() - 1), 0.0);
+				return new Decision(MotorCommand.IDLE, TeacherMode.SEARCH, new FrameRecord.Belief(FrameRecord.Belief.Source.NONE, null, input.tick() - 1));
 			}
 		};
 	}

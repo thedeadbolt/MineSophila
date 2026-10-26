@@ -45,6 +45,31 @@ public final class SightLines {
 		return reach(grid, eye, new double[] {cell[0] + 0.5, cell[1] + 0.5, cell[2] + 0.5}, cell) != BLOCKED;
 	}
 
+	/**
+	 * Whether any face of {@code cell} turned towards {@code eye} is visible at its centre: a
+	 * block seen at a slant shows a face even when the line to its centre crosses a neighbour.
+	 */
+	public static boolean seesSurface(SightGrid grid, double[] eye, int[] cell) {
+		for (int axis = 0; axis < 3; axis++) {
+			int side;
+			if (eye[axis] < cell[axis]) {
+				side = 0;
+			} else if (eye[axis] > cell[axis] + 1) {
+				side = 1;
+			} else {
+				continue;
+			}
+
+			double[] point = {cell[0] + 0.5, cell[1] + 0.5, cell[2] + 0.5};
+			point[axis] = cell[axis] + side + (side == 1 ? -INSET : INSET);
+			if (reach(grid, eye, point, cell) != BLOCKED) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	/** Both fractions; each is 0 when the eye is inside the cell. */
 	public static Estimate estimate(SightGrid grid, double[] eye, int[] cell) {
 		int samples = 0;

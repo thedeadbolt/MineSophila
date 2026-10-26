@@ -20,7 +20,7 @@ class PerceptionTest {
 	private static final int[] HONEY = {8, 1, 12};
 
 	private static TeacherContext context(Grids grid) {
-		return new TeacherContext(grid, grid.core, MotorLimits.DEFAULT, 50, 1.62, PERSPECTIVE);
+		return new TeacherContext(grid, grid.core, MotorLimits.DEFAULT, 50, 1.62, PERSPECTIVE, 1.5);
 	}
 
 	private static BodySenses senses() {
