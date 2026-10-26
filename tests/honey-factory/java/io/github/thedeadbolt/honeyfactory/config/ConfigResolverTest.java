@@ -82,7 +82,7 @@ class ConfigResolverTest {
 		assertEquals(40, clips.ticks(ClipType.SCAN));
 		assertEquals(100, clips.ticks(ClipType.APPROACH));
 		assertEquals(0.0, clips.mix().get(ClipType.APPROACH));
-		assertEquals(0.15, clips.mix().get(ClipType.SCAN));
+		assertEquals(0.075, clips.mix().get(ClipType.SCAN), "unset weights keep their defaults");
 		assertEquals(new ClipCodec.H264Lossy(23), clips.codec());
 		assertEquals(80, clips.teacher().minVisiblePixels());
 	}

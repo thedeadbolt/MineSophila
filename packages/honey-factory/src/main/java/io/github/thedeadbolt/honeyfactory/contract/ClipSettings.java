@@ -67,12 +67,13 @@ public record ClipSettings(
 			ticks.put(type, type == ClipType.APPROACH || type == ClipType.DETOUR ? 100 : 32);
 		}
 
+		// Scripted clips (scan, pass-by) are 15% of a dataset with 20% target-absent scenes; M13 decides by ablation whether to keep them.
 		Map<ClipType, Double> mix = new EnumMap<>(ClipType.class);
-		mix.put(ClipType.APPROACH, 0.25);
-		mix.put(ClipType.PASS_BY, 0.15);
-		mix.put(ClipType.SCAN, 0.15);
+		mix.put(ClipType.APPROACH, 0.35);
+		mix.put(ClipType.PASS_BY, 0.075);
+		mix.put(ClipType.SCAN, 0.075);
 		mix.put(ClipType.OCCLUSION, 0.15);
-		mix.put(ClipType.DETOUR, 0.10);
+		mix.put(ClipType.DETOUR, 0.15);
 		return new ClipSettings(3, 4, 20, ticks, 8, mix, new Drift(0.10, 6.0, 6.0, 0.5, 0.3), new Teacher(50, 60, 1.5), MotorLimits.DEFAULT, new ClipCodec.H264Lossless());
 	}
 

@@ -61,4 +61,15 @@ class ClipRecordTest {
 		assertEquals(50, defaults.teacher().minVisiblePixels());
 		assertEquals(100, defaults.ticks(ClipType.DETOUR));
 	}
+
+	@Test
+	void defaultMixHalvesTheScriptedShare() {
+		ClipSettings defaults = ClipSettings.defaults();
+		assertEquals(0.35, defaults.mix().get(ClipType.APPROACH));
+		assertEquals(0.075, defaults.mix().get(ClipType.PASS_BY));
+		assertEquals(0.075, defaults.mix().get(ClipType.SCAN));
+		assertEquals(0.15, defaults.mix().get(ClipType.OCCLUSION));
+		assertEquals(0.15, defaults.mix().get(ClipType.DETOUR));
+		assertEquals(0.3, defaults.drift().hazardFraction());
+	}
 }
