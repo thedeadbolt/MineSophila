@@ -10,6 +10,7 @@ import com.mojang.renderpearl.api.device.GpuDevice;
 import com.mojang.renderpearl.api.textures.GpuTexture;
 import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
+import io.github.thedeadbolt.honeyfactory.client.mixin.GameRendererAccessor;
 import io.github.thedeadbolt.honeyfactory.client.mixin.SectionOcclusionGraphAccessor;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
@@ -22,7 +23,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.TextureFilteringMethod;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.state.GameRenderState;
 import net.minecraft.core.BlockPos;
 import org.jspecify.annotations.Nullable;
 
@@ -229,6 +232,27 @@ public final class CaptureService {
 		throw failure("the section graph did not settle at the interpolated camera position");
 	}
 
+	/**
+	 * Writes the global settings uniform for the frame just extracted, as a full frame render
+	 * does before it renders the level. Terrain shaders place every section relative to the
+	 * camera block and offset it holds; without this, a capture rendering the level alone
+	 * draws terrain from wherever the last full frame's camera was, while its masks follow
+	 * the real camera.
+	 */
+	private static void writeGlobalSettings(Minecraft minecraft) {
+		GameRenderState state = minecraft.gameRenderer.gameRenderState();
+		((GameRendererAccessor) minecraft.gameRenderer).honeyFactory$globalSettingsUniform().update(
+			state.windowRenderState.width,
+			state.windowRenderState.height,
+			state.optionsRenderState.glintStrength,
+			state.levelRenderState.gameTime,
+			state.levelRenderState.worldPartialTicks,
+			state.optionsRenderState.menuBackgroundBlurriness,
+			state.levelRenderState.cameraRenderState.pos,
+			state.optionsRenderState.textureFiltering == TextureFilteringMethod.RGSS
+		);
+	}
+
 	/** Checks the client can capture at all: a level, a player and improved transparency. */
 	private static void checkCanCapture(Minecraft minecraft) {
 		if (minecraft.level == null || minecraft.player == null) {
@@ -257,6 +281,7 @@ public final class CaptureService {
 
 		minecraft.gameRenderer.update(DeltaTracker.ONE);
 		minecraft.gameRenderer.extract(DeltaTracker.ONE, true);
+		writeGlobalSettings(minecraft);
 		minecraft.gameRenderer.renderLevel();
 		if (target != null) {
 			String maskFailure = TargetMaskRenderer.finish();
