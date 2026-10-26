@@ -124,6 +124,81 @@ class ClipGeneratorTest {
 		assertNoPartials(result.directory());
 	}
 
+	private ResolvedConfig allTypes(Path root, int level) {
+		return ConfigResolver.resolve(("""
+			{
+			  "dataset": {"name": "m12-clip-types", "seed": 11, "difficulty": %d},
+			  "capture": {"width": 64, "height": 32, "cube_face_size": 16},
+			  "quotas": {"accepted_scenes": 4, "scene_attempts_per_accepted_scene": 3},
+			  "target": {"present_fraction": 0.75},
+			  "splits": {"train": 0.5, "validation": 0.5, "test": 0.0},
+			  "clips": {"clips_per_scene": 3, "frames_per_tick": 1,
+			            "ticks": {"approach": 100, "pass_by": 8, "scan": 8, "occlusion": 8, "detour": 30, "no_honey": 8},
+			            "approach_linger_ticks": 4, "drift": {"rate": 0.3}, "teacher": {"min_visible_pixels": 1}},
+			  "output": {"root": "%s", "free_space_reserve_bytes": 1000000}
+			}
+			""").formatted(level, root.toString().replace("\\", "\\\\")));
+	}
+
+	private static List<ClipRecord> clips(DatasetGenerator.Result result) throws IOException {
+		return lines(result.directory().resolve(DatasetWriter.CLIPS)).stream().map(line -> ClipRecord.fromJson(JsonFields.parseObject(line))).toList();
+	}
+
+	@Test
+	void everyTypeRunsAndLevelOneHasNoOcclusionOrDetour() throws IOException {
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		DatasetGenerator.Result result = run(new ClipGenerator(allTypes(this.temp.resolve("e"), 1), environment, CLOCK, DISK), environment);
+		assertNull(result.failure(), () -> result.failure() + " " + result.validationErrors());
+		List<ClipRecord> clips = clips(result);
+		assertEquals(12, clips.size());
+		for (ClipRecord clip : clips) {
+			assertTrue(clip.requestedType() != ClipType.OCCLUSION && clip.requestedType() != ClipType.DETOUR, "level 1 gives their share away: " + clip.clipId());
+			assertEquals(clip.requestedType(), clip.clipType());
+		}
+
+		assertTrue(clips.stream().anyMatch(clip -> clip.clipType() == ClipType.NO_HONEY), "target-absent scenes give no-honey clips");
+		assertEquals(List.of(), ClipValidator.validate(result.directory()).errors());
+	}
+
+	@Test
+	void approachClipsEndOnceTheHoneyIsReached() throws IOException {
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		DatasetGenerator.Result result = run(new ClipGenerator(allTypes(this.temp.resolve("f"), 1), environment, CLOCK, DISK), environment);
+		List<ClipRecord> approaches = clips(result).stream().filter(clip -> clip.clipType() == ClipType.APPROACH).toList();
+		assertTrue(!approaches.isEmpty(), "the mix draws approach clips");
+		for (ClipRecord clip : approaches) {
+			if (Boolean.TRUE.equals(clip.summary().reached())) {
+				assertEquals(ClipRecord.EndReason.REACHED, clip.endReason());
+				assertTrue(clip.tickCount() < 100, clip.clipId() + " ran " + clip.tickCount() + " ticks");
+			} else {
+				assertEquals(100, clip.tickCount());
+			}
+		}
+
+		assertTrue(approaches.stream().anyMatch(clip -> Boolean.TRUE.equals(clip.summary().reached())), "the teacher reaches the honey");
+	}
+
+	@Test
+	void driftTicksAreRecordedOnEveryTick() throws IOException {
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		DatasetGenerator.Result result = run(new ClipGenerator(allTypes(this.temp.resolve("g"), 1), environment, CLOCK, DISK), environment);
+		int drifting = 0;
+		for (ClipRecord clip : clips(result)) {
+			int flagged = 0;
+			for (String line : lines(result.directory().resolve(clip.frames().path()))) {
+				FrameRecord frame = FrameRecord.fromJson(JsonFields.parseObject(line));
+				flagged += frame.tickLabels() != null && frame.tickLabels().drifting() ? 1 : 0;
+			}
+
+			assertEquals(clip.summary().driftTicks(), flagged, clip.clipId());
+			boolean scripted = clip.clipType() == ClipType.SCAN || clip.clipType() == ClipType.PASS_BY;
+			assertTrue(!scripted || flagged == 0, "scripted clips do not drift: " + clip.clipId());
+			drifting += flagged;
+		}
+
+		assertTrue(drifting > 0, "a drift rate of 0.3 drifts some ticks");
+	}
+
 	@Test
 	void ffmpegMissingFailsBeforeFirstScene() {
 		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();

@@ -46,6 +46,14 @@ public final class SeenMap {
 		this.seen = new boolean[this.width * this.height * this.length];
 	}
 
+	/** A map with every cell seen: the true layout, for the generator's own planning, never the teacher's. */
+	public static SeenMap everything(BlockBox core) {
+		SeenMap map = new SeenMap(core);
+		java.util.Arrays.fill(map.seen, true);
+		map.count = map.seen.length;
+		return map;
+	}
+
 	/** A cell's key in sets of cells. */
 	public static long key(int x, int y, int z) {
 		return ((long) (x & 0xFFFFF) << 40) | ((long) (y & 0xFFFFF) << 20) | (z & 0xFFFFF);

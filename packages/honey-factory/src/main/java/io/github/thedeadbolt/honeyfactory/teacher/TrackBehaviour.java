@@ -81,7 +81,7 @@ public final class TrackBehaviour {
 	}
 
 	/** The shortest known path to a walkable cell beside {@code target}, or null. */
-	static List<int[]> pathBeside(WalkGraph graph, int[] feet, int[] target) {
+	public static List<int[]> pathBeside(WalkGraph graph, int[] feet, int[] target) {
 		List<int[]> best = null;
 		for (int[] side : new int[][] {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
 			for (int dy = 0; dy >= -1; dy--) {

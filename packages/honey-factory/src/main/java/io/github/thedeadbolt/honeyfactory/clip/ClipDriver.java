@@ -16,17 +16,24 @@ import org.jspecify.annotations.Nullable;
 public interface ClipDriver {
 	MotorCommand next(int tick, TeacherInput input, Teacher.Decision teacher);
 
+	/** Whether the last command drifted from what the driver meant to do. */
+	default boolean drifting() {
+		return false;
+	}
+
 	/**
-	 * The driver of a clip of {@code type}.
+	 * The driver of a clip that starts at {@code start}: scan and pass-by follow their scripts;
+	 * approach, detour and no-honey execute the teacher's command with {@code drift}; occlusion
+	 * walks to its waypoint with drift, then follows the teacher.
 	 *
 	 * @param honey the honey's absolute cell, or null in a scene without honey
-	 * @throws IllegalArgumentException for a type with no driver yet
 	 */
-	static ClipDriver of(ClipType type, long seed, CameraPose start, int @Nullable [] honey, MotorLimits limits) {
-		return switch (type) {
+	static ClipDriver of(ClipStarts.Start start, long seed, int @Nullable [] honey, MotorLimits limits, double eyeHeight, Drift drift) {
+		return switch (start.type()) {
 			case SCAN -> new ScanDriver(seed, limits);
-			case PASS_BY -> new PassByDriver(seed, start, honey, limits);
-			default -> throw new IllegalArgumentException("clip type " + type.jsonName() + " has no driver yet");
+			case PASS_BY -> new PassByDriver(seed, start.pose(), honey, limits);
+			case APPROACH, DETOUR, NO_HONEY -> new TeacherDriver(drift);
+			case OCCLUSION -> new OcclusionDriver(start.waypoint(), limits, eyeHeight, drift);
 		};
 	}
 

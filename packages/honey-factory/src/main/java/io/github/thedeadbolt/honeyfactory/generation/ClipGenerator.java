@@ -5,6 +5,8 @@ import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.clip.ClipDriver;
 import io.github.thedeadbolt.honeyfactory.clip.ClipEnvironment;
 import io.github.thedeadbolt.honeyfactory.clip.ClipLabels;
+import io.github.thedeadbolt.honeyfactory.clip.ClipStarts;
+import io.github.thedeadbolt.honeyfactory.clip.Drift;
 import io.github.thedeadbolt.honeyfactory.clip.ClipVideo;
 import io.github.thedeadbolt.honeyfactory.clip.ClipWriter;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
@@ -37,7 +39,6 @@ import io.github.thedeadbolt.honeyfactory.scene.SceneGenerators;
 import io.github.thedeadbolt.honeyfactory.scene.SightGrid;
 import io.github.thedeadbolt.honeyfactory.scene.SolidGrid;
 import io.github.thedeadbolt.honeyfactory.scene.ViewpointCandidate;
-import io.github.thedeadbolt.honeyfactory.scene.ViewpointPlan;
 import io.github.thedeadbolt.honeyfactory.teacher.HoneyMemory;
 import io.github.thedeadbolt.honeyfactory.teacher.Perception;
 import io.github.thedeadbolt.honeyfactory.teacher.RealizableTeacher;
@@ -45,6 +46,7 @@ import io.github.thedeadbolt.honeyfactory.teacher.SeenMap;
 import io.github.thedeadbolt.honeyfactory.teacher.Teacher;
 import io.github.thedeadbolt.honeyfactory.teacher.TeacherContext;
 import io.github.thedeadbolt.honeyfactory.teacher.TeacherInput;
+import io.github.thedeadbolt.honeyfactory.teacher.TrackBehaviour;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.time.Clock;
@@ -415,7 +417,7 @@ public final class ClipGenerator implements Generator {
 
 			ClipSeeds seeds = ClipSeeds.derive(ClipGenerator.this.config.seed(), this.descriptor.slot().sceneIndex(), index, attempt);
 			ClipType type = type(index);
-			Start start = start(index, attempt, type, seeds);
+			ClipStarts.Start start = start(index, attempt, type, seeds);
 			if (start == null) {
 				HoneyFactory.LOGGER.warn("Clip {} of {} has no placeable start", index, this.descriptor.sceneId());
 				return CompletableFuture.completedFuture(null);
@@ -449,42 +451,52 @@ public final class ClipGenerator implements Generator {
 				return ClipType.NO_HONEY;
 			}
 
+			Map<ClipType, Double> mix = mix(ClipGenerator.this.clips, ClipGenerator.this.config.difficulty());
 			long seed = ClipSeeds.derive(ClipGenerator.this.config.seed(), this.descriptor.slot().sceneIndex(), index, 0).drive();
 			double total = 0.0;
 			for (ClipType type : ClipSettings.PRESENT_TYPES) {
-				total += ClipGenerator.this.clips.mix().get(type);
+				total += mix.get(type);
 			}
 
 			double draw = new SplittableRandom(seed).nextDouble() * total;
 			for (ClipType type : ClipSettings.PRESENT_TYPES) {
-				draw -= ClipGenerator.this.clips.mix().get(type);
+				draw -= mix.get(type);
 				if (draw < 0.0) {
 					return type;
 				}
 			}
 
-			return ClipSettings.PRESENT_TYPES.reversed().stream().filter(type -> ClipGenerator.this.clips.mix().get(type) > 0.0).findFirst().orElseThrow();
+			return ClipSettings.PRESENT_TYPES.reversed().stream().filter(type -> mix.get(type) > 0.0).findFirst().orElseThrow();
 		}
 
-		/** The first placeable start draw from {@code attempt} on; scan and no-honey clips face a random way. */
-		private @Nullable Start start(int index, int attempt, ClipType type, ClipSeeds seeds) {
-			int draws = ClipGenerator.this.config.viewpoints().attemptsPerViewpoint();
-			for (int draw = attempt; draw < attempt + draws; draw++) {
-				if (ClipGenerator.this.generator.viewpoint(this.scene, index, draw) instanceof ViewpointCandidate.Placeable placeable) {
-					ViewpointPlan plan = placeable.plan();
-					if (type == ClipType.SCAN || type == ClipType.NO_HONEY) {
-						plan = plan.turned(new SplittableRandom(seeds.start()).nextDouble() * 360.0);
-					}
-
-					return new Start(draw, plan.pose(ClipGenerator.this.arena));
-				}
-			}
-
-			return null;
+		/** The clip's start: see {@link ClipStarts}; draws run from {@code attempt} on. */
+		private ClipStarts.@Nullable Start start(int index, int attempt, ClipType type, ClipSeeds seeds) {
+			return ClipStarts.choose(type, draw -> ClipGenerator.this.generator.viewpoint(this.scene, index, draw) instanceof ViewpointCandidate.Placeable placeable
+					? placeable.plan().pose(ClipGenerator.this.arena) : null,
+				attempt, ClipGenerator.this.config.viewpoints().attemptsPerViewpoint(), this.grid, ClipGenerator.this.arena.core(), this.target, seeds.start(),
+				ClipGenerator.this.config.viewpoints().eyeHeightBlocks());
 		}
 	}
 
-	private record Start(int draw, CameraPose pose) {
+	/**
+	 * The mix a scene's clips are drawn from. A level-1 platform has no blocks to hide behind,
+	 * so its occlusion and detour weights go to approach and pass-by, in proportion to theirs.
+	 */
+	static Map<ClipType, Double> mix(ClipSettings clips, int difficulty) {
+		Map<ClipType, Double> mix = new EnumMap<>(clips.mix());
+		if (difficulty != 1) {
+			return mix;
+		}
+
+		double moved = mix.get(ClipType.OCCLUSION) + mix.get(ClipType.DETOUR);
+		double approach = mix.get(ClipType.APPROACH);
+		double passBy = mix.get(ClipType.PASS_BY);
+		double share = approach + passBy > 0.0 ? approach / (approach + passBy) : 1.0;
+		mix.put(ClipType.APPROACH, approach + moved * share);
+		mix.put(ClipType.PASS_BY, passBy + moved * (1.0 - share));
+		mix.put(ClipType.OCCLUSION, 0.0);
+		mix.put(ClipType.DETOUR, 0.0);
+		return mix;
 	}
 
 	/** One attempt at one clip. */
@@ -492,9 +504,10 @@ public final class ClipGenerator implements Generator {
 		private final SceneClips scene;
 		private final int index;
 		private final int attempt;
+		private final ClipType requested;
 		private final ClipType type;
 		private final ClipSeeds seeds;
-		private final Start start;
+		private final ClipStarts.Start start;
 		private final String clipId;
 		private final int ticks;
 		private final int framesPerTick;
@@ -508,24 +521,31 @@ public final class ClipGenerator implements Generator {
 		private @Nullable ClipDriver driver;
 		private @Nullable ControlStep last;
 		private double coverage;
+		private int driftTicks;
+		/** The tick an approach reached the honey, or -1. */
+		private int reachedTick = -1;
+		/** Ticks run so far. */
+		private int ran;
 		/** Cells the body could reach from its start, by the true scene: the measure of search coverage, never the teacher's knowledge. */
 		private java.util.Set<Long> reachable = java.util.Set.of();
 		private int frame;
 
-		ClipRun(SceneClips scene, int index, int attempt, ClipType type, ClipSeeds seeds, Start start) {
+		ClipRun(SceneClips scene, int index, int attempt, ClipType requested, ClipSeeds seeds, ClipStarts.Start start) {
 			this.scene = scene;
 			this.index = index;
 			this.attempt = attempt;
-			this.type = type;
+			this.requested = requested;
+			this.type = start.type();
 			this.seeds = seeds;
 			this.start = start;
 			this.clipId = Ids.clipId(scene.descriptor.sceneId(), index);
-			this.ticks = ClipGenerator.this.clips.ticks(type);
+			this.ticks = ClipGenerator.this.clips.ticks(this.type);
 			this.framesPerTick = ClipGenerator.this.clips.framesPerTick();
 		}
 
 		CompletableFuture<ClipRecord> run() {
-			this.driver = ClipDriver.of(this.type, this.seeds.drive(), this.start.pose(), this.scene.target, ClipGenerator.this.clips.motor());
+			this.driver = ClipDriver.of(this.start, this.seeds.drive(), this.scene.target, ClipGenerator.this.clips.motor(), ClipGenerator.this.config.viewpoints().eyeHeightBlocks(),
+				new Drift(this.seeds.drift(), ClipGenerator.this.clips.drift(), ClipGenerator.this.clips.motor()));
 			this.context = new TeacherContext(this.scene.grid, ClipGenerator.this.arena.core(), ClipGenerator.this.clips.motor(), ClipGenerator.this.clips.teacher().minVisiblePixels(),
 				ClipGenerator.this.config.viewpoints().eyeHeightBlocks(), ClipGenerator.this.projection, ClipGenerator.this.clips.teacher().reachDistanceBlocks());
 			this.teacher.reset(this.context);
@@ -542,7 +562,7 @@ public final class ClipGenerator implements Generator {
 
 					open();
 					ControlStep step = reset.step().step();
-					record(0, 0, reset.step().frames().getFirst(), labels(step, null, null));
+					record(0, 0, reset.step().frames().getFirst(), labels(step, null, null, false));
 					this.last = step;
 					return tick(1);
 				})
@@ -566,7 +586,7 @@ public final class ClipGenerator implements Generator {
 		}
 
 		private CompletableFuture<ClipRecord> tick(int tick) {
-			if (tick > this.ticks) {
+			if (tick > this.ticks || this.reachedTick >= 0 && tick > this.reachedTick + ClipGenerator.this.clips.approachLingerTicks()) {
 				return CompletableFuture.supplyAsync(this::finish, ClipGenerator.this.environment.executor());
 			}
 
@@ -589,10 +609,17 @@ public final class ClipGenerator implements Generator {
 					throw new IllegalStateException("a step captured " + frames.size() + " frames, not " + this.framesPerTick);
 				}
 
+				boolean drifting = this.driver.drifting();
 				for (int k = 1; k <= this.framesPerTick; k++) {
-					record(tick, k, frames.get(k - 1), k == this.framesPerTick ? labels(control, command, decision) : null);
+					record(tick, k, frames.get(k - 1), k == this.framesPerTick ? labels(control, command, decision, drifting) : null);
 				}
 
+				this.driftTicks += drifting ? 1 : 0;
+				if (this.type == ClipType.APPROACH && this.reachedTick < 0 && TrackBehaviour.reached(control.truth().pose(), this.scene.target, this.context)) {
+					this.reachedTick = tick;
+				}
+
+				this.ran = tick;
 				this.executed.add(command);
 				this.modes.merge(decision.mode(), 1, Integer::sum);
 				this.last = control;
@@ -607,9 +634,9 @@ public final class ClipGenerator implements Generator {
 				this.memory);
 		}
 
-		private FrameRecord.TickLabels labels(ControlStep step, @Nullable MotorCommand executed, Teacher.@Nullable Decision decision) {
+		private FrameRecord.TickLabels labels(ControlStep step, @Nullable MotorCommand executed, Teacher.@Nullable Decision decision, boolean drifting) {
 			return new FrameRecord.TickLabels(step.truth().serverTick(), step.truth().velocity(), step.senses(), executed, decision == null ? null : decision.command(),
-				decision == null ? null : decision.mode(), decision == null ? null : decision.belief(), false, this.coverage);
+				decision == null ? null : decision.mode(), decision == null ? null : decision.belief(), drifting, this.coverage);
 		}
 
 		private void record(int tick, int subFrame, ClipEnvironment.Frame captured, FrameRecord.@Nullable TickLabels labels) {
@@ -638,10 +665,12 @@ public final class ClipGenerator implements Generator {
 				modes.put(mode, this.modes.getOrDefault(mode, 0));
 			}
 
-			return new ClipRecord(SchemaVersion.CURRENT, this.clipId, this.scene.descriptor.sceneId(), this.scene.descriptor.split(), this.index, this.type, this.type, this.attempt,
-				this.seeds, this.start.pose(), this.framesPerTick, this.ticks, ClipRecord.frameCount(this.ticks, this.framesPerTick), ClipRecord.EndReason.LENGTH,
+			boolean reached = this.reachedTick >= 0;
+			ClipRecord.EndReason end = reached && this.ran < this.ticks ? ClipRecord.EndReason.REACHED : ClipRecord.EndReason.LENGTH;
+			return new ClipRecord(SchemaVersion.CURRENT, this.clipId, this.scene.descriptor.sceneId(), this.scene.descriptor.split(), this.index, this.requested, this.type, this.attempt,
+				this.seeds, this.start.pose(), this.framesPerTick, this.ran, ClipRecord.frameCount(this.ran, this.framesPerTick), end,
 				ClipGenerator.this.clips.codec(), files.rgb(), files.visibleMask(), files.frames(), this.executed,
-				new ClipRecord.Summary(0, this.type == ClipType.APPROACH ? Boolean.FALSE : null, this.coverage, modes));
+				new ClipRecord.Summary(this.driftTicks, this.type == ClipType.APPROACH ? reached : null, this.coverage, modes));
 		}
 	}
 }
