@@ -71,13 +71,20 @@
       </div>
       <div class="display">
         <label>Speed <select id="clip-speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
-        <label>Size <select id="clip-scale"><option value="0.25" selected>¼</option><option value="0.5">½</option><option value="1">Full</option></select></label>
+        <div class="zoom" role="group" aria-label="Zoom">
+          <button type="button" id="clip-zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
+          <output id="clip-zoom-level" aria-live="polite">Fit</output>
+          <button type="button" id="clip-zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+          <button type="button" id="clip-zoom-fit" title="Fit the frame to the player (0)">Fit</button>
+          <button type="button" id="clip-zoom-actual" title="One frame pixel per screen pixel">1:1</button>
+        </div>
+        <label title="Resolution frames are decoded at; Auto follows the zoom">Detail <select id="clip-detail"><option value="auto" selected>Auto</option><option value="0.25">¼</option><option value="0.5">½</option><option value="1">Full</option></select></label>
         <label class="check"><input id="clip-overlay" type="checkbox" checked> Mask overlay (o)</label>
         <label class="check"><input id="clip-box" type="checkbox" checked> Box</label>
       </div>
     </nav>
     <div id="clip-errors" hidden></div>
-    <div class="stage clip-stage"><canvas id="clip-canvas"></canvas><p id="clip-loading" hidden>Decoding frames…</p></div>
+    <div class="stage clip-stage" id="clip-stage" title="Scroll to zoom, drag to pan, double-click to switch between fit and 1:1"><canvas id="clip-canvas"></canvas><p id="clip-loading" hidden>Decoding frames…</p></div>
     <div class="scrub">
       <input id="clip-scrub" type="range" min="0" value="0" aria-label="Frame">
       <output id="clip-frame-label"></output>

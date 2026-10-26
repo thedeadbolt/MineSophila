@@ -207,8 +207,8 @@ dd { margin: 0; overflow-wrap: anywhere; }
 /* Clip player (M12-2): the frame fills the stage, a scrub bar and a timeline follow it. */
 #results button.result.current { background: var(--honey-soft); box-shadow: inset 3px 0 0 var(--honey); }
 #clip-filters { display: grid; gap: 0.5rem; margin-bottom: 0.6rem; }
-.clip-stage { flex: 1 1 auto; min-height: 12rem; display: grid; place-items: center; cursor: default; }
-.clip-stage canvas { position: static; max-width: 100%; max-height: 100%; transform: none; image-rendering: pixelated; }
+.clip-stage { flex: 1 1 auto; min-height: 12rem; }
+.clip-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; transform: none; }
 #clip-loading { position: absolute; inset: auto 0 0.5rem 0; margin: 0; text-align: center; color: #fff; text-shadow: 0 1px 2px #000; }
 #clip-errors { color: var(--fail); }
 .scrub { display: flex; gap: 0.75rem; align-items: center; }
