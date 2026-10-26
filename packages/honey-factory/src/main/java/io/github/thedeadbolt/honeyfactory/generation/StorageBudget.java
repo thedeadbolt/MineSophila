@@ -34,7 +34,9 @@ public final class StorageBudget {
 		ResolvedConfig.Capture capture = config.capture();
 		// Uncompressed 8-bit RGB plus the 8-bit mask of every viewpoint.
 		this.sceneBytes = (long) capture.width() * capture.height() * 4 * config.viewpoints().count();
-		this.datasetBytes = this.sceneBytes * config.quotas().acceptedScenes();
+		ResolvedConfig.Slice slice = config.output().slice();
+		// A slice stores about its share of the scenes.
+		this.datasetBytes = this.sceneBytes * (slice == null ? config.quotas().acceptedScenes() : Math.ceilDiv(config.quotas().acceptedScenes(), slice.count()));
 	}
 
 	/** @throws IOException if the whole dataset, uncompressed, would cross the reserve */

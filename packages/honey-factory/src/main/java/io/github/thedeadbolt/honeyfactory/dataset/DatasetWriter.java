@@ -46,7 +46,8 @@ public final class DatasetWriter {
 	}
 
 	/**
-	 * Creates {@code <outputRoot>/<dataset id>/} with the {@code generating} manifest and
+	 * Creates {@code <outputRoot>/<dataset id>/} (for a slice, {@code <dataset id>.slice-<i>-of-<n>/})
+	 * with the {@code generating} manifest and
 	 * empty indexes.
 	 *
 	 * @throws FileAlreadyExistsException if the dataset directory already exists; identical
@@ -58,7 +59,7 @@ public final class DatasetWriter {
 		}
 
 		Files.createDirectories(outputRoot);
-		Path root = outputRoot.resolve(manifest.datasetId());
+		Path root = outputRoot.resolve(manifest.directoryName());
 		Files.createDirectory(root);
 		DatasetWriter writer = new DatasetWriter(root);
 		writer.writeManifest(manifest);

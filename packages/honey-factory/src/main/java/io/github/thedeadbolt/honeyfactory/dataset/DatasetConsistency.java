@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Cross-record rules over a manifest and its parsed scene and sample records. Each record
@@ -68,6 +69,10 @@ public final class DatasetConsistency {
 
 			if (slots != null) {
 				checkSlot(scene, slots, Algorithms.slotsFor(manifest.splitGrouping()), errors);
+			}
+
+			if (manifest.slice() != null && !manifest.slice().slots().contains(scene.generation().sceneIndex())) {
+				errors.add("scene " + scene.sceneId() + ": scene_index " + scene.generation().sceneIndex() + " is not one of slice " + manifest.slice().index() + "'s slots");
 			}
 
 			if ((natural != null) != (scene.sourcePatch() != null)) {
@@ -156,7 +161,7 @@ public final class DatasetConsistency {
 		}
 
 		if (manifest.lifecycle() == DatasetManifest.Lifecycle.COMPLETE) {
-			checkComplete(manifest, scenes, present, baseSamplesByScene, splitTotals, errors);
+			checkComplete(manifest, slots, scenes, present, baseSamplesByScene, splitTotals, errors);
 		}
 
 		return errors;
@@ -227,15 +232,25 @@ public final class DatasetConsistency {
 
 	private static void checkComplete(
 		DatasetManifest manifest,
+		@Nullable List<SceneSlots.Slot> slots,
 		List<SceneRecord> scenes,
 		int present,
 		Map<String, Integer> baseSamplesByScene,
 		Map<Split, int[]> splitTotals,
 		List<String> errors
 	) {
-		if (present != manifest.targetPresentScenes() || scenes.size() - present != manifest.targetAbsentScenes()) {
+		// A slice's quotas are the target classes of its own slots.
+		int wantedPresent = manifest.targetPresentScenes();
+		int wantedAbsent = manifest.targetAbsentScenes();
+		if (manifest.slice() != null && slots != null) {
+			List<Integer> own = manifest.slice().slots();
+			wantedPresent = (int) own.stream().filter(index -> index < slots.size() && slots.get(index).targetPresent()).count();
+			wantedAbsent = own.size() - wantedPresent;
+		}
+
+		if (present != wantedPresent || scenes.size() - present != wantedAbsent) {
 			errors.add("manifest: " + present + " target-present and " + (scenes.size() - present) + " absent scenes do not meet the quotas "
-				+ manifest.targetPresentScenes() + "/" + manifest.targetAbsentScenes());
+				+ wantedPresent + "/" + wantedAbsent);
 		}
 
 		for (SceneRecord scene : scenes) {

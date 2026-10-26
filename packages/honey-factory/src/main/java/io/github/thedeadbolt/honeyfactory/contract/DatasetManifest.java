@@ -1,9 +1,11 @@
 package io.github.thedeadbolt.honeyfactory.contract;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,9 +36,33 @@ public record DatasetManifest(
 	Provenance provenance,
 	@Nullable Integrity integrity,
 	String licence,
-	String intendedUse
+	String intendedUse,
+	@Nullable Slice slice
 ) {
 	public static final String UNASSIGNED = "unassigned";
+
+	/**
+	 * The part of a dataset one of several instances generated (M12-1): instance
+	 * {@code index} of {@code count}, in world {@code world} when known, holding the scene
+	 * slots {@code slots} in order. A slice validates on its own against those slots;
+	 * merging the slices gives the dataset a single run would.
+	 */
+	public record Slice(int index, int count, @Nullable String world, List<Integer> slots) {
+		public Slice {
+			slots = List.copyOf(slots);
+		}
+
+		JsonObject toJson() {
+			JsonObject json = new JsonObject();
+			json.addProperty("index", this.index);
+			json.addProperty("count", this.count);
+			json.add("world", JsonWrite.nullable(this.world));
+			JsonArray slots = new JsonArray();
+			this.slots.forEach(slots::add);
+			json.add("slots", slots);
+			return json;
+		}
+	}
 	public static final String RGB_ENCODING = "png-rgb8";
 
 	public enum Lifecycle implements JsonEnum {
@@ -137,6 +163,23 @@ public record DatasetManifest(
 	 * as produced by {@code ResolvedConfig.toJson()}.
 	 */
 	public static DatasetManifest generating(JsonObject configuration, Instant createdAt, Software software, RenderEnvironment renderEnvironment, Provenance provenance) {
+		return generating(configuration, createdAt, software, renderEnvironment, provenance, null);
+	}
+
+	/** The same for a slice, whose requested scenes are its slots. */
+	public static DatasetManifest generating(JsonObject configuration, Instant createdAt, Software software, RenderEnvironment renderEnvironment, Provenance provenance,
+		@Nullable Slice slice) {
+		DatasetManifest manifest = generatingWhole(configuration, createdAt, software, renderEnvironment, provenance);
+		if (slice == null) {
+			return manifest;
+		}
+
+		return new DatasetManifest(manifest.schemaVersion, manifest.datasetId, manifest.contentVersion, manifest.lifecycle, manifest.createdAtUtc, null,
+			manifest.resolvedConfigSha256, manifest.configuration, null, software, renderEnvironment, Counts.empty(slice.slots().size()), provenance, null,
+			manifest.licence, manifest.intendedUse, slice);
+	}
+
+	private static DatasetManifest generatingWhole(JsonObject configuration, Instant createdAt, Software software, RenderEnvironment renderEnvironment, Provenance provenance) {
 		String sha256 = CanonicalJson.sha256(configuration);
 		JsonObject generator = configuration.getAsJsonObject("generator");
 		return new DatasetManifest(
@@ -155,7 +198,8 @@ public record DatasetManifest(
 			provenance,
 			null,
 			UNASSIGNED,
-			UNASSIGNED
+			UNASSIGNED,
+			null
 		);
 	}
 
@@ -183,7 +227,8 @@ public record DatasetManifest(
 			this.provenance,
 			integrity,
 			this.licence,
-			this.intendedUse
+			this.intendedUse,
+			this.slice
 		);
 	}
 
@@ -197,6 +242,11 @@ public record DatasetManifest(
 
 	public int acceptedScenesRequested() {
 		return generator().get("accepted_scenes").getAsInt();
+	}
+
+	/** The dataset directory's name: the dataset ID, plus {@code .slice-<index>-of-<count>} for a slice. */
+	public String directoryName() {
+		return this.slice == null ? this.datasetId : this.datasetId + ".slice-" + this.slice.index() + "-of-" + this.slice.count();
 	}
 
 	public int targetPresentScenes() {
@@ -319,6 +369,9 @@ public record DatasetManifest(
 		provenance.add("parent_dataset_ids", JsonWrite.strings(this.provenance.parentDatasetIds()));
 		provenance.add("derivations", JsonWrite.strings(this.provenance.derivations()));
 		json.add("provenance", provenance);
+		if (this.slice != null) {
+			json.add("slice", this.slice.toJson());
+		}
 		if (this.integrity != null) {
 			JsonObject integrity = new JsonObject();
 			integrity.addProperty("hash_algorithm", Sha256.ALGORITHM);
@@ -419,15 +472,19 @@ public record DatasetManifest(
 			provenance,
 			integrity,
 			fields.string("licence"),
-			fields.string("intended_use")
+			fields.string("intended_use"),
+			fields.has("slice") ? slice(fields.object("slice")) : null
 		);
 		manifest.checkLifecycle(fields);
 		return manifest;
 	}
 
 	private void checkLifecycle(JsonFields fields) {
-		if (this.counts.requestedScenes() != acceptedScenesRequested()) {
-			throw fields.object("counts").error("requested_scenes", "must equal generator.accepted_scenes (" + acceptedScenesRequested() + ")");
+		int requested = this.slice == null ? acceptedScenesRequested() : this.slice.slots().size();
+		if (this.counts.requestedScenes() != requested) {
+			throw fields.object("counts").error("requested_scenes", this.slice == null
+				? "must equal generator.accepted_scenes (" + acceptedScenesRequested() + ")"
+				: "must equal the slice's " + requested + " slots");
 		}
 
 		if (this.lifecycle == Lifecycle.GENERATING) {
@@ -606,6 +663,24 @@ public record DatasetManifest(
 			packs,
 			settings
 		);
+	}
+
+	private static Slice slice(JsonFields slice) {
+		int count = (int) slice.integer("count", 1, Integer.MAX_VALUE);
+		int index = (int) slice.integer("index", 0, count - 1);
+		String world = slice.isNull("world") ? null : slice.string("world");
+		List<Integer> slots = new ArrayList<>();
+		int previous = -1;
+		for (JsonElement element : slice.array("slots")) {
+			if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isNumber() || element.getAsInt() <= previous) {
+				throw slice.error("slots", "must be scene indexes in increasing order");
+			}
+
+			previous = element.getAsInt();
+			slots.add(previous);
+		}
+
+		return new Slice(index, count, world, slots);
 	}
 
 	private static Counts counts(JsonFields counts) {

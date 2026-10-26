@@ -44,7 +44,9 @@ import org.jspecify.annotations.Nullable;
  * capture        mode, width, height, cube_face_size (PANORAMA_310 only)
  * quotas         accepted_scenes, scene_attempts_per_accepted_scene
  * splits         train, validation, test
- * output         root (required, absolute), free_space_reserve_bytes
+ * output         root (required, absolute), free_space_reserve_bytes, slice ({index, count,
+ *                world}: generate only scene groups g with g % count == index, for one of
+ *                several instances; see {@link ResolvedConfig.Slice})
  * </pre>
  */
 public final class ConfigResolver {
@@ -347,7 +349,7 @@ public final class ConfigResolver {
 	}
 
 	private static ResolvedConfig.Output output(JsonFields output) {
-		output.rejectUnknown(Set.of("root", "free_space_reserve_bytes"));
+		output.rejectUnknown(Set.of("root", "free_space_reserve_bytes", "slice"));
 		String root = output.string("root");
 		Path path;
 		try {
@@ -360,6 +362,15 @@ public final class ConfigResolver {
 			throw output.error("root", "must be an absolute path");
 		}
 
-		return new ResolvedConfig.Output(path.normalize(), output.integer("free_space_reserve_bytes", 0, Long.MAX_VALUE, DEFAULT_FREE_SPACE_RESERVE_BYTES));
+		ResolvedConfig.Slice slice = null;
+		if (output.has("slice")) {
+			JsonFields fields = output.object("slice");
+			fields.rejectUnknown(Set.of("index", "count", "world"));
+			int count = (int) fields.integer("count", 1, ResolvedConfig.Slice.MAX_COUNT);
+			int index = (int) fields.integer("index", 0, count - 1);
+			slice = new ResolvedConfig.Slice(index, count, fields.has("world") ? fields.string("world") : null);
+		}
+
+		return new ResolvedConfig.Output(path.normalize(), output.integer("free_space_reserve_bytes", 0, Long.MAX_VALUE, DEFAULT_FREE_SPACE_RESERVE_BYTES), slice);
 	}
 }

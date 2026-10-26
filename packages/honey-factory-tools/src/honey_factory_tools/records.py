@@ -224,8 +224,17 @@ def manifest_errors(manifest: Record) -> list[str]:
         )
 
     counts: Record = manifest["counts"]
-    if counts["requested_scenes"] != accepted_requested:
+    slice_: Record | None = manifest.get("slice")
+    if slice_ is None and counts["requested_scenes"] != accepted_requested:
         errors.append("/counts/requested_scenes: must equal generator.accepted_scenes")
+    if slice_ is not None:
+        slots: list[int] = slice_["slots"]
+        if counts["requested_scenes"] != len(slots):
+            errors.append(f"/counts/requested_scenes: must equal the slice's {len(slots)} slots")
+        if slots != sorted(set(slots)):
+            errors.append("/slice/slots: must be scene indexes in increasing order")
+        if slice_["index"] >= slice_["count"]:
+            errors.append("/slice/index: must be less than count")
     if (
         counts["accepted_scenes"] + counts["rejected_scenes"] + counts["failed_scenes"]
         != counts["attempted_scenes"]

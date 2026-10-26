@@ -166,7 +166,7 @@ public final class DatasetGenerator {
 		ResolvedConfig.Capture capture = config.capture();
 		this.projection = CaptureProjection.of(capture.mode(), capture.width(), capture.height(), capture.cubeFaceSize());
 		this.records = new RecordFactory(config, this.arena, this.projection.mode());
-		this.tally = new GenerationTally(config.quotas().acceptedScenes());
+		this.tally = new GenerationTally(slots(config).size());
 		this.storage = new StorageBudget(config, disk);
 	}
 
@@ -191,16 +191,27 @@ public final class DatasetGenerator {
 		}
 
 		this.started = this.clock.instant();
+		List<SceneSlots.Slot> plan = slots(this.config);
+		ResolvedConfig.Slice slice = this.config.output().slice();
+
 		this.manifest = DatasetManifest.generating(
 			this.config.toJson(),
 			this.clock.instant(),
 			this.environment.software(),
 			this.environment.renderEnvironment(),
-			new DatasetManifest.Provenance(TOOL, List.of(), List.of())
+			new DatasetManifest.Provenance(TOOL, List.of(), List.of()),
+			slice == null ? null : new DatasetManifest.Slice(slice.index(), slice.count(), slice.world(), plan.stream().map(SceneSlots.Slot::sceneIndex).toList())
 		);
 		this.writer = DatasetWriter.create(this.config.outputRoot(), this.manifest);
-		Iterator<SceneSlots.Slot> slots = SceneSlots.plan(this.config).iterator();
+		Iterator<SceneSlots.Slot> slots = plan.iterator();
 		return CompletableFuture.completedFuture(slots).thenCompose(this::runSlots).handle((ignored, error) -> finish(error));
+	}
+
+	/** The slots this run generates: every slot, or for a slice the slots of its groups. */
+	private static List<SceneSlots.Slot> slots(ResolvedConfig config) {
+		List<SceneSlots.Slot> plan = SceneSlots.plan(config);
+		ResolvedConfig.Slice slice = config.output().slice();
+		return slice == null ? plan : plan.stream().filter(slot -> slice.holds(slot.group())).toList();
 	}
 
 	/** Requests cancellation at the next safe boundary; see the class description. */
@@ -248,9 +259,12 @@ public final class DatasetGenerator {
 		int patches = Math.ceilDiv(this.config.quotas().acceptedScenes(), natural.base().scenesPerPatch());
 		this.patches.keySet().removeIf(index -> index < slot.group());
 		CompletableFuture<PreparedPatch> patch = patch(natural, slot.group());
-		if (slot.group() + 1 < patches) {
+		// A slice holds every count-th patch; the next one it needs is that far on.
+		ResolvedConfig.Slice slice = this.config.output().slice();
+		int next = slot.group() + (slice == null ? 1 : slice.count());
+		if (next < patches) {
 			// Generate the next patch's terrain while this one's scenes capture.
-			patch(natural, slot.group() + 1);
+			patch(natural, next);
 		}
 
 		long waiting = System.nanoTime();

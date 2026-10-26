@@ -121,7 +121,8 @@ public final class ContractExamples {
 			base.provenance(),
 			new DatasetManifest.Integrity(digest(generating.scenesJsonl()), digest(generating.samplesJsonl()), true, 0),
 			base.licence(),
-			base.intendedUse()
+			base.intendedUse(),
+			null
 		);
 		return new Dataset(complete, scenes, samples, images);
 	}

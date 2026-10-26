@@ -271,6 +271,18 @@
         "derivations": {"type": "array", "items": {"type": "string"}}
       }
     },
+    "slice": {
+      "description": "Present only on a slice: the part of a dataset one of several instances generated (M12-1); a merged dataset has none.",
+      "type": "object",
+      "required": ["index", "count", "world", "slots"],
+      "additionalProperties": false,
+      "properties": {
+        "index": {"type": "integer", "minimum": 0},
+        "count": {"type": "integer", "minimum": 1},
+        "world": {"type": ["string", "null"]},
+        "slots": {"type": "array", "items": {"type": "integer", "minimum": 0}}
+      }
+    },
     "integrity": {
       "type": "object",
       "required": ["hash_algorithm", "indexes", "validation"],

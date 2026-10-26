@@ -232,6 +232,9 @@ def consistency(manifest: Record, scenes: list[Record], samples: list[Record]) -
                     errors.append(
                         label + f"target presence differs from the class {algorithm} assigns"
                     )
+        slice_: Record | None = manifest.get("slice")
+        if slice_ is not None and index not in slice_["slots"]:
+            errors.append(label + f"scene_index {index} is not one of slice {slice_['index']}'s slots")
 
         if natural != ("source_patch" in scene):
             errors.append(
@@ -310,7 +313,7 @@ def consistency(manifest: Record, scenes: list[Record], samples: list[Record]) -
             f"{sum(base_samples.values())} base samples"
         )
     if manifest["lifecycle"] == "complete":
-        errors += _complete(manifest, scenes, base_samples)
+        errors += _complete(manifest, scenes, base_samples, slots)
     return errors
 
 
@@ -376,11 +379,22 @@ def _visible_enough(visibility: Record, target: Record) -> bool:
     return (low is None or ratio >= low) and (high is None or ratio <= high)
 
 
-def _complete(manifest: Record, scenes: list[Record], base_samples: dict[str, int]) -> list[str]:
+def _complete(
+    manifest: Record,
+    scenes: list[Record],
+    base_samples: dict[str, int],
+    slots: list[ids.Slot] | None,
+) -> list[str]:
     errors: list[str] = []
     target: Record = manifest["target"]
     present = sum(1 for scene in scenes if scene["target"]["present"])
     quotas = (target["target_present_scenes"], target["target_absent_scenes"])
+    slice_: Record | None = manifest.get("slice")
+    if slice_ is not None and slots is not None:
+        # A slice's quotas are the target classes of its own slots.
+        own: list[int] = slice_["slots"]
+        wanted = sum(1 for index in own if index < len(slots) and slots[index].target_present)
+        quotas = (wanted, len(own) - wanted)
     if (present, len(scenes) - present) != quotas:
         errors.append(
             f"{MANIFEST}: {present} present and {len(scenes) - present} absent scenes "

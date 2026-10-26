@@ -84,7 +84,22 @@ public record ResolvedConfig(
 	 * Where datasets are written and the free space a run keeps there; neither affects the
 	 * generated data, so neither enters the resolved configuration.
 	 */
-	public record Output(Path root, long freeSpaceReserveBytes) {
+	/** Where and how the dataset is written; machine-specific, so outside the configuration hash. */
+	public record Output(Path root, long freeSpaceReserveBytes, @Nullable Slice slice) {
+	}
+
+	/**
+	 * One of {@code count} instances generating a dataset together (M12-1): this one
+	 * generates the scene slots whose group, the scene index or on a natural base the
+	 * source patch, is {@code index} modulo {@code count}. {@code world} names the world it
+	 * generates in, for replay.
+	 */
+	public record Slice(int index, int count, @Nullable String world) {
+		public static final int MAX_COUNT = 64;
+
+		public boolean holds(int group) {
+			return group % this.count == this.index;
+		}
 	}
 
 	public Path outputRoot() {
