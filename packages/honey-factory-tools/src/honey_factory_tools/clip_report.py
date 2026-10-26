@@ -3,7 +3,11 @@
 Per dataset, and in total:
 
 - clip types, and fallbacks (a detour or occlusion clip that became an approach);
-- approach clips that reached the honey, all of them and those without drift;
+- approach clips that reached the honey, all of them and those without drift; reach by
+  type for approach, detour and occlusion, and why the others missed (timeout,
+  unreachable, teacher_failure: the last must stay at 0);
+- falls: clip attempts redrawn because the body fell or walked out of the arena (from the
+  manifest's ``counts.clip_redraws``), which must stay at 0;
 - search coverage: the mean share of reachable cells seen by ticks 4, 8, 16 and 32 in
   no-honey clips;
 - realizability violations: ticks whose belief the validators reject (see
@@ -44,6 +48,10 @@ def report(datasets: list[Path], schemas: Schemas) -> Record:
         "seconds": sum(result["seconds"] for result in results),
         "realizability_violations": sum(result["realizability_violations"] for result in results),
         "guarded_ticks": sum(result["guarded_ticks"] for result in results),
+        "falls": sum(result["falls"] for result in results),
+        "teacher_failures": sum(
+            result["miss_reasons"].get("teacher_failure", 0) for result in results
+        ),
     }
     approach = Counter[str]()
     for result in results:
@@ -77,6 +85,8 @@ def _dataset(path: Path, schemas: Schemas) -> Record:
     coverage: dict[int, list[float]] = {tick: [] for tick in COVERAGE_TICKS}
     violations = 0
     guarded = 0
+    reach: dict[str, Counter[str]] = {}
+    misses: Counter[str] = Counter()
     frames_total = 0
     video_bytes = 0
     raw_bytes = 0
@@ -97,6 +107,12 @@ def _dataset(path: Path, schemas: Schemas) -> Record:
             len(frames) * clip["files"]["rgb"]["width"] * clip["files"]["rgb"]["height"] * 3
         )
         guarded += clip["summary"]["guarded_ticks"]
+        if clip["summary"]["reached"] is not None:
+            tally = reach.setdefault(clip["clip_type"], Counter({"clips": 0, "reached": 0}))
+            tally["clips"] += 1
+            tally["reached"] += clip["summary"]["reached"] is True
+        if clip["summary"]["miss_reason"] is not None:
+            misses[clip["summary"]["miss_reason"]] += 1
         if clip["clip_type"] == "approach":
             reached = clip["summary"]["reached"] is True
             calm = clip["summary"]["drift_ticks"] == 0
@@ -133,6 +149,13 @@ def _dataset(path: Path, schemas: Schemas) -> Record:
         "approach": dict(approach),
         "realizability_violations": violations,
         "guarded_ticks": guarded,
+        "reach": {kind: dict(tally) for kind, tally in sorted(reach.items())},
+        "miss_reasons": dict(sorted(misses.items())),
+        "falls": sum(
+            number
+            for key, number in manifest["counts"].get("clip_redraws", {}).items()
+            if key.split("/")[0] in ("fall", "out_of_arena")
+        ),
         "search_coverage": {
             str(tick): round(sum(values) / len(values), 4)
             for tick, values in coverage.items()
@@ -189,7 +212,8 @@ def table(result: Record) -> str:
     totals = result["totals"]
     lines.append(
         f"total: {totals['clips']} clips, {totals['realizability_violations']} realizability "
-        f"violations, {totals['video_bytes'] / 1e9:.2f} GB"
+        f"violations, {totals['falls']} falls, {totals['teacher_failures']} teacher failures, "
+        f"{totals['video_bytes'] / 1e9:.2f} GB"
     )
     return "\n".join(lines)
 

@@ -12,6 +12,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -174,8 +175,15 @@ public record DatasetManifest(
 		int failedScenes,
 		int acceptedSamples,
 		int acceptedClips,
-		Map<String, Integer> rejectionReasons
+		Map<String, Integer> rejectionReasons,
+		Map<String, Integer> clipRedraws
 	) {
+		/** Counts without clip redraws. */
+		public Counts(int requestedScenes, int attemptedScenes, int acceptedScenes, int rejectedScenes, int failedScenes, int acceptedSamples, int acceptedClips,
+			Map<String, Integer> rejectionReasons) {
+			this(requestedScenes, attemptedScenes, acceptedScenes, rejectedScenes, failedScenes, acceptedSamples, acceptedClips, rejectionReasons, Map.of());
+		}
+
 		public static Counts empty(int requestedScenes) {
 			return new Counts(requestedScenes, 0, 0, 0, 0, 0, 0, Map.of());
 		}
@@ -444,6 +452,12 @@ public record DatasetManifest(
 		JsonObject reasons = new JsonObject();
 		this.counts.rejectionReasons().forEach(reasons::addProperty);
 		counts.add("rejection_reasons", reasons);
+		if (clips) {
+			JsonObject redraws = new JsonObject();
+			new TreeMap<>(this.counts.clipRedraws()).forEach(redraws::addProperty);
+			counts.add("clip_redraws", redraws);
+		}
+
 		json.add("counts", counts);
 		JsonObject provenance = new JsonObject();
 		provenance.addProperty("tool", this.provenance.tool());
@@ -864,8 +878,16 @@ public record DatasetManifest(
 			throw counts.error("rejection_reasons", "must sum to rejected_scenes (" + rejected + ")");
 		}
 
+		Map<String, Integer> clipRedraws = new LinkedHashMap<>();
+		if (counts.has("clip_redraws")) {
+			JsonFields redraws = counts.object("clip_redraws");
+			for (String key : redraws.raw().keySet()) {
+				clipRedraws.put(key, redraws.integer32(key, 0, Integer.MAX_VALUE));
+			}
+		}
+
 		return new Counts(requested, attempted, accepted, rejected, failed, counts.integer32("accepted_samples", 0, Integer.MAX_VALUE), counts.integer32("accepted_clips", 0, Integer.MAX_VALUE, 0),
-			Map.copyOf(rejectionReasons));
+			Map.copyOf(rejectionReasons), Map.copyOf(clipRedraws));
 	}
 
 	private static Provenance provenance(JsonFields provenance) {

@@ -3,6 +3,7 @@ package io.github.thedeadbolt.honeyfactory.generation;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -27,6 +28,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -120,7 +122,25 @@ class ClipGeneratorTest {
 		int scene = Integer.parseInt(first.sceneId().substring(1));
 		assertEquals(ClipSeeds.derive(config.seed(), scene, first.clipIndex(), 1), first.seeds());
 		assertEquals(4, result.manifest().counts().acceptedClips());
+		assertEquals(Map.of("out_of_arena/" + first.clipType().jsonName(), 1), result.manifest().counts().clipRedraws(), "the redraw is counted, not hidden");
 		assertNoPartials(result.directory());
+	}
+
+	@Test
+	void detourAndOcclusionClipsRecordReachingAndEndOnIt() throws IOException {
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		DatasetGenerator.Result result = run(new ClipGenerator(allTypes(this.temp.resolve("i"), 3), environment, CLOCK, DISK), environment);
+		assertNull(result.failure(), () -> result.failure() + " " + result.validationErrors());
+		for (ClipRecord clip : clips(result)) {
+			boolean seeking = clip.clipType() == ClipType.APPROACH || clip.clipType() == ClipType.DETOUR || clip.clipType() == ClipType.OCCLUSION;
+			assertEquals(seeking, clip.summary().reached() != null, clip.clipId() + " " + clip.clipType());
+			if (Boolean.TRUE.equals(clip.summary().reached())) {
+				assertEquals(ClipRecord.EndReason.REACHED, clip.endReason(), clip.clipId());
+				assertNull(clip.summary().missReason());
+			} else if (seeking) {
+				assertNotNull(clip.summary().missReason(), clip.clipId() + " names why it missed");
+			}
+		}
 	}
 
 	private ResolvedConfig allTypes(Path root, int level) {

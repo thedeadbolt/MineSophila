@@ -124,6 +124,11 @@
     {"name": "the reset frame is not guarded", "kind": "frame", "base": "valid/frame-reset.json", "expect": "semantic", "patch": [{"op": "set", "path": "/tick_labels/guarded", "value": true}]},
     {"name": "frame tick labels say whether they were guarded", "kind": "frame", "base": "valid/frame-tick.json", "expect": "schema", "patch": [{"op": "remove", "path": "/tick_labels/guarded"}]},
     {"name": "guarded ticks cannot exceed the tick count", "kind": "clip", "base": "valid/clip-approach.json", "expect": "semantic", "patch": [{"op": "set", "path": "/summary/guarded_ticks", "value": 3}]},
-    {"name": "clip summary counts guarded ticks", "kind": "clip", "base": "valid/clip-approach.json", "expect": "schema", "patch": [{"op": "remove", "path": "/summary/guarded_ticks"}]}
+    {"name": "clip summary counts guarded ticks", "kind": "clip", "base": "valid/clip-approach.json", "expect": "schema", "patch": [{"op": "remove", "path": "/summary/guarded_ticks"}]},
+    {"name": "a missed approach names why", "kind": "clip", "base": "valid/clip-approach.json", "expect": "semantic", "patch": [{"op": "set", "path": "/summary/miss_reason", "value": null}]},
+    {"name": "a miss reason needs a miss", "kind": "clip", "base": "valid/clip-approach.json", "expect": "semantic", "patch": [{"op": "set", "path": "/summary/reached", "value": true}]},
+    {"name": "miss reasons are known", "kind": "clip", "base": "valid/clip-approach.json", "expect": "schema", "patch": [{"op": "set", "path": "/summary/miss_reason", "value": "bad_luck"}]},
+    {"name": "detour clips record whether they reached the honey", "kind": "clip", "base": "valid/clip-approach.json", "expect": "valid", "patch": [{"op": "set", "path": "/clip_type", "value": "detour"}, {"op": "set", "path": "/requested_type", "value": "detour"}]},
+    {"name": "clip redraw counts are non-negative", "kind": "dataset", "base": "valid/dataset-clips-complete.json", "expect": "schema", "patch": [{"op": "set", "path": "/counts/clip_redraws/fall~1approach", "value": -1}]}
   ]
 }

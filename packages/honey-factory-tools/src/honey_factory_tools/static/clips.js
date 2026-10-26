@@ -121,7 +121,7 @@ async function openClip(id) {
     ["Ticks", `${record.tick_count}, ${record.frames_per_tick} frames each`],
     ["Frames", record.frame_count],
     ["Ended", humane(record.end_reason)],
-    ["Reached honey", record.summary.reached === null ? "—" : record.summary.reached ? "yes" : "no"],
+    ["Reached honey", record.summary.reached === null ? "—" : record.summary.reached ? "yes" : `no (${humane(record.summary.miss_reason || "")})`],
     ["Drifting ticks", record.summary.drift_ticks],
     ["Edge-guarded ticks", record.summary.guarded_ticks],
     ["Seen at the end", `${number(record.summary.coverage_final * 100, 1)}% of reachable cells`],

@@ -50,7 +50,7 @@
     "executed": {"type": "array", "items": {"$ref": "#/$defs/motorCommand"}},
     "summary": {
       "type": "object",
-      "required": ["drift_ticks", "reached", "coverage_final", "ticks_by_mode", "ticks_by_driver", "guarded_ticks"],
+      "required": ["drift_ticks", "reached", "coverage_final", "ticks_by_mode", "ticks_by_driver", "guarded_ticks", "miss_reason"],
       "properties": {
         "drift_ticks": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
         "reached": {"type": ["boolean", "null"]},
@@ -73,7 +73,8 @@
             "script": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
           }
         },
-        "guarded_ticks": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
+        "guarded_ticks": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "miss_reason": {"description": "Why a clip that sought the honey did not reach it, by the scene's true layout; null when it reached it or did not seek it.", "enum": [null, "timeout", "unreachable", "teacher_failure"]}
       }
     }
   },

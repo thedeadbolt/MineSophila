@@ -61,6 +61,20 @@ public record ClipRecord(
 		}
 	}
 
+	/** Why a clip that sought the honey (approach, detour, occlusion) ended without reaching it. */
+	public enum MissReason implements JsonEnum {
+		/** The body got at least 2 blocks closer by the true shortest way, but the clip ran out of ticks. */
+		TIMEOUT,
+		/** No way the body can walk leads from the start to the honey. */
+		UNREACHABLE,
+		/** A way existed and the body did not make progress along it: a teacher failure. */
+		TEACHER_FAILURE;
+
+		public static MissReason fromJson(String name) {
+			return JsonEnum.parse(MissReason.class, name);
+		}
+	}
+
 	public record VideoFile(String path, int width, int height, int frames, long bytes, String sha256) {
 	}
 
@@ -68,13 +82,14 @@ public record ClipRecord(
 	}
 
 	/**
-	 * @param reached whether an approach clip reached the honey; null for other types
+	 * @param reached whether an approach, detour or occlusion clip reached the honey; null for other types
 	 * @param coverageFinal the share of reachable cells the teacher had seen at the end
 	 * @param ticksByDriver ticks by who chose the executed command (see {@link Driver})
 	 * @param guardedTicks ticks whose executed command the edge guard stopped short of a ledge
+	 * @param missReason why a clip that sought the honey did not reach it; null otherwise
 	 */
 	public record Summary(int driftTicks, @Nullable Boolean reached, double coverageFinal, Map<TeacherMode, Integer> ticksByMode, Map<Driver, Integer> ticksByDriver,
-		int guardedTicks) {
+		int guardedTicks, @Nullable MissReason missReason) {
 		public Summary {
 			ticksByMode = Map.copyOf(ticksByMode);
 			ticksByDriver = Map.copyOf(ticksByDriver);
@@ -137,6 +152,7 @@ public record ClipRecord(
 
 		summary.add("ticks_by_driver", drivers);
 		summary.addProperty("guarded_ticks", this.summary.guardedTicks());
+		summary.add("miss_reason", JsonWrite.nullable(this.summary.missReason() == null ? null : this.summary.missReason().jsonName()));
 		json.add("summary", summary);
 		return json;
 	}
@@ -245,12 +261,17 @@ public record ClipRecord(
 		JsonFields summary = fields.object("summary");
 		int driftTicks = summary.integer32("drift_ticks", 0, ticks);
 		Boolean reached = summary.isNull("reached") ? null : summary.bool("reached");
-		if ((clipType == ClipType.APPROACH) != (reached != null)) {
-			throw summary.error("reached", "is recorded for approach clips only");
+		if (seeksHoney(clipType) != (reached != null)) {
+			throw summary.error("reached", "is recorded for approach, detour and occlusion clips only");
 		}
 
 		if (endReason == EndReason.REACHED && !Boolean.TRUE.equals(reached)) {
-			throw fields.error("end_reason", "a reached end needs an approach clip that reached the honey");
+			throw fields.error("end_reason", "a reached end needs a clip that reached the honey");
+		}
+
+		MissReason missReason = summary.isNull("miss_reason") ? null : summary.enumValue("miss_reason", MissReason::fromJson);
+		if (Boolean.FALSE.equals(reached) != (missReason != null)) {
+			throw summary.error("miss_reason", "is recorded exactly when a clip that sought the honey did not reach it");
 		}
 
 		JsonFields modes = summary.object("ticks_by_mode");
@@ -286,7 +307,12 @@ public record ClipRecord(
 		}
 
 		return new ClipRecord(version, clipId, sceneId, split, clipIndex, requested, clipType, attempt, clipSeeds, start, framesPerTick, ticks, frameCount, endReason, codec, rgb, mask, frames,
-			executed, new Summary(driftTicks, reached, summary.decimal("coverage_final", 0.0, 1.0), ticksByMode, ticksByDriver, summary.integer32("guarded_ticks", 0, ticks)));
+			executed, new Summary(driftTicks, reached, summary.decimal("coverage_final", 0.0, 1.0), ticksByMode, ticksByDriver, summary.integer32("guarded_ticks", 0, ticks), missReason));
+	}
+
+	/** Whether clips of {@code type} seek the honey, and so record whether they reached it. */
+	public static boolean seeksHoney(ClipType type) {
+		return type == ClipType.APPROACH || type == ClipType.DETOUR || type == ClipType.OCCLUSION;
 	}
 
 	private static VideoFile video(JsonFields files, String name, String path, int frameCount) {

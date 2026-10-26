@@ -302,6 +302,8 @@ def _time(value: str) -> datetime:
 
 CLIP_TYPES = ("approach", "pass_by", "scan", "occlusion", "detour", "no_honey")
 CODECS = ("h264-lossless", "ffv1", "h264-lossy")
+# Clip types that seek the honey and record whether they reached it.
+SEEKING_TYPES = ("approach", "detour", "occlusion")
 LOSSLESS_CODECS = ("h264-lossless", "ffv1")
 _STILL_STORAGE_INDEXES = {"scenes": "scenes.jsonl", "samples": "samples.jsonl"}
 
@@ -396,10 +398,15 @@ def clip_errors(clip: Record) -> list[str]:
         )
     summary: Record = clip["summary"]
     reached: bool | None = summary["reached"]
-    if (clip_type == "approach") != (reached is not None):
-        errors.append("/summary/reached: is recorded for approach clips only")
+    if (clip_type in SEEKING_TYPES) != (reached is not None):
+        errors.append("/summary/reached: is recorded for approach, detour and occlusion clips only")
     if clip["end_reason"] == "reached" and reached is not True:
-        errors.append("/end_reason: a reached end needs an approach clip that reached the honey")
+        errors.append("/end_reason: a reached end needs a clip that reached the honey")
+    if (reached is False) != (summary["miss_reason"] is not None):
+        errors.append(
+            "/summary/miss_reason: is recorded exactly when a clip that sought the honey "
+            "did not reach it"
+        )
     if sum(cast(dict[str, int], summary["ticks_by_mode"]).values()) != ticks:
         errors.append("/summary/ticks_by_mode: must add up to the tick count")
     if summary["drift_ticks"] > ticks:

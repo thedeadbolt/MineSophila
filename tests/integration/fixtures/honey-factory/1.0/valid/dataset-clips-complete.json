@@ -217,7 +217,10 @@
     "rejection_reasons": {
       "visibility": 1
     },
-    "accepted_clips": 8
+    "accepted_clips": 8,
+    "clip_redraws": {
+      "capture_failed/approach": 1
+    }
   },
   "provenance": {
     "tool": "honey-factory 0.0.1",

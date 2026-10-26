@@ -296,7 +296,8 @@
         "failed_scenes": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
         "accepted_samples": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
         "accepted_clips": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
-        "rejection_reasons": {"type": "object", "additionalProperties": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}}
+        "rejection_reasons": {"type": "object", "additionalProperties": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}},
+        "clip_redraws": {"description": "Clip attempts redrawn, keyed <reason>/<clip type>: fall, out_of_arena, capture_failed or io. Falls and walks out of the arena must stay at 0.", "type": "object", "additionalProperties": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}}
       }
     },
     "provenance": {

@@ -332,6 +332,7 @@ def _make_clip_dataset(target: Path, codec: str = "h264-lossless") -> Path:
                 "ticks_by_mode": {"track": CLIP_TICKS, "reacquire": 0, "search": 0},
                 "ticks_by_driver": {"teacher": CLIP_TICKS, "teacher_drift": 0, "script": 0},
                 "guarded_ticks": 0,
+                "miss_reason": "timeout",
             },
         }
         clips.append(json.dumps(clip) + "\n")

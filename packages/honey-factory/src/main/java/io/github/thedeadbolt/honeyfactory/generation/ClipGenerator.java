@@ -8,6 +8,7 @@ import io.github.thedeadbolt.honeyfactory.clip.ClipLabels;
 import io.github.thedeadbolt.honeyfactory.clip.ClipStarts;
 import io.github.thedeadbolt.honeyfactory.clip.Drift;
 import io.github.thedeadbolt.honeyfactory.clip.EdgeGuard;
+import io.github.thedeadbolt.honeyfactory.clip.MissReasons;
 import io.github.thedeadbolt.honeyfactory.clip.ClipVideo;
 import io.github.thedeadbolt.honeyfactory.clip.ClipWriter;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
@@ -487,10 +488,14 @@ public final class ClipGenerator implements Generator {
 				}
 
 				Throwable cause = Futures.cause(error);
-				if (cause instanceof Redraw || cause instanceof EnvironmentException environmentError
-					&& (environmentError.reason() == EnvironmentException.Reason.OUT_OF_ARENA || environmentError.reason() == EnvironmentException.Reason.CAPTURE_FAILED)
-					|| cause instanceof UncheckedIOException) {
-					HoneyFactory.LOGGER.info("Redrawing clip {} of {} after attempt {}: {}", index, this.descriptor.sceneId(), attempt, cause.getMessage());
+				String reason = cause instanceof Redraw ? "fall"
+					: cause instanceof EnvironmentException environmentError && environmentError.reason() == EnvironmentException.Reason.OUT_OF_ARENA ? "out_of_arena"
+					: cause instanceof EnvironmentException environmentError && environmentError.reason() == EnvironmentException.Reason.CAPTURE_FAILED ? "capture_failed"
+					: cause instanceof UncheckedIOException ? "io" : null;
+				if (reason != null) {
+					// A fall or a walk out of the arena is a failure of the teacher or the guard, counted in the manifest; it must stay at 0.
+					ClipGenerator.this.tally.redrawClip(reason, start.type().jsonName());
+					HoneyFactory.LOGGER.info("Redrawing {} clip {} of {} after attempt {} ({}): {}", start.type().jsonName(), index, this.descriptor.sceneId(), attempt, reason, cause.getMessage());
 					return attempt(index, attempt + 1);
 				}
 
@@ -682,7 +687,7 @@ public final class ClipGenerator implements Generator {
 
 				this.driftTicks += drifting ? 1 : 0;
 				this.drivers.merge(driver, 1, Integer::sum);
-				if (this.type == ClipType.APPROACH && this.reachedTick < 0 && TrackBehaviour.reached(control.truth().pose(), this.scene.target, this.context)) {
+				if (ClipRecord.seeksHoney(this.type) && this.reachedTick < 0 && TrackBehaviour.reached(control.truth().pose(), this.scene.target, this.context)) {
 					this.reachedTick = tick;
 				}
 
@@ -739,11 +744,14 @@ public final class ClipGenerator implements Generator {
 			}
 
 			boolean reached = this.reachedTick >= 0;
+			boolean seeks = ClipRecord.seeksHoney(this.type);
+			ClipRecord.MissReason miss = seeks && !reached
+				? new MissReasons(this.scene.grid, ClipGenerator.this.arena.core()).of(this.start.pose(), this.last.truth().pose(), this.scene.target) : null;
 			ClipRecord.EndReason end = reached && this.ran < this.ticks ? ClipRecord.EndReason.REACHED : ClipRecord.EndReason.LENGTH;
 			return new ClipRecord(SchemaVersion.CURRENT, this.clipId, this.scene.descriptor.sceneId(), this.scene.descriptor.split(), this.index, this.requested, this.type, this.attempt,
 				this.seeds, this.start.pose(), this.framesPerTick, this.ran, ClipRecord.frameCount(this.ran, this.framesPerTick), end,
 				ClipGenerator.this.clips.codec(), files.rgb(), files.visibleMask(), files.frames(), this.executed,
-				new ClipRecord.Summary(this.driftTicks, this.type == ClipType.APPROACH ? reached : null, this.coverage, modes, drivers, this.guardedTicks));
+				new ClipRecord.Summary(this.driftTicks, seeks ? reached : null, this.coverage, modes, drivers, this.guardedTicks, miss));
 		}
 	}
 }

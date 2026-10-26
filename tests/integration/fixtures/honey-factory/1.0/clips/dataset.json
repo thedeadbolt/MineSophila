@@ -217,7 +217,10 @@
     "rejection_reasons": {
       "visibility": 1
     },
-    "accepted_clips": 4
+    "accepted_clips": 4,
+    "clip_redraws": {
+      "capture_failed/approach": 1
+    }
   },
   "provenance": {
     "tool": "honey-factory 0.0.1",
@@ -232,8 +235,8 @@
         "sha256": "5543a6e11ba53e0550ab26fec68e09516166815b8b73a736e25a5e24fa13b973"
       },
       "clips": {
-        "bytes": 6568,
-        "sha256": "66ffebd8d33f39f640e5cb88b17442e114dd18ea84cd627db890fe27db12cdf5"
+        "bytes": 6654,
+        "sha256": "3d91291c0acae8801837e069dfb4f4f7ff8bcecdef5025c248f28c0187ff8f64"
       }
     },
     "validation": {

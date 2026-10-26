@@ -75,3 +75,15 @@ def test_report_counts_guarded_ticks(contract_dir: Path, schemas: Schemas) -> No
     result = clip_report.report([contract_dir / "clips"], schemas)
     assert result["datasets"][0]["guarded_ticks"] == 0
     assert result["totals"]["guarded_ticks"] == 0
+
+
+def test_report_counts_reach_misses_and_falls(contract_dir: Path, schemas: Schemas) -> None:
+    from honey_factory_tools import clip_report
+
+    result = clip_report.report([contract_dir / "clips"], schemas)
+    dataset = result["datasets"][0]
+    assert dataset["reach"] == {"approach": {"clips": 2, "reached": 0}}
+    assert dataset["miss_reasons"] == {"timeout": 2}
+    assert dataset["falls"] == 0
+    assert result["totals"]["teacher_failures"] == 0
+    assert result["totals"]["falls"] == 0

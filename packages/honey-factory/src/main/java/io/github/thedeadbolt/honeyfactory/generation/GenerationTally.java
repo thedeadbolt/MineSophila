@@ -14,6 +14,8 @@ import java.util.Map;
 final class GenerationTally {
 	private final int requestedScenes;
 	private final Map<String, Integer> rejectionReasons = new LinkedHashMap<>();
+	/** Clip attempts redrawn, by {@code <reason>/<clip type>}. */
+	private final Map<String, Integer> clipRedraws = new LinkedHashMap<>();
 	private final Map<Split, DatasetManifest.SplitCount> splitCounts = new EnumMap<>(Split.class);
 	private int attempted;
 	private int accepted;
@@ -52,6 +54,11 @@ final class GenerationTally {
 		this.splitCounts.put(split, new DatasetManifest.SplitCount(count.scenes() + 1, 0, count.clips() + clips));
 	}
 
+	/** Counts a clip attempt redrawn for {@code reason} (fall, out_of_arena, capture_failed, io) in a clip of {@code type}. */
+	void redrawClip(String reason, String type) {
+		this.clipRedraws.merge(reason + "/" + type, 1, Integer::sum);
+	}
+
 	void reject(String reason) {
 		this.rejected++;
 		this.rejectionReasons.merge(reason, 1, Integer::sum);
@@ -62,7 +69,8 @@ final class GenerationTally {
 	}
 
 	DatasetManifest.Counts counts() {
-		return new DatasetManifest.Counts(this.requestedScenes, this.attempted, this.accepted, this.rejected, this.failed, this.acceptedSamples, this.acceptedClips, Map.copyOf(this.rejectionReasons));
+		return new DatasetManifest.Counts(this.requestedScenes, this.attempted, this.accepted, this.rejected, this.failed, this.acceptedSamples, this.acceptedClips, Map.copyOf(this.rejectionReasons),
+			Map.copyOf(this.clipRedraws));
 	}
 
 	Map<Split, DatasetManifest.SplitCount> splitCounts() {

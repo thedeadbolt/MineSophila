@@ -313,6 +313,7 @@ def main() -> None:
                     },
                     "ticks_by_driver": {"teacher": TICKS, "teacher_drift": 0, "script": 0},
                     "guarded_ticks": 0,
+                    "miss_reason": "timeout" if present else None,
                 },
             }
         )

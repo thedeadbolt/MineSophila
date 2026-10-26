@@ -86,6 +86,7 @@
       "teacher_drift": 0,
       "script": 0
     },
-    "guarded_ticks": 0
+    "guarded_ticks": 0,
+    "miss_reason": "timeout"
   }
 }

@@ -170,15 +170,21 @@ def _merged_manifest(
     merged["created_at_utc"] = min(manifest["created_at_utc"] for manifest in manifests)
     merged["completed_at_utc"] = max(manifest["completed_at_utc"] for manifest in manifests)
 
-    counts: Record = {key: 0 for key in manifests[0]["counts"] if key != "rejection_reasons"}
+    tallies = ("rejection_reasons", "clip_redraws")
+    counts: Record = {key: 0 for key in manifests[0]["counts"] if key not in tallies}
     reasons: dict[str, int] = {}
+    redraws: dict[str, int] = {}
     for manifest in manifests:
         for key in counts:
             counts[key] += manifest["counts"][key]
         for reason, number in manifest["counts"]["rejection_reasons"].items():
             reasons[reason] = reasons.get(reason, 0) + number
+        for reason, number in manifest["counts"].get("clip_redraws", {}).items():
+            redraws[reason] = redraws.get(reason, 0) + number
     counts["requested_scenes"] = merged["generator"]["accepted_scenes"]
     counts["rejection_reasons"] = dict(sorted(reasons.items()))
+    if "clip_redraws" in manifests[0]["counts"]:
+        counts["clip_redraws"] = dict(sorted(redraws.items()))
     merged["counts"] = counts
 
     clips = manifests[0].get("kind") == "clips"
