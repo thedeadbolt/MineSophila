@@ -48,7 +48,7 @@ public final class RuntimeClipEnvironment implements ClipEnvironment {
 	}
 
 	/** The step's frames in order; the last is the tick's end, at the body's recorded pose. */
-	private static Step step(EnvironmentRuntime.ControlResult result) {
+	public static Step step(EnvironmentRuntime.ControlResult result) {
 		List<CaptureService.Capture> captures = result.frames();
 		List<Frame> frames = new ArrayList<>(captures.size());
 		for (int i = 0; i < captures.size(); i++) {

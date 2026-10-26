@@ -1,4 +1,7 @@
-"""Read the video files of clip datasets (M12-2).
+"""Read clip datasets (M12-2): their videos, frames and labels.
+
+``iter_clips`` and ``open_clip`` give each clip's record, and ``Clip.frames()`` its frames as
+images with their labels, so a reader need not know how clips are stored.
 
 Clip frames are stored as Matroska videos written by ``ffmpeg``: RGB in the dataset's codec
 and the visible-target mask always lossless. Decoding runs ``ffmpeg`` and ``ffprobe`` as
@@ -6,11 +9,13 @@ subprocesses, so they must be on the ``PATH``.
 """
 
 import io
+import json
 import subprocess
 import threading
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from PIL import Image
 
@@ -148,3 +153,59 @@ def _png(image: Image.Image) -> bytes:
     buffer = io.BytesIO()
     image.save(buffer, format="PNG", compress_level=1)
     return buffer.getvalue()
+
+
+@dataclass(frozen=True)
+class ClipFrame:
+    """One frame of a clip: its RGB image, its visible-target mask and its frame record."""
+
+    index: int
+    rgb: Image.Image
+    visible_mask: Image.Image
+    labels: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class Clip:
+    """One clip of a clip dataset: its record, and its frames read on demand."""
+
+    dataset: Path
+    record: dict[str, Any]
+
+    @property
+    def width(self) -> int:
+        return int(self.record["files"]["rgb"]["width"])
+
+    @property
+    def height(self) -> int:
+        return int(self.record["files"]["rgb"]["height"])
+
+    def labels(self) -> list[dict[str, Any]]:
+        """Every frame record, in frame order."""
+        path = self.dataset / self.record["files"]["frames"]["path"]
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+    def frames(self) -> Iterator[ClipFrame]:
+        """Yields each frame with its images and labels, decoding both videos as it goes."""
+        files: dict[str, Any] = self.record["files"]
+        rgb = decode_frames(self.dataset / files["rgb"]["path"], self.width, self.height, "RGB")
+        mask_file = self.dataset / files["visible_mask"]["path"]
+        masks = decode_frames(mask_file, self.width, self.height, "L")
+        for index, (image, mask, labels) in enumerate(zip(rgb, masks, self.labels(), strict=True)):
+            yield ClipFrame(index, image, mask, labels)
+
+
+def iter_clips(dataset: Path, split: str | None = None) -> Iterator[Clip]:
+    """The clips of a clip dataset in ``clips.jsonl`` order, optionally of one split."""
+    for line in (dataset / "clips.jsonl").read_text(encoding="utf-8").splitlines():
+        record: dict[str, Any] = json.loads(line)
+        if split is None or record["split"] == split:
+            yield Clip(dataset, record)
+
+
+def open_clip(dataset: Path, clip_id: str) -> Clip:
+    """Clip ``clip_id`` of the clip dataset at ``dataset``; raises ``KeyError`` when absent."""
+    for clip in iter_clips(dataset):
+        if clip.record["clip_id"] == clip_id:
+            return clip
+    raise KeyError(f"{dataset} has no clip {clip_id}")

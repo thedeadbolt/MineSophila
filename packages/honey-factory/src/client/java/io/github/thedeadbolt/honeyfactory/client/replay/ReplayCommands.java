@@ -7,6 +7,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import io.github.thedeadbolt.honeyfactory.environment.Futures;
 import io.github.thedeadbolt.honeyfactory.replay.ReplayComparison;
+import io.github.thedeadbolt.honeyfactory.replay.ReplayClip;
 import io.github.thedeadbolt.honeyfactory.replay.ReplayException;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
@@ -28,6 +29,7 @@ import net.minecraft.network.chat.Component;
  * capture                                       capture the current viewpoint and compare it
  * verify                                        capture and compare every viewpoint
  * status                                        the loaded replay
+ * clip &lt;clip id&gt; &lt;dataset&gt;                       replay a motion clip and compare every frame
  * </pre>
  */
 public final class ReplayCommands {
@@ -41,6 +43,12 @@ public final class ReplayCommands {
 				Path directory = source.getClient().gameDirectory.toPath().resolve(StringArgumentType.getString(context, "dataset"));
 				String id = StringArgumentType.getString(context, "id");
 				return run(source, () -> ReplayRuns.load(directory, id), ReplayCommands::describe);
+			}))))
+			.then(literal("clip").then(argument("id", StringArgumentType.word()).then(argument("dataset", StringArgumentType.greedyString()).executes(context -> {
+				FabricClientCommandSource source = context.getSource();
+				Path directory = source.getClient().gameDirectory.toPath().resolve(StringArgumentType.getString(context, "dataset"));
+				String id = StringArgumentType.getString(context, "id");
+				return run(source, () -> ReplayRuns.replayClip(directory, id), ReplayCommands::describe);
 			}))))
 			.then(literal("viewpoint")
 				.then(argument("index", IntegerArgumentType.integer(0)).executes(context ->
@@ -91,6 +99,12 @@ public final class ReplayCommands {
 		String render = loaded.renderDifferences().isEmpty() ? "render setup as recorded" : "render setup differs: " + String.join("; ", loaded.renderDifferences());
 		return "Replaying " + loaded.scene().manifest().datasetId() + " " + loaded.sample().sampleId() + " (viewpoint " + loaded.viewpoint() + " of "
 			+ loaded.scene().samples().size() + "): " + layout + ", " + render;
+	}
+
+	private static String describe(ReplayClip.Result result) {
+		String rgb = result.rgbCompared() ? result.rgbMismatches() + " RGB" : "RGB not compared (lossy or animated)";
+		return (result.exact() ? "Exact clip replay" : "NOT an exact clip replay") + " of " + result.clipId() + ", " + result.frames() + " frames: " + result.poseMismatches() + " pose, "
+			+ result.labelMismatches() + " label, " + result.maskMismatches() + " mask and " + rgb + " differences" + (result.differences().isEmpty() ? "" : "\n" + String.join("\n", result.differences()));
 	}
 
 	private static String describe(ReplayRuns.Verification verification) {

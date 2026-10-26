@@ -5,6 +5,7 @@ import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.config.ConfigResolver;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
 import io.github.thedeadbolt.honeyfactory.contract.ContractException;
+import io.github.thedeadbolt.honeyfactory.contract.DatasetKind;
 import io.github.thedeadbolt.honeyfactory.contract.DatasetManifest;
 import io.github.thedeadbolt.honeyfactory.contract.Ids;
 import io.github.thedeadbolt.honeyfactory.contract.JsonFields;
@@ -107,7 +108,8 @@ public final class ReplayScene {
 		try {
 			manifest = DatasetManifest.fromJson(JsonFields.parseObject(new String(read(directory, "dataset.json"), StandardCharsets.UTF_8)));
 			sceneLines = Jsonl.read(read(directory, "scenes.jsonl"), "scenes.jsonl");
-			sampleLines = Jsonl.read(read(directory, "samples.jsonl"), "samples.jsonl");
+			// A clip dataset has no samples; its scenes replay through their clips (ReplayClip).
+			sampleLines = manifest.kind() == DatasetKind.CLIPS ? List.of() : Jsonl.read(read(directory, "samples.jsonl"), "samples.jsonl");
 		} catch (ContractException e) {
 			throw new ReplayException(ReplayException.Reason.INVALID_DATASET, e.getMessage());
 		}
@@ -134,7 +136,7 @@ public final class ReplayScene {
 			}
 
 			samples.sort(Comparator.comparingInt(SampleRecord::viewpointIndex));
-			if (samples.isEmpty()) {
+			if (samples.isEmpty() && manifest.kind() != DatasetKind.CLIPS) {
 				throw new ReplayException(ReplayException.Reason.NOT_FOUND, "scene " + sceneId + " has no samples");
 			}
 

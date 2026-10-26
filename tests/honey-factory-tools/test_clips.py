@@ -62,3 +62,39 @@ def test_decode_gray_mask(tmp_path: Path) -> None:
 def test_missing_file_raises(tmp_path: Path) -> None:
     with pytest.raises(OSError, match=r"missing\.mkv"):
         list(decode_frames(tmp_path / "missing.mkv", WIDTH, HEIGHT, "RGB"))
+
+
+def test_reader_yields_labels_with_frames(contract_dir: Path) -> None:
+    from honey_factory_tools.clips import iter_clips, open_clip
+
+    dataset = contract_dir / "clips"
+    clip = open_clip(dataset, "s000002-c00")
+    assert clip.record["clip_type"] == "approach"
+    assert clip.width == 64
+    frames = list(clip.frames())
+    assert [frame.index for frame in frames] == list(range(13))
+    for frame in frames:
+        assert frame.labels["frame"] == frame.index
+        assert frame.rgb.size == (64, 64)
+        assert frame.rgb.mode == "RGB"
+        visible = frame.visible_mask.histogram()[255]
+        assert visible == frame.labels["target"]["visible_pixels"]
+    assert frames[3].labels["tick_labels"]["teacher_mode"] == "track"
+    assert frames[12].labels["tick_labels"]["belief"]["source"] == "memory"
+    assert [c.record["clip_id"] for c in iter_clips(dataset)] == [
+        "s000000-c00",
+        "s000001-c00",
+        "s000002-c00",
+        "s000003-c00",
+    ]
+    assert [c.record["clip_id"] for c in iter_clips(dataset, split="train")] == [
+        "s000002-c00",
+        "s000003-c00",
+    ]
+
+
+def test_open_clip_names_a_missing_clip(contract_dir: Path) -> None:
+    from honey_factory_tools.clips import open_clip
+
+    with pytest.raises(KeyError, match="s000009-c00"):
+        open_clip(contract_dir / "clips", "s000009-c00")

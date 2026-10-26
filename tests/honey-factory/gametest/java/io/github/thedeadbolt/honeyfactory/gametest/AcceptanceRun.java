@@ -113,6 +113,8 @@ final class AcceptanceRun {
 		metrics.add("rejection_reasons", new GsonBuilder().create().toJsonTree(counts.rejectionReasons()));
 		metrics.addProperty("scenes_per_hour", counts.acceptedScenes() / seconds * 3600.0);
 		metrics.addProperty("samples_per_hour", counts.acceptedSamples() / seconds * 3600.0);
+		metrics.addProperty("accepted_clips", counts.acceptedClips());
+		metrics.addProperty("clips_per_hour", counts.acceptedClips() / seconds * 3600.0);
 
 		JsonObject phases = new JsonObject();
 		for (Map.Entry<GenerationTimings.Phase, GenerationTimings.Total> entry : context.computeOnClient(minecraft -> DatasetRuns.lastTimings()).totals().entrySet()) {

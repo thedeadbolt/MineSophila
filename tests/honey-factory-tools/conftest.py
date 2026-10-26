@@ -56,9 +56,13 @@ def _digest(data: bytes) -> dict[str, Any]:
 def _make_slice(
     source: Path, target: Path, index: int, count: int, rejected: int, world: str | None = None
 ) -> Path:
-    """A slice of ``source``: its scenes with ``scene_index % count == index``, as one of
-    ``count`` instances would have generated them, with ``rejected`` rejected attempts."""
+    """A slice of ``source``, still or clip dataset: its scenes with ``scene_index % count ==
+    index``, as one of ``count`` instances would have generated them, with ``rejected``
+    rejected attempts."""
     manifest: dict[str, Any] = json.loads((source / "dataset.json").read_text(encoding="utf-8"))
+    clips = manifest.get("kind") == "clips"
+    items_name = "clips.jsonl" if clips else "samples.jsonl"
+    items_key = "clips" if clips else "samples"
     root = target / f"{manifest['dataset_id']}.slice-{index}-of-{count}"
     root.mkdir(parents=True)
     scenes = [
@@ -66,27 +70,31 @@ def _make_slice(
         for line in _lines(source / "scenes.jsonl")
         if json.loads(line)["generation"]["scene_index"] % count == index
     ]
-    ids = {json.loads(line)["scene_id"] for line in scenes}
-    samples = [
-        line for line in _lines(source / "samples.jsonl") if json.loads(line)["scene_id"] in ids
+    ids_kept = {json.loads(line)["scene_id"] for line in scenes}
+    items = [
+        line for line in _lines(source / items_name) if json.loads(line)["scene_id"] in ids_kept
     ]
-    for line in samples:
+    for line in items:
         for file in json.loads(line)["files"].values():
             destination = root / file["path"]
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source / file["path"], destination)
     scene_bytes = "".join(scenes).encode()
-    sample_bytes = "".join(samples).encode()
+    item_bytes = "".join(items).encode()
     (root / "scenes.jsonl").write_bytes(scene_bytes)
-    (root / "samples.jsonl").write_bytes(sample_bytes)
+    (root / items_name).write_bytes(item_bytes)
 
     slots = sorted(json.loads(line)["generation"]["scene_index"] for line in scenes)
-    split_counts = {split: {"scenes": 0, "samples": 0} for split in ("train", "validation", "test")}
+    split_counts = {
+        split: {"scenes": 0, "samples": 0} | ({"clips": 0} if clips else {})
+        for split in ("train", "validation", "test")
+    }
     for line in scenes:
         scene = json.loads(line)
         split_counts[scene["split"]]["scenes"] += 1
         split_counts[scene["split"]]["samples"] += scene["accepted_sample_count"]
-    accepted_samples = sum(count["samples"] for count in split_counts.values())
+        if clips:
+            split_counts[scene["split"]]["clips"] += scene["accepted_clip_count"]
     manifest["splits"]["counts"] = split_counts
     manifest["counts"] = {
         "requested_scenes": len(slots),
@@ -94,12 +102,14 @@ def _make_slice(
         "accepted_scenes": len(slots),
         "rejected_scenes": rejected,
         "failed_scenes": 0,
-        "accepted_samples": accepted_samples,
+        "accepted_samples": sum(count["samples"] for count in split_counts.values()),
         "rejection_reasons": {"visibility": rejected} if rejected else {},
     }
+    if clips:
+        manifest["counts"]["accepted_clips"] = len(items)
     manifest["integrity"]["indexes"] = {
         "scenes": _digest(scene_bytes),
-        "samples": _digest(sample_bytes),
+        items_key: _digest(item_bytes),
     }
     manifest["slice"] = {
         "index": index,

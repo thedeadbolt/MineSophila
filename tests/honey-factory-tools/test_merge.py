@@ -85,3 +85,48 @@ def test_the_command_merges_and_reports_refusals(
     assert (
         main(["merge-slices", "--schemas", str(schema_dir), str(tmp_path / "out2"), parts[0]]) == 1
     )
+
+
+@pytest.fixture
+def clip_slices(
+    contract_dir: Path, tmp_path: Path, make_slice: Callable[..., Path]
+) -> tuple[Path, list[Path]]:
+    source = contract_dir / "clips"
+    parts = [
+        make_slice(source, tmp_path / "clip-slices", 0, 2, 1),
+        make_slice(source, tmp_path / "clip-slices", 1, 2, 0),
+    ]
+    return source, parts
+
+
+def test_clip_slices_validate_on_their_own(
+    clip_slices: tuple[Path, list[Path]], schemas: Schemas
+) -> None:
+    for part in clip_slices[1]:
+        assert dataset.validate(part, schemas).errors == []
+
+
+def test_merge_clip_slices_equals_single_run(
+    clip_slices: tuple[Path, list[Path]], schemas: Schemas, tmp_path: Path
+) -> None:
+    source, parts = clip_slices
+    merged = merge(list(reversed(parts)), tmp_path / "merged-clips", schemas)
+    assert dataset.validate(merged, schemas).errors == []
+    for index in ("scenes.jsonl", "clips.jsonl"):
+        assert (merged / index).read_bytes() == (source / index).read_bytes()
+    for line in (source / "clips.jsonl").read_text(encoding="utf-8").splitlines():
+        for file in json.loads(line)["files"].values():
+            assert (merged / file["path"]).read_bytes() == (source / file["path"]).read_bytes()
+    manifest = json.loads((merged / "dataset.json").read_text(encoding="utf-8"))
+    assert manifest["counts"]["accepted_clips"] == 4
+    assert {world["world"] for world in manifest["worlds"]} == {"world-0", "world-1"}
+
+
+def test_merge_refuses_mixed_kinds(
+    clip_slices: tuple[Path, list[Path]],
+    slices: tuple[Path, list[Path]],
+    schemas: Schemas,
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(MergeError, match="another configuration"):
+        merge([clip_slices[1][0], slices[1][1]], tmp_path / "mixed", schemas)
