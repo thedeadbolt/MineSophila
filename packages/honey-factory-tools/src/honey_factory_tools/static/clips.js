@@ -289,10 +289,11 @@ function tickLabelsAt(n) {
 function drawTimeline() {
   const canvas = $("clip-timeline");
   const width = Math.max(300, Math.round(canvas.clientWidth * devicePixelRatio));
-  const lane = Math.round(14 * devicePixelRatio);
-  const bearing = Math.round(60 * devicePixelRatio);
+  const height = Math.max(60, Math.round(canvas.clientHeight * devicePixelRatio));
+  const lane = Math.round(height * 0.16);
+  const bearing = height - 2 * lane - Math.round(6 * devicePixelRatio);
   canvas.width = width;
-  canvas.height = lane * 2 + bearing + Math.round(12 * devicePixelRatio);
+  canvas.height = height;
   const context = canvas.getContext("2d");
   context.clearRect(0, 0, canvas.width, canvas.height);
   const frames = clip.frames;
@@ -407,6 +408,24 @@ $("clip-scrub").addEventListener("input", (event) => { pause(); show(Number(even
 $("clip-overlay").addEventListener("input", drawFrame);
 $("clip-box").addEventListener("input", drawFrame);
 $("clip-detail").addEventListener("input", refineDetail);
+function toggleWide() {
+  const wide = document.body.classList.toggle("wide");
+  $("clip-wide").setAttribute("aria-pressed", String(wide));
+  try {
+    localStorage.setItem("clip-wide", wide ? "1" : "");
+  } catch {
+    // Storage may be unavailable; wide mode then lasts for this page only.
+  }
+}
+$("clip-wide").addEventListener("click", toggleWide);
+try {
+  if (localStorage.getItem("clip-wide")) {
+    document.body.classList.add("wide");
+    $("clip-wide").setAttribute("aria-pressed", "true");
+  }
+} catch {
+  // As above.
+}
 $("clip-zoom-in").addEventListener("click", () => zoomCentre(1.5));
 $("clip-zoom-out").addEventListener("click", () => zoomCentre(1 / 1.5));
 $("clip-zoom-fit").addEventListener("click", fitView);
@@ -478,6 +497,8 @@ document.addEventListener("keydown", (event) => {
     zoomCentre(1 / 1.5);
   } else if (event.key === "0") {
     fitView();
+  } else if (event.key === "w") {
+    toggleWide();
   } else if (event.key === "o") {
     $("clip-overlay").checked = !$("clip-overlay").checked;
     drawFrame();
