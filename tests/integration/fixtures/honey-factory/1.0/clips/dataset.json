@@ -1,0 +1,245 @@
+{
+  "schema_version": "1.0",
+  "kind": "clips",
+  "dataset_id": "honey-l1-clips-mini-358eb9d82463",
+  "content_version": "1",
+  "lifecycle": "complete",
+  "created_at_utc": "2026-10-23T09:00:00Z",
+  "completed_at_utc": "2026-10-23T09:30:00Z",
+  "resolved_config_sha256": "358eb9d82463cdf0cf5d3c2f52c1fc0802cbffaf6611fc10036aea87b9057aea",
+  "difficulty": 1,
+  "target": {
+    "block_id": "minecraft:honey_block",
+    "allowed_block_states": [
+      "minecraft:honey_block"
+    ],
+    "present_fraction": 0.5,
+    "target_present_scenes": 2,
+    "target_absent_scenes": 2
+  },
+  "generator": {
+    "dataset_name": "honey-l1-clips-mini",
+    "seed": 42,
+    "accepted_scenes": 4,
+    "scene_attempt_limit": 40,
+    "arena": {
+      "width": 32,
+      "length": 32,
+      "height": 16,
+      "margin": 4
+    },
+    "scene": {
+      "preset": "level1",
+      "base": {
+        "type": "platform",
+        "floor": "minecraft:light_gray_concrete"
+      },
+      "parts": [],
+      "sight": "any",
+      "lighting": {
+        "time_of_day_ticks": 6000,
+        "weathers": [
+          "clear"
+        ]
+      }
+    },
+    "visibility": {
+      "rule": "fully_visible",
+      "min_ratio": null,
+      "max_ratio": null
+    },
+    "algorithms": {
+      "config_hash": "jcs-sha256-v1",
+      "seeds": "seed-v1",
+      "ids": "ids-v1",
+      "scene_slots": "scene-slots-v1",
+      "layout": "layout-v1",
+      "scene_generator": "scene-recipe-v1"
+    },
+    "clips": {
+      "frames_per_tick": 3,
+      "clips_per_scene": 1,
+      "attempts_per_clip": 20,
+      "ticks": {
+        "approach": 4,
+        "pass_by": 4,
+        "scan": 4,
+        "occlusion": 4,
+        "detour": 4,
+        "no_honey": 4
+      },
+      "approach_linger_ticks": 8,
+      "mix": {
+        "approach": 0.25,
+        "pass_by": 0.15,
+        "scan": 0.15,
+        "occlusion": 0.15,
+        "detour": 0.1
+      },
+      "drift": {
+        "rate": 0.1,
+        "mean_ticks": 6.0,
+        "max_turn_rate": 6.0,
+        "max_forward": 0.5
+      },
+      "teacher": {
+        "min_visible_pixels": 50,
+        "reacquire_ticks": 60,
+        "reach_distance_blocks": 1.5
+      },
+      "motor": {
+        "max_turn_rate": 9.0,
+        "max_turn_accel": 1.8,
+        "max_pitch_rate": 6.0,
+        "max_pitch_accel": 1.2
+      },
+      "codec": {
+        "name": "h264-lossless"
+      }
+    }
+  },
+  "capture": {
+    "mode": "PERSPECTIVE_90",
+    "width": 64,
+    "height": 64,
+    "projection": {
+      "horizontal_fov_degrees": 90.0,
+      "vertical_fov_degrees": 90.0,
+      "principal_point_px": [
+        32.0,
+        32.0
+      ],
+      "focal_length_px": [
+        32.0,
+        32.0
+      ],
+      "pixel_centre": "half-pixel"
+    },
+    "mask": {
+      "encoding": "png-gray8",
+      "meaning": "visible-target-geometry-v1",
+      "positive_value": 255,
+      "negative_value": 0
+    },
+    "viewpoints": {
+      "count": 2,
+      "distance_min_blocks": 3.0,
+      "distance_max_blocks": 16.0,
+      "yaw_jitter_degrees": 15.0,
+      "pitch_jitter_degrees": 10.0,
+      "attempts_per_viewpoint": 50,
+      "eye_height_blocks": 1.62
+    },
+    "augmentations": []
+  },
+  "splits": {
+    "ratios": {
+      "train": 0.5,
+      "validation": 0.5,
+      "test": 0.0
+    },
+    "grouping": "scene",
+    "algorithm": "scene-slots-v1",
+    "counts": {
+      "train": {
+        "scenes": 2,
+        "samples": 0,
+        "clips": 2
+      },
+      "validation": {
+        "scenes": 2,
+        "samples": 0,
+        "clips": 2
+      },
+      "test": {
+        "scenes": 0,
+        "samples": 0,
+        "clips": 0
+      }
+    }
+  },
+  "software": {
+    "minecraft": "26.3",
+    "fabric_loader": "0.19.5",
+    "fabric_api": "0.163.0+26.3",
+    "mod": "0.0.1",
+    "java": "25.0.1",
+    "git_commit": "0123456789abcdef0123456789abcdef01234567",
+    "git_dirty": false
+  },
+  "render_environment": {
+    "graphics_backend": "OpenGL",
+    "gpu": "AMD Radeon RX 7600",
+    "driver": "Mesa 26.2.4",
+    "improved_transparency": true,
+    "render_distance_chunks": 12,
+    "gamma": 0.5,
+    "cloud_status": "off",
+    "shader_pack": null,
+    "resource_packs": [
+      {
+        "id": "vanilla",
+        "sha256": null
+      }
+    ],
+    "settings": {
+      "graphics_preset": "fancy",
+      "cutout_leaves": true,
+      "mipmap_levels": 4,
+      "texture_filtering": "none"
+    }
+  },
+  "storage": {
+    "indexes": {
+      "scenes": "scenes.jsonl",
+      "clips": "clips.jsonl"
+    },
+    "clip_root": "clips",
+    "encodings": {
+      "rgb": "h264-lossless",
+      "mask": "h264-lossless",
+      "frames": "jsonl"
+    },
+    "sharding": "ids-v1",
+    "channels": [
+      "rgb",
+      "mask"
+    ]
+  },
+  "counts": {
+    "requested_scenes": 4,
+    "attempted_scenes": 5,
+    "accepted_scenes": 4,
+    "rejected_scenes": 1,
+    "failed_scenes": 0,
+    "accepted_samples": 0,
+    "rejection_reasons": {
+      "visibility": 1
+    },
+    "accepted_clips": 4
+  },
+  "provenance": {
+    "tool": "honey-factory 0.0.1",
+    "parent_dataset_ids": [],
+    "derivations": []
+  },
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "indexes": {
+      "scenes": {
+        "bytes": 3860,
+        "sha256": "5543a6e11ba53e0550ab26fec68e09516166815b8b73a736e25a5e24fa13b973"
+      },
+      "clips": {
+        "bytes": 6250,
+        "sha256": "1d6a834f936b5452a61afcc3d91b17eeb88c3793b8a32642d3c38b3304797caf"
+      }
+    },
+    "validation": {
+      "passed": true,
+      "error_count": 0
+    }
+  },
+  "licence": "unassigned",
+  "intended_use": "unassigned"
+}

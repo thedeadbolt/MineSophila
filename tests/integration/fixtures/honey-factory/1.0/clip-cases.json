@@ -1,0 +1,309 @@
+{
+  "description": "Cross-record cases over clips/ (M12-2). Each edit patches one line of a JSONL file ('line' + 'patch'), duplicates a line ('append_copy_of') or deletes one ('remove_line'); 'file' is relative to clips/, so a clip's frames.jsonl can be edited. Every edited record stays individually valid. The clip validation must report an error containing 'expect_error'.",
+  "cases": [
+    {
+      "name": "clips reference an existing scene",
+      "edits": [
+        {
+          "file": "scenes.jsonl",
+          "remove_line": 1
+        }
+      ],
+      "expect_error": "references missing scene"
+    },
+    {
+      "name": "clips keep their scene's split",
+      "edits": [
+        {
+          "file": "clips.jsonl",
+          "line": 0,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/split",
+              "value": "train"
+            },
+            {
+              "op": "set",
+              "path": "/files/rgb/path",
+              "value": "clips/train/c1/s000000-c00/rgb.mkv"
+            },
+            {
+              "op": "set",
+              "path": "/files/visible_mask/path",
+              "value": "clips/train/c1/s000000-c00/visible.mkv"
+            },
+            {
+              "op": "set",
+              "path": "/files/frames/path",
+              "value": "clips/train/c1/s000000-c00/frames.jsonl"
+            }
+          ]
+        }
+      ],
+      "expect_error": "differs from its scene"
+    },
+    {
+      "name": "scenes count their clips",
+      "edits": [
+        {
+          "file": "scenes.jsonl",
+          "line": 0,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/accepted_clip_count",
+              "value": 2
+            },
+            {
+              "op": "set",
+              "path": "/generation/parameters/viewpoint_draws",
+              "value": [
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ],
+      "expect_error": "clips but has"
+    },
+    {
+      "name": "no-honey clips belong to target-absent scenes",
+      "edits": [
+        {
+          "file": "clips.jsonl",
+          "line": 0,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/clip_type",
+              "value": "no_honey"
+            },
+            {
+              "op": "set",
+              "path": "/requested_type",
+              "value": "no_honey"
+            },
+            {
+              "op": "set",
+              "path": "/summary/reached",
+              "value": null
+            }
+          ]
+        }
+      ],
+      "expect_error": "target-absent"
+    },
+    {
+      "name": "clip ids are unique",
+      "edits": [
+        {
+          "file": "clips.jsonl",
+          "append_copy_of": 0
+        }
+      ],
+      "expect_error": "duplicate clip_id"
+    },
+    {
+      "name": "a clip's commands are its ticks' executed commands",
+      "edits": [
+        {
+          "file": "clips.jsonl",
+          "line": 0,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/executed/1/turn_rate",
+              "value": 3.0
+            }
+          ]
+        }
+      ],
+      "expect_error": "executed commands differ"
+    },
+    {
+      "name": "commands keep within the motor limits",
+      "edits": [
+        {
+          "file": "clips.jsonl",
+          "line": 1,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/executed/0/turn_rate",
+              "value": 9.5
+            }
+          ]
+        },
+        {
+          "file": "clips/validation/40/s000001-c00/frames.jsonl",
+          "line": 3,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/tick_labels/executed/turn_rate",
+              "value": 9.5
+            }
+          ]
+        }
+      ],
+      "expect_error": "outside the motor limits"
+    },
+    {
+      "name": "the teacher sees honey only when the observed frame shows it",
+      "edits": [
+        {
+          "file": "clips/train/fe/s000002-c00/frames.jsonl",
+          "line": 12,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/tick_labels/belief/source",
+              "value": "seen"
+            }
+          ]
+        }
+      ],
+      "expect_error": "seen while"
+    },
+    {
+      "name": "memory is the last sighting",
+      "edits": [
+        {
+          "file": "clips/train/fe/s000002-c00/frames.jsonl",
+          "line": 12,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/tick_labels/belief/position",
+              "value": [
+                1,
+                2,
+                3
+              ]
+            }
+          ]
+        }
+      ],
+      "expect_error": "differs from the last sighting"
+    },
+    {
+      "name": "seen honey is the scene's honey",
+      "edits": [
+        {
+          "file": "clips/train/fe/s000002-c00/frames.jsonl",
+          "line": 9,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/tick_labels/belief/position",
+              "value": [
+                1,
+                2,
+                3
+              ]
+            }
+          ]
+        }
+      ],
+      "expect_error": "is not the scene's honey"
+    },
+    {
+      "name": "nothing is seen in a scene without honey",
+      "edits": [
+        {
+          "file": "clips/validation/40/s000001-c00/frames.jsonl",
+          "line": 3,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/tick_labels/belief/source",
+              "value": "seen"
+            },
+            {
+              "op": "set",
+              "path": "/tick_labels/belief/position",
+              "value": [
+                16,
+                65,
+                16
+              ]
+            }
+          ]
+        }
+      ],
+      "expect_error": "scene without honey"
+    },
+    {
+      "name": "drift ticks add up",
+      "edits": [
+        {
+          "file": "clips.jsonl",
+          "line": 0,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/summary/drift_ticks",
+              "value": 2
+            }
+          ]
+        }
+      ],
+      "expect_error": "drift_ticks"
+    },
+    {
+      "name": "teacher ticks by mode add up",
+      "edits": [
+        {
+          "file": "clips.jsonl",
+          "line": 2,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/summary/ticks_by_mode",
+              "value": {
+                "track": 4,
+                "reacquire": 0,
+                "search": 0
+              }
+            }
+          ]
+        }
+      ],
+      "expect_error": "ticks_by_mode"
+    },
+    {
+      "name": "frame labels match their mask",
+      "edits": [
+        {
+          "file": "clips/validation/c1/s000000-c00/frames.jsonl",
+          "line": 4,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/target/visible_bbox_xywh",
+              "value": [
+                25,
+                28,
+                8,
+                8
+              ]
+            }
+          ]
+        }
+      ],
+      "expect_error": "does not match its mask"
+    },
+    {
+      "name": "every frame has a record",
+      "edits": [
+        {
+          "file": "clips/validation/c1/s000000-c00/frames.jsonl",
+          "remove_line": 12
+        }
+      ],
+      "expect_error": "frame records for"
+    }
+  ]
+}

@@ -48,6 +48,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="accept a dataset whose manifest is still generating",
     )
+    whole.add_argument(
+        "--quick",
+        action="store_true",
+        help="for a clip dataset, decode the masks of only 1 clip in 20",
+    )
     whole.add_argument("directory", type=Path, help="the dataset directory holding dataset.json")
     inspect = commands.add_parser("inspect", help="browse a dataset in a local web page")
     inspect.add_argument("--schemas", type=Path, help="schema directory for one contract version")
@@ -139,7 +144,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     if args.command == "validate-dataset":
         return _validate_dataset(
-            schemas, cast(Path, args.directory), cast(bool, args.allow_generating)
+            schemas,
+            cast(Path, args.directory),
+            cast(bool, args.allow_generating),
+            cast(bool, args.quick),
         )
     if args.command == "acceptance-report":
         return _acceptance(schemas, args)
@@ -205,13 +213,16 @@ def _mod_project() -> Path | None:
     return None
 
 
-def _validate_dataset(schemas: Schemas, directory: Path, allow_generating: bool) -> int:
-    report = dataset.validate(directory, schemas, allow_generating=allow_generating)
+def _validate_dataset(
+    schemas: Schemas, directory: Path, allow_generating: bool, quick: bool = False
+) -> int:
+    report = dataset.validate(directory, schemas, allow_generating=allow_generating, quick=quick)
     for error in report.errors:
         print(error)
     print(
         f"{len(report.errors)} error(s); lifecycle {report.lifecycle}, "
-        f"{len(report.scenes)} scenes, {len(report.samples)} samples",
+        f"{len(report.scenes)} scenes, "
+        + (f"{len(report.clips)} clips" if report.clips else f"{len(report.samples)} samples"),
         file=sys.stderr,
     )
     return 0 if report.passed else 1

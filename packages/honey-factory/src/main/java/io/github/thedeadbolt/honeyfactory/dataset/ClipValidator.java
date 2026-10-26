@@ -26,8 +26,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Checks a clip dataset directory (M12-2): every scene, clip and frame record on its own,
- * clips against their scenes and the manifest's counts, and every file a clip references:
- * present, of the recorded size and SHA-256, with one frame record per frame in order.
+ * then {@link ClipConsistency}'s rules over records and videos, and every file a clip
+ * references: present, of the recorded size and SHA-256.
  * Folders under {@code clips/} no clip references, and unfinished {@code .partial} folders,
  * are errors too.
  */
@@ -74,8 +74,10 @@ public final class ClipValidator {
 		List<ClipRecord> clips = parse(clipBytes, DatasetWriter.CLIPS, ClipRecord::fromJson, errors);
 		DatasetManifest.IndexDigest scenesDigest = new DatasetManifest.IndexDigest(sceneBytes.length, Sha256.hex(sceneBytes));
 		DatasetManifest.IndexDigest clipsDigest = new DatasetManifest.IndexDigest(clipBytes.length, Sha256.hex(clipBytes));
+		Map<String, SceneRecord> byId = new HashMap<>();
+		scenes.forEach(scene -> byId.putIfAbsent(scene.sceneId(), scene));
 		if (manifest != null) {
-			errors.addAll(records(manifest, scenes, clips));
+			errors.addAll(manifest.kind() == DatasetKind.CLIPS ? ClipConsistency.check(manifest, scenes, clips) : List.of("manifest: is not a clip dataset"));
 			if (manifest.integrity() != null) {
 				if (!manifest.integrity().scenes().equals(scenesDigest)) {
 					errors.add("manifest: integrity.indexes.scenes does not match " + DatasetWriter.SCENES);
@@ -88,77 +90,21 @@ public final class ClipValidator {
 		}
 
 		for (ClipRecord clip : clips) {
-			errors.addAll(files(root, clip));
+			errors.addAll(files(root, manifest, byId.get(clip.sceneId()), clip));
 		}
 
 		errors.addAll(unreferenced(root, clips));
 		return new Report(manifest, scenes, clips, scenesDigest, clipsDigest, List.copyOf(errors));
 	}
 
-	/** Clips against their scenes and the manifest. */
-	private static List<String> records(DatasetManifest manifest, List<SceneRecord> scenes, List<ClipRecord> clips) {
+	/**
+	 * A clip's files: present, of the recorded size and hash; its frame records (see
+	 * {@link ClipConsistency#frames}); its videos holding every frame, with masks as labelled.
+	 * A file that differs from its record is still checked, so every problem shows.
+	 */
+	private static List<String> files(Path root, @Nullable DatasetManifest manifest, @Nullable SceneRecord scene, ClipRecord clip) throws IOException {
 		List<String> errors = new ArrayList<>();
-		if (manifest.kind() != DatasetKind.CLIPS) {
-			errors.add("manifest: is not a clip dataset");
-			return errors;
-		}
-
-		int framesPerTick = manifest.clipSettings().framesPerTick();
-		Map<String, SceneRecord> byId = new HashMap<>();
-		for (SceneRecord scene : scenes) {
-			if (byId.put(scene.sceneId(), scene) != null) {
-				errors.add(DatasetWriter.SCENES + ": duplicate scene_id " + scene.sceneId());
-			}
-
-			if (scene.acceptedClipCount() == null) {
-				errors.add(DatasetWriter.SCENES + ": scene " + scene.sceneId() + " lacks accepted_clip_count");
-			}
-		}
-
-		Set<String> ids = new HashSet<>();
-		Map<String, Integer> perScene = new HashMap<>();
-		for (ClipRecord clip : clips) {
-			if (!ids.add(clip.clipId())) {
-				errors.add(DatasetWriter.CLIPS + ": duplicate clip_id " + clip.clipId());
-			}
-
-			SceneRecord scene = byId.get(clip.sceneId());
-			if (scene == null) {
-				errors.add(DatasetWriter.CLIPS + ": clip " + clip.clipId() + " references missing scene " + clip.sceneId());
-			} else if (scene.split() != clip.split()) {
-				errors.add(DatasetWriter.CLIPS + ": clip " + clip.clipId() + " is in " + clip.split().jsonName() + " but its scene is in " + scene.split().jsonName());
-			}
-
-			if (clip.framesPerTick() != framesPerTick) {
-				errors.add(DatasetWriter.CLIPS + ": clip " + clip.clipId() + " has " + clip.framesPerTick() + " frames per tick; the dataset has " + framesPerTick);
-			}
-
-			perScene.merge(clip.sceneId(), 1, Integer::sum);
-		}
-
-		for (SceneRecord scene : scenes) {
-			int count = perScene.getOrDefault(scene.sceneId(), 0);
-			if (scene.acceptedClipCount() != null && scene.acceptedClipCount() != count) {
-				errors.add(DatasetWriter.SCENES + ": scene " + scene.sceneId() + " records " + scene.acceptedClipCount() + " clips but has " + count);
-			}
-		}
-
-		if (manifest.lifecycle() == DatasetManifest.Lifecycle.COMPLETE) {
-			if (manifest.counts().acceptedScenes() != scenes.size()) {
-				errors.add("manifest: counts.accepted_scenes is " + manifest.counts().acceptedScenes() + " but " + scenes.size() + " scenes are stored");
-			}
-
-			if (manifest.counts().acceptedClips() != clips.size()) {
-				errors.add("manifest: counts.accepted_clips is " + manifest.counts().acceptedClips() + " but " + clips.size() + " clips are stored");
-			}
-		}
-
-		return errors;
-	}
-
-	/** A clip's files: present, of the recorded size and hash, and one frame record per frame. */
-	private static List<String> files(Path root, ClipRecord clip) throws IOException {
-		List<String> errors = new ArrayList<>();
+		boolean videos = true;
 		for (String[] file : new String[][] {
 			{clip.rgb().path(), Long.toString(clip.rgb().bytes()), clip.rgb().sha256()},
 			{clip.visibleMask().path(), Long.toString(clip.visibleMask().bytes()), clip.visibleMask().sha256()},
@@ -167,6 +113,7 @@ public final class ClipValidator {
 			Path path = root.resolve(file[0]);
 			if (!Files.isRegularFile(path)) {
 				errors.add(clip.clipId() + ": " + file[0] + " is missing");
+				videos &= file[0].equals(clip.frames().path());
 			} else if (Files.size(path) != Long.parseLong(file[1])) {
 				errors.add(clip.clipId() + ": " + file[0] + " has " + Files.size(path) + " bytes, not " + file[1]);
 			} else if (!ClipWriter.sha256(path).equals(file[2])) {
@@ -174,22 +121,14 @@ public final class ClipValidator {
 			}
 		}
 
-		Path frames = root.resolve(clip.frames().path());
-		if (!Files.isRegularFile(frames)) {
-			return errors;
+		Path framesFile = root.resolve(clip.frames().path());
+		List<FrameRecord> frames = Files.isRegularFile(framesFile) ? parse(Files.readAllBytes(framesFile), clip.frames().path(), FrameRecord::fromJson, errors) : List.of();
+		if (manifest != null && manifest.kind() == DatasetKind.CLIPS) {
+			errors.addAll(ClipConsistency.frames(manifest, scene, clip, frames));
 		}
 
-		List<FrameRecord> records = parse(Files.readAllBytes(frames), clip.frames().path(), FrameRecord::fromJson, errors);
-		if (records.size() != clip.frameCount()) {
-			errors.add(clip.clipId() + ": " + records.size() + " frame records for " + clip.frameCount() + " frames");
-		}
-
-		for (int i = 0; i < records.size(); i++) {
-			FrameRecord frame = records.get(i);
-			if (!frame.clipId().equals(clip.clipId()) || frame.frame() != i || frame.framesPerTick() != clip.framesPerTick()) {
-				errors.add(clip.clipId() + ": frame record " + i + " is out of place (" + frame + ")");
-				break;
-			}
+		if (videos) {
+			errors.addAll(ClipConsistency.videos(root, clip, frames, true));
 		}
 
 		return errors;

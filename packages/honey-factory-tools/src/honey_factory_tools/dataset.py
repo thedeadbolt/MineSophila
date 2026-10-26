@@ -25,7 +25,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
-from honey_factory_tools import canonical, ids, images, records
+from honey_factory_tools import canonical, clip_dataset, ids, images, records
 from honey_factory_tools.schemas import Kind, Schemas
 
 type Record = dict[str, Any]
@@ -57,15 +57,20 @@ class Report:
         return not self.errors
 
 
-def validate(root: Path, schemas: Schemas, *, allow_generating: bool = False) -> Report:
+def validate(
+    root: Path, schemas: Schemas, *, allow_generating: bool = False, quick: bool = False
+) -> Report:
+    """Validates a dataset directory; ``quick`` decodes the masks of only 1 clip in 20."""
     report = load(root, schemas)
     manifest = report.manifest
     if manifest is not None and records.is_clips(manifest):
-        # A clip dataset's records and files are checked by the clip rules (M12-2).
         if manifest["lifecycle"] == "generating" and not allow_generating:
             report.errors.append(
                 f"{MANIFEST}: lifecycle is generating; the run is unfinished or was interrupted"
             )
+        report.errors.extend(
+            clip_dataset.validate(root, manifest, report.scenes, report.clips, schemas, quick)
+        )
         return report
     if manifest is not None:
         if manifest["lifecycle"] == "generating" and not allow_generating:
@@ -181,14 +186,14 @@ def _index(data: bytes, name: str, kind: Kind, schemas: Schemas, errors: list[st
     return valid
 
 
-def consistency(manifest: Record, scenes: list[Record], samples: list[Record]) -> list[str]:
-    """Cross-record rules over individually valid records."""
-    errors: list[str] = []
+def scene_rules(
+    manifest: Record, scenes: list[Record], errors: list[str]
+) -> tuple[dict[str, Record], list[ids.Slot] | None]:
+    """Rules every dataset's scenes follow, stills or clips: IDs, seeds, slots and patches."""
     generator: Record = manifest["generator"]
     seed: int = generator["seed"]
     difficulty: int = manifest["difficulty"]
     block_id: str = manifest["target"]["block_id"]
-    viewpoints: int = manifest["capture"]["viewpoints"]["count"]
     grouping: str = manifest["splits"]["grouping"]
     ratios: Record = manifest["splits"]["ratios"]
     split_ratios = (ratios["train"], ratios["validation"], ratios["test"])
@@ -268,6 +273,16 @@ def consistency(manifest: Record, scenes: list[Record], samples: list[Record]) -
             )
     if natural:
         errors += _source_regions(base, scenes)
+
+    return by_id, slots
+
+
+def consistency(manifest: Record, scenes: list[Record], samples: list[Record]) -> list[str]:
+    """Cross-record rules over individually valid records."""
+    errors: list[str] = []
+    generator: Record = manifest["generator"]
+    viewpoints: int = manifest["capture"]["viewpoints"]["count"]
+    by_id, slots = scene_rules(manifest, scenes, errors)
 
     visibility: Record = generator["visibility"]
     sample_ids: set[str] = set()
