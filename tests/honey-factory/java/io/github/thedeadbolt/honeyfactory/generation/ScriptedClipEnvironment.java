@@ -41,6 +41,8 @@ public final class ScriptedClipEnvironment implements ClipEnvironment {
 	static final double WALK = 0.2158;
 
 	private final LinkedBlockingDeque<Runnable> queue = new LinkedBlockingDeque<>();
+	/** What each clip attempt announced, in order. */
+	final List<String> announcements = new ArrayList<>();
 	private int resets;
 	private long serverTick = 1000;
 	private int operations;
@@ -199,6 +201,11 @@ public final class ScriptedClipEnvironment implements ClipEnvironment {
 	@Override
 	public DatasetManifest.RenderEnvironment renderEnvironment() {
 		return ScriptedEnvironment.scriptedRenderEnvironment();
+	}
+
+	@Override
+	public void announce(String message) {
+		this.announcements.add(message);
 	}
 
 	@Override

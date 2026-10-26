@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 
 /**
  * Clip generation through the control loop of the running game (M12-2): every frame is a
@@ -58,6 +59,13 @@ public final class RuntimeClipEnvironment implements ClipEnvironment {
 		}
 
 		return new Step(result.step(), List.copyOf(frames));
+	}
+
+	/** The action bar above the hotbar; captures render the level only, never the HUD. */
+	@Override
+	public void announce(String message) {
+		Minecraft minecraft = Minecraft.getInstance();
+		minecraft.execute(() -> minecraft.gui.hud.setOverlayMessage(Component.literal(message), false));
 	}
 
 	@Override

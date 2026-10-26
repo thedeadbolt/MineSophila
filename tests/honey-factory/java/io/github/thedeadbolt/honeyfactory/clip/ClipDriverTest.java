@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.thedeadbolt.honeyfactory.contract.BlockBox;
 import io.github.thedeadbolt.honeyfactory.contract.ClipSettings;
+import io.github.thedeadbolt.honeyfactory.contract.ClipType;
 import io.github.thedeadbolt.honeyfactory.contract.Driver;
 import io.github.thedeadbolt.honeyfactory.contract.FrameRecord;
 import io.github.thedeadbolt.honeyfactory.contract.TeacherMode;
@@ -58,6 +59,16 @@ class ClipDriverTest {
 		driver.next(2, input(2, new CameraPose(10.5, 65.0, 14.3, 0.0f, 0.0f)), WALK);
 		assertEquals(Driver.TEACHER, driver.driver());
 		assertTrue(!driver.drifting());
+	}
+
+	@Test
+	void everyTypeSaysWhoDrivesIt() {
+		assertEquals("pass-by: a script walks past the honey", ClipDriver.describe(ClipType.PASS_BY));
+		assertEquals("scan: a script turns in place", ClipDriver.describe(ClipType.SCAN));
+		assertEquals("approach: the teacher goes to the honey", ClipDriver.describe(ClipType.APPROACH));
+		for (ClipType type : ClipType.values()) {
+			assertTrue(ClipDriver.describe(type).startsWith(type.jsonName().replace('_', '-') + ": "), type.toString());
+		}
 	}
 
 	private static TeacherInput input(int tick, CameraPose pose) {

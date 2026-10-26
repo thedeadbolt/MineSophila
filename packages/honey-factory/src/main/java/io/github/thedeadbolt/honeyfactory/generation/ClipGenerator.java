@@ -619,6 +619,7 @@ public final class ClipGenerator implements Generator {
 			CameraPose start = this.start.pose();
 			this.reachable = SeenMap.reachable(this.scene.grid, ClipGenerator.this.arena.core(),
 				new int[] {(int) Math.floor(start.x()) - origin[0], (int) Math.floor(start.y()) - origin[1], (int) Math.floor(start.z()) - origin[2]});
+			ClipGenerator.this.environment.announce(this.clipId + " · " + ClipDriver.describe(this.type));
 			return request(GenerationTimings.Phase.RESET, () -> ClipGenerator.this.environment.reset(ClipGenerator.this.arena, this.scene.scene.plan(), this.start.pose(),
 				ClipGenerator.this.projection, this.seeds.drive(), this.framesPerTick))
 				.thenCompose(reset -> {

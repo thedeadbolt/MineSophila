@@ -37,6 +37,14 @@ public interface ClipEnvironment {
 	}
 
 	/**
+	 * Shows people watching the run what the next clip is ({@code message}, such as
+	 * "s000003-c01 · pass-by: a script walks past the honey"). It must never reach a capture;
+	 * by default it does nothing.
+	 */
+	default void announce(String message) {
+	}
+
+	/**
 	 * Builds {@code plan}, places the body at {@code start} and captures step 0; later steps
 	 * capture {@code framesPerTick} frames each.
 	 */

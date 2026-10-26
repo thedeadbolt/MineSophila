@@ -42,6 +42,18 @@ public interface ClipDriver {
 		};
 	}
 
+	/** What a clip of {@code type} shows and who drives it, in a few words, for people watching a run. */
+	static String describe(ClipType type) {
+		return switch (type) {
+			case APPROACH -> "approach: the teacher goes to the honey";
+			case DETOUR -> "detour: the teacher goes around to the honey";
+			case OCCLUSION -> "occlusion: a script walks behind cover, then the teacher finds the honey";
+			case PASS_BY -> "pass-by: a script walks past the honey";
+			case SCAN -> "scan: a script turns in place";
+			case NO_HONEY -> "no-honey: the teacher searches an arena without honey";
+		};
+	}
+
 	/** Degrees in [-180, 180). */
 	static double wrap(double degrees) {
 		double wrapped = (degrees + 180.0) % 360.0;

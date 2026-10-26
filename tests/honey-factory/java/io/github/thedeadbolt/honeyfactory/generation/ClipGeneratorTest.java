@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.thedeadbolt.honeyfactory.config.ConfigResolver;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
+import io.github.thedeadbolt.honeyfactory.clip.ClipDriver;
 import io.github.thedeadbolt.honeyfactory.contract.ClipRecord;
 import io.github.thedeadbolt.honeyfactory.contract.ClipSeeds;
 import io.github.thedeadbolt.honeyfactory.contract.ClipType;
@@ -124,6 +125,17 @@ class ClipGeneratorTest {
 		assertEquals(4, result.manifest().counts().acceptedClips());
 		assertEquals(Map.of("out_of_arena/" + first.clipType().jsonName(), 1), result.manifest().counts().clipRedraws(), "the redraw is counted, not hidden");
 		assertNoPartials(result.directory());
+	}
+
+	@Test
+	void everyClipIsAnnouncedBeforeItStarts() throws IOException {
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		DatasetGenerator.Result result = run(new ClipGenerator(allTypes(this.temp.resolve("j"), 1), environment, CLOCK, DISK), environment);
+		List<String> announced = environment.announcements;
+		assertEquals(environment.resets(), announced.size(), "one announcement per clip attempt");
+		for (ClipRecord clip : clips(result)) {
+			assertTrue(announced.contains(clip.clipId() + " · " + ClipDriver.describe(clip.clipType())), clip.clipId() + " was announced: " + announced);
+		}
 	}
 
 	@Test
