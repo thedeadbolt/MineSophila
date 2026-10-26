@@ -10,6 +10,8 @@ import com.mojang.renderpearl.api.device.GpuDevice;
 import com.mojang.renderpearl.api.textures.GpuTexture;
 import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
+import io.github.thedeadbolt.honeyfactory.capture.PanoramicProjection;
+import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -81,6 +83,22 @@ public final class CaptureService {
 
 	public static void initialize() {
 		TargetMaskRenderer.initialize();
+		GpuReprojection.initialize();
+	}
+
+	/** Makes the next GPU reprojection fail, for fallback tests. */
+	public static void failNextGpuReprojection(String reason) {
+		GpuReprojection.failNext(reason);
+	}
+
+	/** Whether GPU reprojection may run: it has not failed this session. */
+	public static boolean gpuReprojectionUsable() {
+		return GpuReprojection.usable();
+	}
+
+	/** Lets GPU reprojection run again after a failure, for tests. */
+	public static void enableGpuReprojectionAgain() {
+		GpuReprojection.enableAgain();
 	}
 
 	/** Whether a capture is rendering now. */
@@ -122,14 +140,39 @@ public final class CaptureService {
 			}
 		}
 
+		if (projection instanceof PanoramicProjection panorama && EnvironmentRuntime.get().settings().gpuReprojection() && GpuReprojection.usable()) {
+			try {
+				return render(minecraft, panorama, views, target, true);
+			} catch (GpuReprojection.Failure e) {
+				GpuReprojection.disable(e);
+			}
+		}
+
+		return render(minecraft, projection, views, target, false);
+	}
+
+	/**
+	 * Renders every view and assembles the output: on the CPU from the read-back views, or with
+	 * {@code gpu} on the GPU from atlases of the views, reading back only the output. A GPU
+	 * step's own failure is a {@link GpuReprojection.Failure}, for the caller to fall back.
+	 */
+	private static Capture render(Minecraft minecraft, CaptureProjection projection, List<CaptureProjection.View> views, @Nullable BlockPos target, boolean gpu) {
+		LocalPlayer player = minecraft.player;
+		CaptureProjection.View first = views.getFirst();
 		long worldTick = minecraft.level.getGameTime();
 		Rotation original = Rotation.of(player);
 		try (CaptureSetup ignored = CaptureSetup.apply(minecraft, first)) {
 			List<Readback> pending = new ArrayList<>(views.size());
 			long renderNanos = 0;
 			long readbackNanos = 0;
+			long assembleNanos = 0;
+			CapturedImages images;
 			List<CapturedImages> rendered;
 			try {
+				if (gpu) {
+					GpuReprojection.begin((PanoramicProjection) projection);
+				}
+
 				for (int i = 0; i < views.size(); i++) {
 					failIfInjected(i);
 					CaptureProjection.View view = views.get(i);
@@ -137,9 +180,23 @@ public final class CaptureService {
 					long start = System.nanoTime();
 					renderFrame(minecraft, target);
 					long renderedAt = System.nanoTime();
-					pending.add(Readback.start(minecraft.gameRenderer.mainRenderTarget(), view, target != null));
+					RenderTarget main = minecraft.gameRenderer.mainRenderTarget();
+					if (gpu) {
+						GpuReprojection.addFace(i, main.getColorTexture(), target == null ? null : TargetMaskRenderer.visibleTexture(), target == null ? null : TargetMaskRenderer.unoccludedTexture());
+					} else {
+						pending.add(target == null
+							? Readback.start(view.width(), view.height(), new GpuTexture[] {main.getColorTexture()}, Readback.RGB)
+							: Readback.start(view.width(), view.height(), new GpuTexture[] {main.getColorTexture(), TargetMaskRenderer.visibleTexture(), TargetMaskRenderer.unoccludedTexture()}, Readback.RGB_AND_MASKS));
+					}
+
 					renderNanos += renderedAt - start;
 					readbackNanos += System.nanoTime() - renderedAt;
+				}
+
+				if (gpu) {
+					long assembleStart = System.nanoTime();
+					pending.add(GpuReprojection.assemble());
+					assembleNanos = System.nanoTime() - assembleStart;
 				}
 
 				long finishStart = System.nanoTime();
@@ -149,10 +206,16 @@ public final class CaptureService {
 				pending.forEach(Readback::close);
 			}
 
+			if (gpu) {
+				CapturedImages output = rendered.getFirst();
+				images = target == null ? CapturedImages.withoutTarget(output.width(), output.height(), output.rgb()) : output;
+				return new Capture(images, List.of(), worldTick, PARTIAL_TICK, renderNanos, readbackNanos, assembleNanos);
+			}
+
 			long assembleStart = System.nanoTime();
-			CapturedImages images = projection.assemble(rendered);
+			images = projection.assemble(rendered);
 			return new Capture(images, List.copyOf(rendered), worldTick, PARTIAL_TICK, renderNanos, readbackNanos, System.nanoTime() - assembleStart);
-		} catch (EnvironmentException | UnsupportedOperationException e) {
+		} catch (EnvironmentException | UnsupportedOperationException | GpuReprojection.Failure e) {
 			throw e;
 		} catch (RuntimeException e) {
 			throw failure(e.toString());
@@ -203,48 +266,54 @@ public final class CaptureService {
 	}
 
 	/**
-	 * One view's images on their way back from the GPU. {@link #start} copies the textures
-	 * into mappable buffers and submits the copies without waiting, so the next view renders
-	 * while they run; the GPU runs commands in order, so a copy reads its view before the
-	 * next view draws over the same texture. {@link #finish} waits once, on a fence after the
-	 * last copy, then converts every view's buffers on worker threads.
+	 * Images on their way back from the GPU. {@link #start} copies textures into mappable
+	 * buffers and submits the copies without waiting, so the next view renders while they
+	 * run; the GPU runs commands in order, so a copy reads its view before the next view
+	 * draws over the same texture. {@link #finish} waits once, on a fence after the last
+	 * copy, then converts every buffer on worker threads into the images' channels.
 	 */
-	private static final class Readback implements AutoCloseable {
+	static final class Readback implements AutoCloseable {
+		/** Where an image's channels come from: a texture of the readback, its first channel and how many. */
+		record Part(int texture, int firstChannel, int channels) {
+		}
+
+		/** One RGB image from one texture. */
+		static final List<Part> RGB = List.of(new Part(0, 0, 3));
+		/** RGB, then the visible and unoccluded masks, from three textures. */
+		static final List<Part> RGB_AND_MASKS = List.of(new Part(0, 0, 3), new Part(1, 0, 1), new Part(2, 0, 1));
+		/** A GPU reprojection's outputs: RGB and the visible mask in one texture, the unoccluded mask in another. */
+		static final List<Part> PANORAMA_OUTPUTS = List.of(new Part(0, 0, 3), new Part(0, 3, 1), new Part(1, 0, 1));
+
 		/** Worker threads for converting read-back pixels: all but one processor, at most 8. */
 		private static final ExecutorService CONVERTERS = Executors.newFixedThreadPool(Math.clamp(Runtime.getRuntime().availableProcessors() - 1, 1, 8),
 			Thread.ofPlatform().daemon().name("honey-factory-readback-", 0).factory());
 
-		private final CaptureProjection.View view;
+		private final int width;
+		private final int height;
 		private final GpuBuffer[] buffers;
-		private final int[] channels;
+		private final List<Part> parts;
 
-		private Readback(CaptureProjection.View view, GpuBuffer[] buffers, int[] channels) {
-			this.view = view;
+		private Readback(int width, int height, GpuBuffer[] buffers, List<Part> parts) {
+			this.width = width;
+			this.height = height;
 			this.buffers = buffers;
-			this.channels = channels;
+			this.parts = parts;
 		}
 
-		static Readback start(RenderTarget main, CaptureProjection.View view, boolean withMasks) {
-			GpuTexture[] textures = withMasks
-				? new GpuTexture[] {main.getColorTexture(), TargetMaskRenderer.visibleTexture(), TargetMaskRenderer.unoccludedTexture()}
-				: new GpuTexture[] {main.getColorTexture()};
-			int[] channels = withMasks ? new int[] {3, 1, 1} : new int[] {3};
+		/** Starts copying {@code textures}, each {@code width} by {@code height} RGBA8, for an image made of {@code parts}. */
+		static Readback start(int width, int height, GpuTexture[] textures, List<Part> parts) {
 			GpuDevice device = RenderSystem.getDevice();
 			CommandEncoder encoder = device.createCommandEncoder();
 			GpuBuffer[] buffers = new GpuBuffer[textures.length];
-			Readback readback = new Readback(view, buffers, channels);
+			Readback readback = new Readback(width, height, buffers, parts);
 			try {
 				for (int i = 0; i < textures.length; i++) {
 					GpuTexture texture = textures[i];
-					if (texture == null || texture.getFormat().blockSize() != 4 || texture.getWidth(0) != view.width() || texture.getHeight(0) != view.height()) {
-						throw new IllegalStateException("Readback needs a 4-byte-per-pixel color texture of the view's size");
+					if (texture == null || texture.getFormat().blockSize() != 4 || texture.getWidth(0) != width || texture.getHeight(0) != height) {
+						throw new IllegalStateException("Readback needs a 4-byte-per-pixel color texture of " + width + "x" + height);
 					}
 
-					buffers[i] = device.createBuffer(
-						() -> "Honey Factory readback",
-						GpuBuffer.USAGE_MAP_READ | GpuBuffer.USAGE_COPY_DST,
-						(long) view.width() * view.height() * 4
-					);
+					buffers[i] = device.createBuffer(() -> "Honey Factory readback", GpuBuffer.USAGE_MAP_READ | GpuBuffer.USAGE_COPY_DST, (long) width * height * 4);
 					encoder.copyTextureToBuffer(texture, buffers[i], 0L, () -> {
 					}, 0);
 				}
@@ -257,7 +326,10 @@ public final class CaptureService {
 			}
 		}
 
-		/** Waits for every pending copy, then returns each view's images in order. */
+		/**
+		 * Waits for every pending copy, then returns one image per readback, in order: RGB
+		 * only, or RGB and both masks.
+		 */
 		static List<CapturedImages> finish(List<Readback> pending) {
 			CommandEncoder encoder = RenderSystem.getDevice().createCommandEncoder();
 			// A fence cannot be awaited for the current submit, so submit first.
@@ -274,26 +346,30 @@ public final class CaptureService {
 			RenderSystem.executePendingTasks();
 			List<GpuBufferSlice.MappedView> mapped = new ArrayList<>();
 			try {
-				List<Future<byte[]>> conversions = new ArrayList<>();
+				List<List<Future<byte[]>>> conversions = new ArrayList<>();
 				for (Readback readback : pending) {
+					ByteBuffer[] data = new ByteBuffer[readback.buffers.length];
 					for (int i = 0; i < readback.buffers.length; i++) {
 						GpuBufferSlice.MappedView view = readback.buffers[i].map(true, false);
 						mapped.add(view);
-						ByteBuffer data = view.data();
-						int channels = readback.channels[i];
-						conversions.add(CONVERTERS.submit(() -> topDownChannels(data, readback.view.width(), readback.view.height(), channels)));
+						data[i] = view.data();
 					}
+
+					List<Future<byte[]>> parts = new ArrayList<>();
+					for (Part part : readback.parts) {
+						parts.add(CONVERTERS.submit(() -> topDownChannels(data[part.texture()], readback.width, readback.height, part.firstChannel(), part.channels())));
+					}
+
+					conversions.add(parts);
 				}
 
 				List<CapturedImages> images = new ArrayList<>(pending.size());
-				int next = 0;
-				for (Readback readback : pending) {
-					CaptureProjection.View view = readback.view;
-					if (readback.buffers.length == 1) {
-						images.add(CapturedImages.withoutTarget(view.width(), view.height(), join(conversions.get(next++))));
-					} else {
-						images.add(new CapturedImages(view.width(), view.height(), join(conversions.get(next++)), join(conversions.get(next++)), join(conversions.get(next++))));
-					}
+				for (int r = 0; r < pending.size(); r++) {
+					Readback readback = pending.get(r);
+					List<Future<byte[]>> parts = conversions.get(r);
+					images.add(parts.size() == 1
+						? CapturedImages.withoutTarget(readback.width, readback.height, join(parts.get(0)))
+						: new CapturedImages(readback.width, readback.height, join(parts.get(0)), join(parts.get(1)), join(parts.get(2))));
 				}
 
 				return images;
@@ -324,10 +400,10 @@ public final class CaptureService {
 	}
 
 	/**
-	 * The first {@code channels} channels of each RGBA8 pixel, in rows ordered from the image
-	 * top, flipping OpenGL's bottom-up rows as vanilla screenshots do.
+	 * {@code channels} channels of each RGBA8 pixel from {@code firstChannel} on, in rows
+	 * ordered from the image top, flipping OpenGL's bottom-up rows as vanilla screenshots do.
 	 */
-	private static byte[] topDownChannels(ByteBuffer rgba, int width, int height, int channels) {
+	private static byte[] topDownChannels(ByteBuffer rgba, int width, int height, int firstChannel, int channels) {
 		byte[] result = new byte[width * height * channels];
 		byte[] row = new byte[width * 4];
 		int stride = width * 4;
@@ -336,7 +412,7 @@ public final class CaptureService {
 			int q = y * width * channels;
 			for (int p = 0; p < stride; p += 4) {
 				for (int c = 0; c < channels; c++) {
-					result[q++] = row[p + c];
+					result[q++] = row[p + firstChannel + c];
 				}
 			}
 		}

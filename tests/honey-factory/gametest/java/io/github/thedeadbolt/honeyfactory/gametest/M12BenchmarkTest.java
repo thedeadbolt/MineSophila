@@ -78,6 +78,9 @@ public class M12BenchmarkTest implements FabricClientGameTest {
 		summary.addProperty("label", label);
 		summary.addProperty("production_batch_running", ProcessHandle.allProcesses().anyMatch(process -> process.info().commandLine().orElse("").contains("MineSophila-aim")));
 		summary.add("render_options", renderOptions(context));
+		boolean gpu = Boolean.getBoolean("honeyfactory.gpuReprojection");
+		summary.addProperty("gpu_reprojection", gpu);
+		context.runOnClient(minecraft -> EnvironmentRuntime.get().configure(EnvironmentRuntime.get().settings().withGpuReprojection(gpu)));
 		JsonObject still = new JsonObject();
 		String fresh = "honey-factory-m12-benchmark-fresh";
 		try (TestSingleplayerContext singleplayer = GameTestSupport.datasetWorld(context, fresh, WORLD_SEED)) {
