@@ -1,6 +1,6 @@
 [project]
 name = "fly-vision"
-version = "0.0.1"
+version = "0.1.0"
 description = "Convert images and Minecraft scenes into Drosophila vision."
 readme = "README.md"
 requires-python = ">=3.13"
