@@ -557,3 +557,18 @@ class TestClips:
 
     def test_clip_frames_need_the_token(self, clip_client: Client) -> None:
         assert clip_client.get("/api/clips/s000000-c00/frames/0.png", token=False)[0] == 403
+
+
+def test_decoded_clips_are_kept_within_a_byte_budget(
+    clip_dataset: Path, schemas: Schemas, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from honey_factory_tools import catalog as catalog_module
+
+    catalog = Catalog(clip_dataset, schemas)
+    first = catalog.clip_frames("s000000-c00")
+    first.frame_png(0, 1.0)
+    monkeypatch.setattr(catalog_module, "CLIP_CACHE_BYTES", first.cached_bytes)
+    second = catalog.clip_frames("s000000-c01")
+    second.frame_png(0, 1.0)
+    catalog.clip_frames("s000000-c01")
+    assert catalog.clip_frames("s000000-c00") is not first, "the older clip was dropped"

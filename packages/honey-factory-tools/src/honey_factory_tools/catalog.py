@@ -27,8 +27,8 @@ from honey_factory_tools.schemas import Schemas
 type Record = dict[str, Any]
 
 _SUBJECT = re.compile(r"^(sample|scene) (s\d{6}(?:-v\d{2})?): ")
-# Decoded clips kept for playback; each holds its frames at the scales asked for.
-CLIP_CACHE = 8
+# Bytes of decoded clip frames kept for playback; the oldest clips are dropped past it.
+CLIP_CACHE_BYTES = 1_500_000_000
 
 
 @dataclass
@@ -146,11 +146,12 @@ class Catalog:
         return cached
 
     def clip_frames(self, clip_id: str) -> ClipFrames:
-        """A clip's decodable videos, kept for the last few clips played."""
+        """A clip's decodable videos, kept for the clips played last within a byte budget."""
         with self._lock:
             frames = self._decoded.get(clip_id)
             if frames is not None:
                 self._decoded.move_to_end(clip_id)
+                self._trim_decoded()
                 return frames
             files = self.clips[clip_id]["files"]
             frames = ClipFrames(
@@ -160,9 +161,16 @@ class Catalog:
                 files["rgb"]["height"],
             )
             self._decoded[clip_id] = frames
-            while len(self._decoded) > CLIP_CACHE:
-                self._decoded.popitem(last=False)
+            self._trim_decoded()
             return frames
+
+    def _trim_decoded(self) -> None:
+        """Drops the oldest decoded clips, never the newest, until the rest fit the budget."""
+        while (
+            len(self._decoded) > 1
+            and sum(frames.cached_bytes for frames in self._decoded.values()) > CLIP_CACHE_BYTES
+        ):
+            self._decoded.popitem(last=False)
 
     def start_validation(self, on_done: Callable[[], None] | None = None) -> threading.Thread:
         """Validate the whole dataset in a daemon thread."""
