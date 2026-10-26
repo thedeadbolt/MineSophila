@@ -21,6 +21,10 @@ public final class EdgeGuard {
 	/** Half the body's width. */
 	static final double RADIUS = 0.3;
 	private static final double RUN_STEP = 0.25;
+	/** How far drift looks for a hazard to push towards, in blocks. */
+	public static final double HAZARD_REACH = 4.0;
+	/** Headings searched for the nearest hazard. */
+	private static final int HAZARD_HEADINGS = 16;
 
 	private final WalkGraph truth;
 	private final int[] origin;
@@ -44,6 +48,32 @@ public final class EdgeGuard {
 		}
 
 		return new MotorCommand(0.0, command.strafe(), command.turnRate(), command.pitchRate(), command.jump(), command.delayTicks());
+	}
+
+	/**
+	 * Degrees to turn right (negative: left) to face the nearest ledge, wall or arena edge
+	 * within {@code reach} blocks of {@code pose} at its feet's height, by the true layout; NaN
+	 * when none is that close.
+	 */
+	public double hazardBearing(CameraPose pose, double reach) {
+		int feet = (int) Math.floor(pose.y()) - this.origin[1];
+		double nearest = Double.MAX_VALUE;
+		double bearing = Double.NaN;
+		for (int index = 0; index < HAZARD_HEADINGS; index++) {
+			double heading = 360.0 * index / HAZARD_HEADINGS;
+			double yaw = Math.toRadians(heading);
+			for (double distance = RUN_STEP; distance <= reach + 1e-9 && distance < nearest; distance += RUN_STEP) {
+				int x = (int) Math.floor(pose.x() - Math.sin(yaw) * distance) - this.origin[0];
+				int z = (int) Math.floor(pose.z() + Math.cos(yaw) * distance) - this.origin[2];
+				if (this.truth.footing(x, feet, z) != WalkGraph.Footing.SAFE) {
+					nearest = distance;
+					bearing = ClipDriver.wrap(heading - pose.yawDegrees());
+					break;
+				}
+			}
+		}
+
+		return bearing;
 	}
 
 	/** How far, up to {@code max} blocks, the body could walk from {@code from} along {@code headingDegrees} with floor under its whole width. */

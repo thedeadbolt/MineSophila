@@ -42,8 +42,14 @@ public record ClipSettings(
 	 *
 	 * @param rate the expected share of ticks drifting, in [0, 1)
 	 * @param meanTicks the mean length of one drift episode
+	 * @param hazardFraction the share of episodes that push towards the nearest ledge or wall
+	 *     within reach, so the data holds the teacher recovering near hazards
 	 */
-	public record Drift(double rate, double meanTicks, double maxTurnRate, double maxForward) {
+	public record Drift(double rate, double meanTicks, double maxTurnRate, double maxForward, double hazardFraction) {
+		/** Drift without hazard episodes. */
+		public Drift(double rate, double meanTicks, double maxTurnRate, double maxForward) {
+			this(rate, meanTicks, maxTurnRate, maxForward, 0.0);
+		}
 	}
 
 	/**
@@ -67,7 +73,7 @@ public record ClipSettings(
 		mix.put(ClipType.SCAN, 0.15);
 		mix.put(ClipType.OCCLUSION, 0.15);
 		mix.put(ClipType.DETOUR, 0.10);
-		return new ClipSettings(3, 4, 20, ticks, 8, mix, new Drift(0.10, 6.0, 6.0, 0.5), new Teacher(50, 60, 1.5), MotorLimits.DEFAULT, new ClipCodec.H264Lossless());
+		return new ClipSettings(3, 4, 20, ticks, 8, mix, new Drift(0.10, 6.0, 6.0, 0.5, 0.3), new Teacher(50, 60, 1.5), MotorLimits.DEFAULT, new ClipCodec.H264Lossless());
 	}
 
 	/** The ticks a clip of {@code type} may run. */
@@ -98,6 +104,7 @@ public record ClipSettings(
 		drift.addProperty("mean_ticks", this.drift.meanTicks());
 		drift.addProperty("max_turn_rate", this.drift.maxTurnRate());
 		drift.addProperty("max_forward", this.drift.maxForward());
+		drift.addProperty("hazard_fraction", this.drift.hazardFraction());
 		json.add("drift", drift);
 		JsonObject teacher = new JsonObject();
 		teacher.addProperty("min_visible_pixels", this.teacher.minVisiblePixels());
@@ -161,7 +168,8 @@ public record ClipSettings(
 			ticks,
 			clips.integer32("approach_linger_ticks", 0, 100_000),
 			mix,
-			new Drift(drift.decimal("rate", 0.0, Math.nextDown(1.0)), drift.decimal("mean_ticks", 1.0, 1.0e6), drift.decimal("max_turn_rate", 0.0, 1.0e6), drift.decimal("max_forward", 0.0, 1.0)),
+			new Drift(drift.decimal("rate", 0.0, Math.nextDown(1.0)), drift.decimal("mean_ticks", 1.0, 1.0e6), drift.decimal("max_turn_rate", 0.0, 1.0e6), drift.decimal("max_forward", 0.0, 1.0),
+				drift.decimal("hazard_fraction", 0.0, 1.0)),
 			new Teacher(teacher.integer32("min_visible_pixels", 0, Integer.MAX_VALUE), teacher.integer32("reacquire_ticks", 0, 100_000), teacher.decimal("reach_distance_blocks", tiny, 1.0e6)),
 			new MotorLimits(motor.decimal("max_turn_rate", tiny, 1.0e6), motor.decimal("max_turn_accel", tiny, 1.0e6), motor.decimal("max_pitch_rate", tiny, 1.0e6), motor.decimal("max_pitch_accel", tiny, 1.0e6)),
 			codec

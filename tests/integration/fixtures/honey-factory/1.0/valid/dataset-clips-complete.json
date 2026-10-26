@@ -1,12 +1,12 @@
 {
   "schema_version": "1.0",
   "kind": "clips",
-  "dataset_id": "honey-l1-clips-fixture-8079a3f71c0e",
+  "dataset_id": "honey-l1-clips-fixture-f278a400a5b4",
   "content_version": "1",
   "lifecycle": "complete",
   "created_at_utc": "2026-10-23T09:00:00Z",
   "completed_at_utc": "2026-10-23T09:30:00Z",
-  "resolved_config_sha256": "8079a3f71c0e2eccf5b830d6633b368aecd71f93dd649a7701f57e6bea3d1bdb",
+  "resolved_config_sha256": "f278a400a5b4cfb197daff7f37bce10b8072955af356772a63fa71f4ee39724b",
   "difficulty": 1,
   "target": {
     "block_id": "minecraft:honey_block",
@@ -80,7 +80,8 @@
         "rate": 0.1,
         "mean_ticks": 6.0,
         "max_turn_rate": 6.0,
-        "max_forward": 0.5
+        "max_forward": 0.5,
+        "hazard_fraction": 0.3
       },
       "teacher": {
         "min_visible_pixels": 50,

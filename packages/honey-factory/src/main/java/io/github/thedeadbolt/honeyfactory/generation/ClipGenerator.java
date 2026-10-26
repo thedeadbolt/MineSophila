@@ -605,7 +605,8 @@ public final class ClipGenerator implements Generator {
 		CompletableFuture<ClipRecord> run() {
 			this.guard = new EdgeGuard(this.scene.grid, ClipGenerator.this.arena.core());
 			this.driver = ClipDriver.of(this.start, this.seeds.drive(), this.scene.target, ClipGenerator.this.clips.motor(), ClipGenerator.this.config.viewpoints().eyeHeightBlocks(),
-				new Drift(this.seeds.drift(), ClipGenerator.this.clips.drift(), ClipGenerator.this.clips.motor()), this.guard, this.ticks * WALK_BLOCKS_PER_TICK);
+				new Drift(this.seeds.drift(), ClipGenerator.this.clips.drift(), ClipGenerator.this.clips.motor(), pose -> this.guard.hazardBearing(pose, EdgeGuard.HAZARD_REACH)),
+				this.guard, this.ticks * WALK_BLOCKS_PER_TICK);
 			this.context = new TeacherContext(this.scene.grid, ClipGenerator.this.arena.core(), ClipGenerator.this.clips.motor(), ClipGenerator.this.clips.teacher().minVisiblePixels(),
 				ClipGenerator.this.config.viewpoints().eyeHeightBlocks(), ClipGenerator.this.projection, ClipGenerator.this.clips.teacher().reachDistanceBlocks());
 			this.teacher.reset(this.context);

@@ -37,7 +37,7 @@ final class OcclusionDriver implements ClipDriver {
 
 		MotorCommand meant = this.arrived ? teacher.command()
 			: Steering.toward(input.pose(), input.senses(), this.waypoint, this.eyeHeight, this.limits, true, false);
-		return this.drift.apply(meant);
+		return this.drift.apply(meant, input.pose());
 	}
 
 	@Override

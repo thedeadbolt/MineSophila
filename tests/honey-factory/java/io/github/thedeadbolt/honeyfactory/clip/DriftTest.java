@@ -74,4 +74,41 @@ class DriftTest {
 			assertEquals(WALK, drift.apply(WALK));
 		}
 	}
+
+	@Test
+	void hazardEpisodesPushTowardsTheHazard() {
+		ClipSettings.Drift hazardous = new ClipSettings.Drift(0.3, 6.0, 6.0, 0.5, 1.0);
+		for (double bearing : new double[] {70.0, -70.0}) {
+			Drift drift = new Drift(5L, hazardous, MotorLimits.DEFAULT, pose -> bearing);
+			int drifting = 0;
+			for (int tick = 0; tick < 2000; tick++) {
+				MotorCommand drifted = drift.apply(MotorCommand.IDLE, POSE);
+				if (drift.active()) {
+					drifting++;
+					assertTrue(Math.signum(drifted.turnRate()) == Math.signum(bearing) || drifted.turnRate() == 0.0, "turns towards the hazard at " + bearing + ": " + drifted);
+					assertTrue(drifted.forward() >= 0.0, "walks towards the hazard: " + drifted);
+					assertTrue(drift.towardsHazard());
+				}
+			}
+
+			assertTrue(drifting > 100);
+		}
+	}
+
+	@Test
+	void withoutAHazardNearbyBumpsAreAsBefore() {
+		ClipSettings.Drift hazardous = new ClipSettings.Drift(0.10, 6.0, 6.0, 0.5, 1.0);
+		Drift plain = new Drift(5L, SETTINGS, MotorLimits.DEFAULT);
+		Drift none = new Drift(5L, new ClipSettings.Drift(0.10, 6.0, 6.0, 0.5, 0.0), MotorLimits.DEFAULT, pose -> 45.0);
+		Drift far = new Drift(5L, hazardous, MotorLimits.DEFAULT, pose -> Double.NaN);
+		for (int tick = 0; tick < 2000; tick++) {
+			MotorCommand expected = plain.apply(WALK);
+			assertEquals(expected, none.apply(WALK, POSE), "a hazard fraction of 0 draws as before");
+			MotorCommand drifted = far.apply(WALK, POSE);
+			assertEquals(plain.active(), far.active());
+			assertTrue(!far.towardsHazard(), "no hazard within reach, no hazard episode");
+		}
+	}
+
+	private static final io.github.thedeadbolt.honeyfactory.environment.CameraPose POSE = new io.github.thedeadbolt.honeyfactory.environment.CameraPose(15.5, 5.0, 15.5, 0.0f, 0.0f);
 }

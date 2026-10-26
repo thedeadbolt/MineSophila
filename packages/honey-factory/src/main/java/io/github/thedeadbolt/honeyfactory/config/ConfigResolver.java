@@ -50,7 +50,7 @@ import org.jspecify.annotations.Nullable;
  *                several instances; see {@link ResolvedConfig.Slice})
  * clips          makes a motion-clip dataset (M12-2): frames_per_tick, clips_per_scene,
  *                attempts_per_clip, ticks {&lt;type&gt;}, approach_linger_ticks, mix {&lt;type&gt;},
- *                drift {rate, mean_ticks, max_turn_rate, max_forward}, teacher
+ *                drift {rate, mean_ticks, max_turn_rate, max_forward, hazard_fraction}, teacher
  *                {min_visible_pixels, reacquire_ticks, reach_distance_blocks}, motor
  *                {max_turn_rate, max_turn_accel, max_pitch_rate, max_pitch_accel}, codec
  *                {name, crf}; defaults in {@link ClipSettings#defaults}. A clip dataset

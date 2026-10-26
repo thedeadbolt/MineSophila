@@ -72,6 +72,15 @@ class EdgeGuardTest {
 	}
 
 	@Test
+	void hazardBearingPointsAtTheNearestEdge() {
+		EdgeGuard guard = new EdgeGuard(PLATFORM, CORE);
+		// 2 blocks from the +z edge: facing +z the edge is ahead; facing -x (yaw 90) it is to the left (turning negative reaches +z).
+		assertEquals(0.0, guard.hazardBearing(new CameraPose(15.5, 5.0, 21.5, 0.0f, 0.0f), 4.0), 12.0);
+		assertEquals(-90.0, guard.hazardBearing(new CameraPose(15.5, 5.0, 21.5, 90.0f, 0.0f), 4.0), 12.0);
+		assertTrue(Double.isNaN(guard.hazardBearing(new CameraPose(15.5, 5.0, 15.5, 0.0f, 0.0f), 4.0)), "nothing within 4 blocks of the middle");
+	}
+
+	@Test
 	void clearRunMeasuresTheWayToTheEdge() {
 		EdgeGuard guard = new EdgeGuard(PLATFORM, CORE);
 		assertEquals(7.0, guard.clearRun(new CameraPose(15.5, 5.0, 16.0, 0.0f, 0.0f), 0.0, 20.0), 0.5);

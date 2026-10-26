@@ -115,7 +115,7 @@
             "ticks": {"type": "object", "required": ["approach", "pass_by", "scan", "occlusion", "detour", "no_honey"], "additionalProperties": {"type": "integer", "minimum": 1}},
             "approach_linger_ticks": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
             "mix": {"type": "object", "required": ["approach", "pass_by", "scan", "occlusion", "detour"], "additionalProperties": {"type": "number", "minimum": 0}},
-            "drift": {"type": "object", "required": ["rate", "mean_ticks", "max_turn_rate", "max_forward"], "additionalProperties": {"type": "number", "minimum": 0}},
+            "drift": {"type": "object", "required": ["rate", "mean_ticks", "max_turn_rate", "max_forward", "hazard_fraction"], "additionalProperties": {"type": "number", "minimum": 0}},
             "teacher": {"type": "object", "required": ["min_visible_pixels", "reacquire_ticks", "reach_distance_blocks"], "additionalProperties": {"type": "number", "minimum": 0}},
             "motor": {"type": "object", "required": ["max_turn_rate", "max_turn_accel", "max_pitch_rate", "max_pitch_accel"], "additionalProperties": {"type": "number", "exclusiveMinimum": 0}},
             "codec": {"$ref": "clip.schema.json#/$defs/codec"}

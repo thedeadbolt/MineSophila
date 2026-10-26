@@ -15,7 +15,7 @@ final class TeacherDriver implements ClipDriver {
 
 	@Override
 	public MotorCommand next(int tick, TeacherInput input, Teacher.Decision teacher) {
-		return this.drift.apply(teacher.command());
+		return this.drift.apply(teacher.command(), input.pose());
 	}
 
 	@Override
