@@ -9,6 +9,7 @@
 		"EntityMixin",
 		"ClientLevelAccessor",
 		"FogRendererAccessor",
+		"LevelExtractorAccessor",
 		"LevelRendererMixin",
 		"SectionOcclusionGraphAccessor"
 	],

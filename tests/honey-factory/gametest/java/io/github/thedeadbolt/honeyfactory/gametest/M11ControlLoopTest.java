@@ -13,6 +13,8 @@ import java.util.List;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import net.minecraft.client.InactivityFpsLimit;
+import net.minecraft.client.Options;
 import net.minecraft.client.player.KeyboardInput;
 
 /**
@@ -26,6 +28,8 @@ public class M11ControlLoopTest implements FabricClientGameTest {
 	private static final PerspectiveProjection PROJECTION = new PerspectiveProjection(64, 48);
 	private static final long SEED = 7L;
 	private static final boolean USER_AUTO_JUMP = false;
+	/** The user's frame pacing, which control sessions lift and must give back. */
+	private static final int USER_FRAMERATE_LIMIT = 90;
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
@@ -34,7 +38,12 @@ public class M11ControlLoopTest implements FabricClientGameTest {
 		}
 
 		GameTestSupport.pinCaptureSettings(context);
-		context.runOnClient(minecraft -> minecraft.options.autoJump().set(USER_AUTO_JUMP));
+		context.runOnClient(minecraft -> {
+			minecraft.options.autoJump().set(USER_AUTO_JUMP);
+			minecraft.options.framerateLimit().set(USER_FRAMERATE_LIMIT);
+			minecraft.options.enableVsync().set(true);
+			minecraft.options.inactivityFpsLimit().set(InactivityFpsLimit.AFK);
+		});
 		List<String> failures = new ArrayList<>();
 		try (TestSingleplayerContext world = GameTestSupport.datasetWorld(context, WORLD_NAME)) {
 			GameTestSupport.claim(world, WORLD_NAME);
@@ -44,6 +53,11 @@ public class M11ControlLoopTest implements FabricClientGameTest {
 			EnvironmentRuntime.ControlResult first = reset(context, FixturePlans.Lane.STEP);
 			if (first.step().index() != 0 || first.capture().images().width() != 64 || first.capture().images().height() != 48) {
 				failures.add("reset gave step " + first.step().index() + " with a " + first.capture().images().width() + "x" + first.capture().images().height() + " frame");
+			}
+
+			String pacing = pacing(context);
+			if (!pacing.equals(Options.UNLIMITED_FRAMERATE_CUTOFF + " false minimized")) {
+				failures.add("a control session runs with frame pacing " + pacing + ", expected it uncapped");
 			}
 
 			turning(context, failures);
@@ -68,6 +82,11 @@ public class M11ControlLoopTest implements FabricClientGameTest {
 		boolean autoJump = context.computeOnClient(minecraft -> minecraft.options.autoJump().get());
 		if (autoJump != USER_AUTO_JUMP) {
 			failures.add("leaving the world mid-session left auto-jump " + autoJump);
+		}
+
+		String pacing = pacing(context);
+		if (!pacing.equals(USER_PACING)) {
+			failures.add("leaving the world mid-session left frame pacing " + pacing + ", expected " + USER_PACING);
 		}
 
 		if (!failures.isEmpty()) {
@@ -195,6 +214,19 @@ public class M11ControlLoopTest implements FabricClientGameTest {
 		if (!keyboard || autoJump != USER_AUTO_JUMP) {
 			failures.add(what + " left keyboard input " + keyboard + " and auto-jump " + autoJump);
 		}
+
+		String pacing = pacing(context);
+		if (!pacing.equals(USER_PACING)) {
+			failures.add(what + " left frame pacing " + pacing + ", expected " + USER_PACING);
+		}
+	}
+
+	private static final String USER_PACING = USER_FRAMERATE_LIMIT + " true afk";
+
+	/** The frame-rate limit, vsync and inactivity limit, as one string. */
+	private static String pacing(ClientGameTestContext context) {
+		return context.computeOnClient(minecraft -> minecraft.options.framerateLimit().get() + " " + minecraft.options.enableVsync().get() + " "
+			+ minecraft.options.inactivityFpsLimit().get().getSerializedName());
 	}
 
 	/** Mouse turns, which arrive every frame through LocalPlayer.turn, do not move a held body. */

@@ -22,11 +22,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Stream;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.world.TestWorldSave;
+import net.minecraft.client.Options;
 
 /**
  * The M12-1 benchmark: fixed-seed reference workloads, timed per phase, whose output is the
@@ -159,10 +162,21 @@ public class M12BenchmarkTest implements FabricClientGameTest {
 			}
 			""".formatted(name, 12_000 + level, level, scene, SCENES, directory.toString().replace("\\", "\\\\"));
 		long started = System.nanoTime();
-		var result = GameTestSupport.generate(context, name, config, progress -> false, TIMEOUT_TICKS);
+		Set<String> pacing = new TreeSet<>();
+		var result = GameTestSupport.generate(context, name, config, progress -> {
+			pacing.add(context.computeOnClient(minecraft -> minecraft.options.framerateLimit().get() + " " + minecraft.options.enableVsync().get() + " "
+				+ minecraft.options.inactivityFpsLimit().get().getSerializedName()));
+			return false;
+		}, TIMEOUT_TICKS);
 		double seconds = (System.nanoTime() - started) / 1e9;
 		if (!"complete".equals(result.manifest().lifecycle().jsonName())) {
 			throw new AssertionError(name + ": " + result.manifest().lifecycle().jsonName() + " (" + result.failure() + ")");
+		}
+
+		String uncapped = Options.UNLIMITED_FRAMERATE_CUTOFF + " false minimized";
+		boolean uncap = Boolean.parseBoolean(System.getProperty("honeyfactory.uncapFrames", "true"));
+		if (uncap && !pacing.equals(Set.of(uncapped))) {
+			throw new AssertionError(name + ": generation ran with frame pacing " + pacing + ", expected only " + uncapped);
 		}
 
 		JsonObject json = new JsonObject();

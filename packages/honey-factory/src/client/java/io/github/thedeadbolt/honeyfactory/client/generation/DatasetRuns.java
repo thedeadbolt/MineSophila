@@ -3,6 +3,7 @@ package io.github.thedeadbolt.honeyfactory.client.generation;
 import io.github.thedeadbolt.honeyfactory.HoneyFactory;
 import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
+import io.github.thedeadbolt.honeyfactory.client.runtime.FramePacing;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
 import io.github.thedeadbolt.honeyfactory.generation.DatasetGenerator;
 import io.github.thedeadbolt.honeyfactory.generation.GenerationTimings;
@@ -25,7 +26,8 @@ public final class DatasetRuns {
 	}
 
 	/**
-	 * Starts generating {@code config} in the current dataset world.
+	 * Starts generating {@code config} in the current dataset world, with the frame rate
+	 * uncapped until the run ends (see {@link FramePacing}).
 	 *
 	 * @throws IllegalStateException if a generation is running or improved transparency is off
 	 * @throws IOException if the dataset directory cannot be created, including when it exists
@@ -41,9 +43,19 @@ public final class DatasetRuns {
 
 		RuntimeGenerationEnvironment environment = new RuntimeGenerationEnvironment(EnvironmentRuntime.get());
 		DatasetGenerator generator = new DatasetGenerator(config, environment, Clock.systemUTC());
-		CompletableFuture<DatasetGenerator.Result> result = generator.start();
+		Minecraft minecraft = Minecraft.getInstance();
+		FramePacing.Lease pacing = FramePacing.uncap(minecraft);
+		CompletableFuture<DatasetGenerator.Result> result;
+		try {
+			result = generator.start();
+		} catch (IOException | RuntimeException e) {
+			pacing.close(minecraft);
+			throw e;
+		}
+
 		running = generator;
 		return result.whenComplete((value, error) -> {
+			minecraft.execute(() -> pacing.close(minecraft));
 			running = null;
 			last = value;
 			lastTimings = generator.timings();
