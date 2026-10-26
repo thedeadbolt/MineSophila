@@ -49,6 +49,17 @@ public class M12ClipTest implements FabricClientGameTest {
 		  "output": {"root": "%s"}
 		}
 		""";
+	/** Level 3 with every clip type, the default mix and lengths, drift and the realizable teacher. */
+	private static final String ALL_TYPES = """
+		{
+		  "dataset": {"name": "m12-clip-l3", "seed": 12027, "difficulty": 3},
+		  "quotas": {"accepted_scenes": 3, "scene_attempts_per_accepted_scene": 3},
+		  "target": {"present_fraction": 0.67},
+		  "splits": {"train": 0.67, "validation": 0.33, "test": 0.0},
+		  "clips": {"clips_per_scene": 4},
+		  "output": {"root": "%s"}
+		}
+		""";
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
@@ -73,6 +84,19 @@ public class M12ClipTest implements FabricClientGameTest {
 			check(dataset, failures);
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
+		}
+
+		JsonObject[] level3 = new JsonObject[1];
+		String allTypes = ALL_TYPES.formatted(root.toString().replace("\\", "\\\\"));
+		AcceptanceRun.inWorld(context, root, WORLD + "-l3", 12_027L, world -> level3[0] = AcceptanceRun.generate(context, root, "m12-clip-l3", allTypes, TIMEOUT_TICKS));
+		if (!"complete".equals(level3[0].get("lifecycle").getAsString())) {
+			failures.add("the level-3 clip dataset did not complete: " + level3[0].get("failure") + " " + level3[0].get("validation_errors"));
+		} else {
+			try {
+				types(root.resolve(level3[0].get("directory").getAsString()), failures);
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
 		}
 
 		if (!failures.isEmpty()) {
@@ -124,6 +148,26 @@ public class M12ClipTest implements FabricClientGameTest {
 		if (!crossed) {
 			failures.add("no scan clip's honey crossed the panorama's edge on an in-between frame");
 		}
+	}
+
+	/** Every clip's videos hold all its frames at full size; the types drawn and how approaches ended are logged. */
+	private static void types(Path dataset, List<String> failures) throws IOException {
+		java.util.Map<String, Integer> types = new java.util.TreeMap<>();
+		for (String line : Files.readAllLines(dataset.resolve(DatasetWriter.CLIPS), StandardCharsets.UTF_8)) {
+			ClipRecord clip = ClipRecord.fromJson(JsonFields.parseObject(line));
+			String type = clip.requestedType() == clip.clipType() ? clip.clipType().jsonName() : clip.requestedType().jsonName() + "->" + clip.clipType().jsonName();
+			types.merge(type, 1, Integer::sum);
+			String probed = probe(dataset.resolve(clip.rgb().path()));
+			String expected = "2480,1280," + clip.frameCount();
+			if (!probed.equals(expected)) {
+				failures.add(clip.rgb().path() + ": ffprobe reports " + probed + ", expected " + expected);
+			}
+
+			HoneyFactory.LOGGER.info("M12 clip: {} {} {} ticks, ended {}, reached {}, drift {} ticks, modes {}", clip.clipId(), type, clip.tickCount(), clip.endReason().jsonName(),
+				clip.summary().reached(), clip.summary().driftTicks(), clip.summary().ticksByMode());
+		}
+
+		HoneyFactory.LOGGER.info("M12 clip: level-3 types {}", types);
 	}
 
 	/** {@code width,height,frames} of a video's first stream. */
