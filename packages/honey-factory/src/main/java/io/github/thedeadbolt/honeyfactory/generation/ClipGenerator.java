@@ -7,6 +7,7 @@ import io.github.thedeadbolt.honeyfactory.clip.ClipEnvironment;
 import io.github.thedeadbolt.honeyfactory.clip.ClipLabels;
 import io.github.thedeadbolt.honeyfactory.clip.ClipStarts;
 import io.github.thedeadbolt.honeyfactory.clip.Drift;
+import io.github.thedeadbolt.honeyfactory.clip.EdgeGuard;
 import io.github.thedeadbolt.honeyfactory.clip.ClipVideo;
 import io.github.thedeadbolt.honeyfactory.clip.ClipWriter;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
@@ -92,6 +93,8 @@ public final class ClipGenerator implements Generator {
 	public static final String CLIP_ATTEMPTS = "clip_attempts";
 	/** The thread that checks videos and validates the dataset. */
 	public static final String CHECK_THREAD = "honey-factory-clip-checks";
+	/** Blocks per tick at full forward, about Minecraft's walking speed: how far a scripted walk goes. */
+	static final double WALK_BLOCKS_PER_TICK = 0.2158;
 	/** How far below its start the body may drop before a clip is redrawn. */
 	static final double MAX_FALL_BLOCKS = 3.0;
 
@@ -576,6 +579,8 @@ public final class ClipGenerator implements Generator {
 		private @Nullable ControlStep last;
 		private double coverage;
 		private int driftTicks;
+		private int guardedTicks;
+		private @Nullable EdgeGuard guard;
 		/** The tick an approach reached the honey, or -1. */
 		private int reachedTick = -1;
 		/** Ticks run so far. */
@@ -598,8 +603,9 @@ public final class ClipGenerator implements Generator {
 		}
 
 		CompletableFuture<ClipRecord> run() {
+			this.guard = new EdgeGuard(this.scene.grid, ClipGenerator.this.arena.core());
 			this.driver = ClipDriver.of(this.start, this.seeds.drive(), this.scene.target, ClipGenerator.this.clips.motor(), ClipGenerator.this.config.viewpoints().eyeHeightBlocks(),
-				new Drift(this.seeds.drift(), ClipGenerator.this.clips.drift(), ClipGenerator.this.clips.motor()));
+				new Drift(this.seeds.drift(), ClipGenerator.this.clips.drift(), ClipGenerator.this.clips.motor()), this.guard, this.ticks * WALK_BLOCKS_PER_TICK);
 			this.context = new TeacherContext(this.scene.grid, ClipGenerator.this.arena.core(), ClipGenerator.this.clips.motor(), ClipGenerator.this.clips.teacher().minVisiblePixels(),
 				ClipGenerator.this.config.viewpoints().eyeHeightBlocks(), ClipGenerator.this.projection, ClipGenerator.this.clips.teacher().reachDistanceBlocks());
 			this.teacher.reset(this.context);
@@ -616,7 +622,7 @@ public final class ClipGenerator implements Generator {
 
 					open();
 					ControlStep step = reset.step().step();
-					record(0, 0, reset.step().frames().getFirst(), labels(step, null, null, false, null));
+					record(0, 0, reset.step().frames().getFirst(), labels(step, null, null, false, null, false));
 					this.last = step;
 					return tick(1);
 				})
@@ -651,7 +657,9 @@ public final class ClipGenerator implements Generator {
 			TeacherInput input = perceive(tick);
 			this.coverage = this.seen.coverage(this.reachable);
 			Teacher.Decision decision = this.teacher.decide(input);
-			MotorCommand command = this.driver.next(tick, input, decision);
+			MotorCommand meant = this.driver.next(tick, input, decision);
+			MotorCommand command = this.guard.apply(meant, input.pose());
+			boolean guarded = command != meant;
 			return request(GenerationTimings.Phase.OBSERVE, () -> ClipGenerator.this.environment.step(command, decision.command())).thenCompose(step -> {
 				ControlStep control = step.step();
 				if (control.truth().pose().y() < this.start.pose().y() - MAX_FALL_BLOCKS) {
@@ -666,8 +674,10 @@ public final class ClipGenerator implements Generator {
 				boolean drifting = this.driver.drifting();
 				Driver driver = this.driver.driver();
 				for (int k = 1; k <= this.framesPerTick; k++) {
-					record(tick, k, frames.get(k - 1), k == this.framesPerTick ? labels(control, command, decision, drifting, driver) : null);
+					record(tick, k, frames.get(k - 1), k == this.framesPerTick ? labels(control, command, decision, drifting, driver, guarded) : null);
 				}
+
+				this.guardedTicks += guarded ? 1 : 0;
 
 				this.driftTicks += drifting ? 1 : 0;
 				this.drivers.merge(driver, 1, Integer::sum);
@@ -690,9 +700,10 @@ public final class ClipGenerator implements Generator {
 				this.memory);
 		}
 
-		private FrameRecord.TickLabels labels(ControlStep step, @Nullable MotorCommand executed, Teacher.@Nullable Decision decision, boolean drifting, @Nullable Driver driver) {
+		private FrameRecord.TickLabels labels(ControlStep step, @Nullable MotorCommand executed, Teacher.@Nullable Decision decision, boolean drifting, @Nullable Driver driver,
+			boolean guarded) {
 			return new FrameRecord.TickLabels(step.truth().serverTick(), step.truth().velocity(), step.senses(), executed, decision == null ? null : decision.command(),
-				decision == null ? null : decision.mode(), decision == null ? null : decision.belief(), drifting, driver, this.coverage);
+				decision == null ? null : decision.mode(), decision == null ? null : decision.belief(), drifting, driver, guarded, this.coverage);
 		}
 
 		private void record(int tick, int subFrame, ClipEnvironment.Frame captured, FrameRecord.@Nullable TickLabels labels) {
@@ -731,7 +742,7 @@ public final class ClipGenerator implements Generator {
 			return new ClipRecord(SchemaVersion.CURRENT, this.clipId, this.scene.descriptor.sceneId(), this.scene.descriptor.split(), this.index, this.requested, this.type, this.attempt,
 				this.seeds, this.start.pose(), this.framesPerTick, this.ran, ClipRecord.frameCount(this.ran, this.framesPerTick), end,
 				ClipGenerator.this.clips.codec(), files.rgb(), files.visibleMask(), files.frames(), this.executed,
-				new ClipRecord.Summary(this.driftTicks, this.type == ClipType.APPROACH ? reached : null, this.coverage, modes, drivers));
+				new ClipRecord.Summary(this.driftTicks, this.type == ClipType.APPROACH ? reached : null, this.coverage, modes, drivers, this.guardedTicks));
 		}
 	}
 }

@@ -85,6 +85,7 @@
       "teacher": 2,
       "teacher_drift": 0,
       "script": 0
-    }
+    },
+    "guarded_ticks": 0
   }
 }

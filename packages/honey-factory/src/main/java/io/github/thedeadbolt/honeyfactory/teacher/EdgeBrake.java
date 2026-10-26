@@ -23,33 +23,20 @@ final class EdgeBrake {
 		}
 
 		CameraPose pose = input.pose();
-		WalkGraph graph = WalkGraph.of(context.grid(), context.walkable(), input.seen());
 		int[] origin = context.walkable().min();
 		int feet = (int) Math.floor(pose.y()) - origin[1];
-		double yaw = Math.toRadians(pose.yawDegrees() + command.turnRate());
-		double forwardX = -Math.sin(yaw);
-		double forwardZ = Math.cos(yaw);
-		for (double ahead : AHEAD) {
-			for (double side : new double[] {-TrackBehaviour.BODY_RADIUS, 0.0, TrackBehaviour.BODY_RADIUS}) {
-				double x = pose.x() + forwardX * ahead - forwardZ * side;
-				double z = pose.z() + forwardZ * ahead + forwardX * side;
-				int cellX = (int) Math.floor(x) - origin[0];
-				int cellZ = (int) Math.floor(z) - origin[2];
-				switch (graph.footing(cellX, feet, cellZ)) {
-					case SAFE, BLOCKED -> {
-					}
-					case LEDGE -> {
-						return new MotorCommand(0.0, 0.0, command.turnRate(), command.pitchRate(), false, 0);
-					}
-					case UNKNOWN -> {
-						double[] floor = {cellX + origin[0] + 0.5, feet + origin[1], cellZ + origin[2] + 0.5};
-						MotorCommand look = Steering.toward(pose, input.senses(), floor, context.eyeHeight(), context.limits(), false, true);
-						return new MotorCommand(0.0, 0.0, command.turnRate(), look.pitchRate(), false, 0);
-					}
-				}
-			}
+		WalkGraph.Ahead ahead = WalkGraph.of(context.grid(), context.walkable(), input.seen())
+			.firstUnsafe(pose.x(), pose.z(), feet, origin, pose.yawDegrees() + command.turnRate(), AHEAD, TrackBehaviour.BODY_RADIUS);
+		if (ahead == null) {
+			return command;
 		}
 
-		return command;
+		double pitchRate = command.pitchRate();
+		if (ahead.footing() == WalkGraph.Footing.UNKNOWN) {
+			double[] floor = {ahead.x() + origin[0] + 0.5, feet + origin[1], ahead.z() + origin[2] + 0.5};
+			pitchRate = Steering.toward(pose, input.senses(), floor, context.eyeHeight(), context.limits(), false, true).pitchRate();
+		}
+
+		return new MotorCommand(0.0, 0.0, command.turnRate(), pitchRate, false, 0);
 	}
 }

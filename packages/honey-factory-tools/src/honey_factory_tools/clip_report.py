@@ -8,6 +8,7 @@ Per dataset, and in total:
   no-honey clips;
 - realizability violations: ticks whose belief the validators reject (see
   :func:`honey_factory_tools.clip_dataset.frame_errors`);
+- ticks the edge guard stopped short of a ledge;
 - the honey's status over frames, and the teacher's mode and who drove over ticks;
 - generation time per clip and frames per second, from the manifest's timestamps;
 - disk use per clip, and the compression ratio against raw RGB frames.
@@ -42,6 +43,7 @@ def report(datasets: list[Path], schemas: Schemas) -> Record:
         "video_bytes": sum(result["video_bytes"] for result in results),
         "seconds": sum(result["seconds"] for result in results),
         "realizability_violations": sum(result["realizability_violations"] for result in results),
+        "guarded_ticks": sum(result["guarded_ticks"] for result in results),
     }
     approach = Counter[str]()
     for result in results:
@@ -74,6 +76,7 @@ def _dataset(path: Path, schemas: Schemas) -> Record:
     drivers: Counter[str] = Counter()
     coverage: dict[int, list[float]] = {tick: [] for tick in COVERAGE_TICKS}
     violations = 0
+    guarded = 0
     frames_total = 0
     video_bytes = 0
     raw_bytes = 0
@@ -93,6 +96,7 @@ def _dataset(path: Path, schemas: Schemas) -> Record:
         raw_bytes += (
             len(frames) * clip["files"]["rgb"]["width"] * clip["files"]["rgb"]["height"] * 3
         )
+        guarded += clip["summary"]["guarded_ticks"]
         if clip["clip_type"] == "approach":
             reached = clip["summary"]["reached"] is True
             calm = clip["summary"]["drift_ticks"] == 0
@@ -128,6 +132,7 @@ def _dataset(path: Path, schemas: Schemas) -> Record:
         "fallbacks": dict(fallbacks),
         "approach": dict(approach),
         "realizability_violations": violations,
+        "guarded_ticks": guarded,
         "search_coverage": {
             str(tick): round(sum(values) / len(values), 4)
             for tick, values in coverage.items()

@@ -404,6 +404,8 @@ def clip_errors(clip: Record) -> list[str]:
         errors.append("/summary/ticks_by_mode: must add up to the tick count")
     if summary["drift_ticks"] > ticks:
         errors.append("/summary/drift_ticks: must not exceed the tick count")
+    if summary["guarded_ticks"] > ticks:
+        errors.append("/summary/guarded_ticks: must not exceed the tick count")
     drivers = cast(dict[str, int], summary["ticks_by_driver"])
     if sum(drivers.values()) != ticks:
         errors.append("/summary/ticks_by_driver: must add up to the tick count")
@@ -461,6 +463,8 @@ def frame_errors(frame: Record) -> list[str]:
             errors.append(
                 "/tick_labels/executed: a later tick carries its commands, mode, belief and driver"
             )
+        if tick == 0 and labels["guarded"]:
+            errors.append("/tick_labels/guarded: the reset frame executes nothing to guard")
         driver: str | None = labels["driver"]
         if (driver == "teacher_drift" and not labels["drifting"]) or (
             driver == "teacher" and labels["drifting"]

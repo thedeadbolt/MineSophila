@@ -77,6 +77,7 @@
     "belief": null,
     "drifting": false,
     "driver": null,
+    "guarded": false,
     "coverage": 0.3
   }
 }

@@ -391,6 +391,23 @@
         }
       ],
       "expect_error": "script ticks after the teacher took over"
+    },
+    {
+      "name": "the summary counts guarded ticks",
+      "edits": [
+        {
+          "file": "clips.jsonl",
+          "line": 0,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/summary/guarded_ticks",
+              "value": 1
+            }
+          ]
+        }
+      ],
+      "expect_error": "summary.guarded_ticks is 1 but 0"
     }
   ]
 }

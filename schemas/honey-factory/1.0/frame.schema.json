@@ -32,7 +32,7 @@
     },
     "tick_labels": {
       "type": "object",
-      "required": ["server_tick", "velocity", "senses", "executed", "teacher", "teacher_mode", "belief", "drifting", "driver", "coverage"],
+      "required": ["server_tick", "velocity", "senses", "executed", "teacher", "teacher_mode", "belief", "drifting", "driver", "guarded", "coverage"],
       "properties": {
         "server_tick": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
         "velocity": {"$ref": "common.schema.json#/$defs/vec3"},
@@ -66,6 +66,7 @@
         },
         "drifting": {"type": "boolean"},
         "driver": {"oneOf": [{"type": "null"}, {"$ref": "clip.schema.json#/$defs/driver"}]},
+        "guarded": {"description": "Whether the edge guard stopped the executed command's walk short of a ledge; the teacher's command is unchanged.", "type": "boolean"},
         "coverage": {"type": "number", "minimum": 0, "maximum": 1}
       }
     }

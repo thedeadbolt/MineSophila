@@ -119,6 +119,11 @@ occlusion clip's walk to its waypoint). The teacher's command, `tick_labels.teac
 recorded on every tick and is the policy's training target; a scripted tick's executed
 command is not. The clip summary counts `ticks_by_driver`.
 
+`guarded` is true on a tick whose executed command the edge guard stopped from walking: by
+the scene's true layout the ground just ahead was a ledge or the arena's edge. Drift and
+scripts may bring the body close to a ledge but never over it; the teacher's command is
+never changed. The summary counts `guarded_ticks`.
+
 ### `scene-slots-v1`: target class and split per scene
 
 Every accepted-scene slot `0 … N-1` receives its class and split before generation:

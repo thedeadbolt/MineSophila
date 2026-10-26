@@ -82,6 +82,7 @@
     },
     "drifting": true,
     "driver": "teacher_drift",
+    "guarded": false,
     "coverage": 0.35
   }
 }

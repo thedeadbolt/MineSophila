@@ -30,7 +30,7 @@ class ClipDriverTest {
 	@Test
 	void scriptsDriveScanAndPassBy() {
 		CameraPose start = new CameraPose(10.5, 65.0, 10.5, 0.0f, 0.0f);
-		for (ClipDriver driver : new ClipDriver[] {new ScanDriver(1L, MotorLimits.DEFAULT), new PassByDriver(1L, start, new int[] {10, 65, 20}, MotorLimits.DEFAULT)}) {
+		for (ClipDriver driver : new ClipDriver[] {new ScanDriver(1L, MotorLimits.DEFAULT), new PassByDriver(1L, start, new int[] {10, 65, 20}, MotorLimits.DEFAULT, new EdgeGuard(EdgeGuardTest.PLATFORM, EdgeGuardTest.CORE), 6.0)}) {
 			driver.next(1, input(1, start), WALK);
 			assertEquals(Driver.SCRIPT, driver.driver());
 		}

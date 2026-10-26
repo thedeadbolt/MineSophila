@@ -31,11 +31,12 @@ public interface ClipDriver {
 	 * walks to its waypoint with drift, then follows the teacher.
 	 *
 	 * @param honey the honey's absolute cell, or null in a scene without honey
+	 * @param walk how far a scripted walk goes in the clip, in blocks
 	 */
-	static ClipDriver of(ClipStarts.Start start, long seed, int @Nullable [] honey, MotorLimits limits, double eyeHeight, Drift drift) {
+	static ClipDriver of(ClipStarts.Start start, long seed, int @Nullable [] honey, MotorLimits limits, double eyeHeight, Drift drift, EdgeGuard guard, double walk) {
 		return switch (start.type()) {
 			case SCAN -> new ScanDriver(seed, limits);
-			case PASS_BY -> new PassByDriver(seed, start.pose(), honey, limits);
+			case PASS_BY -> new PassByDriver(seed, start.pose(), honey, limits, guard, walk);
 			case APPROACH, DETOUR, NO_HONEY -> new TeacherDriver(drift);
 			case OCCLUSION -> new OcclusionDriver(start.waypoint(), limits, eyeHeight, drift);
 		};

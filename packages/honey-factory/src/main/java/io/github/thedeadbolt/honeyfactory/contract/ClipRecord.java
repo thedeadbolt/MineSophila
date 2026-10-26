@@ -71,8 +71,10 @@ public record ClipRecord(
 	 * @param reached whether an approach clip reached the honey; null for other types
 	 * @param coverageFinal the share of reachable cells the teacher had seen at the end
 	 * @param ticksByDriver ticks by who chose the executed command (see {@link Driver})
+	 * @param guardedTicks ticks whose executed command the edge guard stopped short of a ledge
 	 */
-	public record Summary(int driftTicks, @Nullable Boolean reached, double coverageFinal, Map<TeacherMode, Integer> ticksByMode, Map<Driver, Integer> ticksByDriver) {
+	public record Summary(int driftTicks, @Nullable Boolean reached, double coverageFinal, Map<TeacherMode, Integer> ticksByMode, Map<Driver, Integer> ticksByDriver,
+		int guardedTicks) {
 		public Summary {
 			ticksByMode = Map.copyOf(ticksByMode);
 			ticksByDriver = Map.copyOf(ticksByDriver);
@@ -134,6 +136,7 @@ public record ClipRecord(
 		}
 
 		summary.add("ticks_by_driver", drivers);
+		summary.addProperty("guarded_ticks", this.summary.guardedTicks());
 		json.add("summary", summary);
 		return json;
 	}
@@ -283,7 +286,7 @@ public record ClipRecord(
 		}
 
 		return new ClipRecord(version, clipId, sceneId, split, clipIndex, requested, clipType, attempt, clipSeeds, start, framesPerTick, ticks, frameCount, endReason, codec, rgb, mask, frames,
-			executed, new Summary(driftTicks, reached, summary.decimal("coverage_final", 0.0, 1.0), ticksByMode, ticksByDriver));
+			executed, new Summary(driftTicks, reached, summary.decimal("coverage_final", 0.0, 1.0), ticksByMode, ticksByDriver, summary.integer32("guarded_ticks", 0, ticks)));
 	}
 
 	private static VideoFile video(JsonFields files, String name, String path, int frameCount) {

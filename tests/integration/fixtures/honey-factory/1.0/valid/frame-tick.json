@@ -99,6 +99,7 @@
     },
     "drifting": false,
     "driver": "teacher",
+    "guarded": false,
     "coverage": 0.31
   }
 }

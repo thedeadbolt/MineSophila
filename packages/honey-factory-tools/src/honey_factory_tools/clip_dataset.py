@@ -136,6 +136,7 @@ def frame_errors(
     drifting = 0
     modes: Counter[str] = Counter()
     drivers: Counter[str] = Counter()
+    guarded = 0
     scripted_type = clip["clip_type"] in ("scan", "pass_by")
     teacher_took_over = False
     last_seen: list[int] | None = None
@@ -177,6 +178,7 @@ def frame_errors(
                 )
         drifting += 1 if labels["drifting"] else 0
         modes[labels["teacher_mode"]] += 1
+        guarded += 1 if labels["guarded"] else 0
         driver: str = labels["driver"]
         drivers[driver] += 1
         if driver == "script":
@@ -206,6 +208,11 @@ def frame_errors(
         mode: modes[mode] for mode in ("track", "reacquire", "search")
     }:
         errors.append(label + f"summary.ticks_by_mode differs from the ticks' modes {dict(modes)}")
+    if summary["guarded_ticks"] != guarded:
+        errors.append(
+            label + f"summary.guarded_ticks is {summary['guarded_ticks']} but {guarded} ticks "
+            "were guarded"
+        )
     if dict(summary["ticks_by_driver"]) != {
         driver: drivers[driver] for driver in ("teacher", "teacher_drift", "script")
     }:

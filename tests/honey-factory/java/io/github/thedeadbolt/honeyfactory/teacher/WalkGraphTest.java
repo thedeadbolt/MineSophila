@@ -19,6 +19,22 @@ class WalkGraphTest {
 		assertEquals(WalkGraph.Footing.BLOCKED, seen.footing(11, 5, 5), "a wall too high to step");
 		WalkGraph blind = WalkGraph.of(grid, grid.core, new SeenMap(grid.core));
 		assertEquals(WalkGraph.Footing.UNKNOWN, blind.footing(5, 5, 5), "floor not seen yet");
+		assertEquals(WalkGraph.Footing.LEDGE, seen.footing(-1, 1, 5), "beyond the arena's edge the body would leave it");
+		assertEquals(WalkGraph.Footing.LEDGE, blind.footing(5, 1, 16), "the arena's bounds are known without looking");
+	}
+
+	@Test
+	void firstUnsafeLooksAheadUnderTheBodysWidth() {
+		Grids grid = new Grids(16, 10, 16).platform(4, 4, 10, 10, 4);
+		WalkGraph seen = WalkGraph.of(grid, grid.core, SeenMap.everything(grid.core));
+		int[] origin = {0, 0, 0};
+		// Facing +z (yaw 0) from the middle: safe; half a block from the +z edge: a ledge.
+		assertEquals(null, seen.firstUnsafe(7.5, 7.5, 5, origin, 0.0, new double[] {0.45, 0.9}, 0.3));
+		WalkGraph.Ahead ahead = seen.firstUnsafe(7.5, 10.5, 5, origin, 0.0, new double[] {0.45, 0.9}, 0.3);
+		assertEquals(WalkGraph.Footing.LEDGE, ahead.footing());
+		assertEquals(11, ahead.z());
+		// Walking backwards looks behind: yaw 180 faces -z, so +z is behind.
+		assertEquals(WalkGraph.Footing.LEDGE, seen.firstUnsafe(7.5, 10.5, 5, origin, 180.0, new double[] {-0.45, -0.9}, 0.3).footing());
 	}
 
 	@Test

@@ -4,6 +4,7 @@ import io.github.thedeadbolt.honeyfactory.contract.BlockBox;
 import io.github.thedeadbolt.honeyfactory.scene.SightGrid;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Where the body could stand and step, as far as the teacher knows. Cells are
@@ -51,8 +52,12 @@ public final class WalkGraph {
 		BLOCKED,
 		/** The floor is not seen yet. */
 		UNKNOWN,
-		/** Seen open space deeper than the body may drop. */
+		/** Seen open space deeper than the body may drop, or the arena's edge. */
 		LEDGE
+	}
+
+	/** An unsafe column ahead of the body, arena-relative. */
+	public record Ahead(Footing footing, int x, int z) {
 	}
 
 	/** A seen block in {@code (x, y, z)}; outside the arena counts as solid. */
@@ -78,8 +83,15 @@ public final class WalkGraph {
 		return walkable(x, y, z) && this.seen.seen(x, y - 1, z) && this.grid.solid(x, y - 1, z);
 	}
 
-	/** What the body finds entering column {@code (x, z)} with its feet at {@code y}. */
+	/**
+	 * What the body finds entering column {@code (x, z)} with its feet at {@code y}. Beyond the
+	 * arena's edge is a ledge: the body would leave the arena, and nothing there need hold it.
+	 */
 	public Footing footing(int x, int y, int z) {
+		if (x < 0 || z < 0 || x >= this.width || z >= this.length) {
+			return Footing.LEDGE;
+		}
+
 		if (!passable(x, y, z)) {
 			return !knownSolid(x, y + 2, z) && standable(x, y + SeenMap.STEP_UP, z) ? Footing.SAFE : Footing.BLOCKED;
 		}
@@ -96,6 +108,30 @@ public final class WalkGraph {
 		}
 
 		return Footing.LEDGE;
+	}
+
+	/**
+	 * The first column, at {@code distances} along {@code headingDegrees} from {@code (x, z)}
+	 * (absolute; negative distances lie behind) and {@code radius} to either side, that is a
+	 * ledge or of unknown floor for feet at {@code feet} (arena-relative), or null when all are
+	 * safe or walls.
+	 */
+	public @Nullable Ahead firstUnsafe(double x, double z, int feet, int[] origin, double headingDegrees, double[] distances, double radius) {
+		double yaw = Math.toRadians(headingDegrees);
+		double forwardX = -Math.sin(yaw);
+		double forwardZ = Math.cos(yaw);
+		for (double ahead : distances) {
+			for (double side : new double[] {-radius, 0.0, radius}) {
+				int cellX = (int) Math.floor(x + forwardX * ahead - forwardZ * side) - origin[0];
+				int cellZ = (int) Math.floor(z + forwardZ * ahead + forwardX * side) - origin[2];
+				Footing footing = footing(cellX, feet, cellZ);
+				if (footing == Footing.LEDGE || footing == Footing.UNKNOWN) {
+					return new Ahead(footing, cellX, cellZ);
+				}
+			}
+		}
+
+		return null;
 	}
 
 	/** Whether the body's height is clear in column {@code (x, z)} at feet height {@code y}. */

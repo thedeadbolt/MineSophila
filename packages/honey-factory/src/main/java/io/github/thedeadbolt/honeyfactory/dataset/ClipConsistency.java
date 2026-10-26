@@ -147,6 +147,7 @@ public final class ClipConsistency {
 
 		List<MotorCommand> executed = new ArrayList<>();
 		int drifting = 0;
+		int guarded = 0;
 		Map<TeacherMode, Integer> modes = new EnumMap<>(TeacherMode.class);
 		Map<Driver, Integer> drivers = new EnumMap<>(Driver.class);
 		boolean scriptedType = clip.clipType() == ClipType.SCAN || clip.clipType() == ClipType.PASS_BY;
@@ -189,6 +190,7 @@ public final class ClipConsistency {
 
 			executed.add(labels.executed());
 			drifting += labels.drifting() ? 1 : 0;
+			guarded += labels.guarded() ? 1 : 0;
 			modes.merge(labels.mode(), 1, Integer::sum);
 			Driver driver = labels.driver();
 			drivers.merge(driver, 1, Integer::sum);
@@ -218,6 +220,10 @@ public final class ClipConsistency {
 				errors.add(label + "summary.ticks_by_mode differs from the ticks' modes " + modes);
 				break;
 			}
+		}
+
+		if (clip.summary().guardedTicks() != guarded) {
+			errors.add(label + "summary.guarded_ticks is " + clip.summary().guardedTicks() + " but " + guarded + " ticks were guarded");
 		}
 
 		for (Driver driver : Driver.values()) {

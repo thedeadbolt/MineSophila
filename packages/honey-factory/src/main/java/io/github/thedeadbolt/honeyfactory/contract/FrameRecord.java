@@ -69,6 +69,7 @@ public record FrameRecord(
 		@Nullable Belief belief,
 		boolean drifting,
 		@Nullable Driver driver,
+		boolean guarded,
 		double coverage
 	) {
 	}
@@ -121,6 +122,7 @@ public record FrameRecord(
 
 			tick.addProperty("drifting", labels.drifting());
 			tick.add("driver", JsonWrite.nullable(labels.driver() == null ? null : labels.driver().jsonName()));
+			tick.addProperty("guarded", labels.guarded());
 			tick.addProperty("coverage", labels.coverage());
 			json.add("tick_labels", tick);
 		}
@@ -215,8 +217,13 @@ public record FrameRecord(
 			throw labels.error("driver", "is teacher_drift exactly when the teacher drove a drifting tick");
 		}
 
+		boolean guarded = labels.bool("guarded");
+		if (tick == 0 && guarded) {
+			throw labels.error("guarded", "the reset frame executes nothing to guard");
+		}
+
 		return new TickLabels(labels.integer("server_tick", 0, Long.MAX_VALUE), labels.decimals("velocity", 3), senses(labels.object("senses")), executed, teacher, mode, belief,
-			drifting, driver, labels.decimal("coverage", 0.0, 1.0));
+			drifting, driver, guarded, labels.decimal("coverage", 0.0, 1.0));
 	}
 
 	private static BodySenses senses(JsonFields senses) {

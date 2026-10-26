@@ -50,7 +50,7 @@
     "executed": {"type": "array", "items": {"$ref": "#/$defs/motorCommand"}},
     "summary": {
       "type": "object",
-      "required": ["drift_ticks", "reached", "coverage_final", "ticks_by_mode", "ticks_by_driver"],
+      "required": ["drift_ticks", "reached", "coverage_final", "ticks_by_mode", "ticks_by_driver", "guarded_ticks"],
       "properties": {
         "drift_ticks": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
         "reached": {"type": ["boolean", "null"]},
@@ -72,7 +72,8 @@
             "teacher_drift": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
             "script": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
           }
-        }
+        },
+        "guarded_ticks": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
       }
     }
   },

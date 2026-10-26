@@ -227,6 +227,7 @@ def _frame_record(clip_id: str, frame: int) -> dict[str, Any]:
             else None,
             "drifting": False,
             "driver": "teacher" if decided else None,
+            "guarded": False,
             "coverage": 0.1 * tick,
         }
     return record
@@ -330,6 +331,7 @@ def _make_clip_dataset(target: Path, codec: str = "h264-lossless") -> Path:
                 "coverage_final": 0.4,
                 "ticks_by_mode": {"track": CLIP_TICKS, "reacquire": 0, "search": 0},
                 "ticks_by_driver": {"teacher": CLIP_TICKS, "teacher_drift": 0, "script": 0},
+                "guarded_ticks": 0,
             },
         }
         clips.append(json.dumps(clip) + "\n")

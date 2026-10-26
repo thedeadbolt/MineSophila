@@ -67,3 +67,11 @@ def test_report_counts_ticks_by_driver(contract_dir: Path, schemas: Schemas) -> 
         "teacher_drift": 0,
         "script": 0,
     }
+
+
+def test_report_counts_guarded_ticks(contract_dir: Path, schemas: Schemas) -> None:
+    from honey_factory_tools import clip_report
+
+    result = clip_report.report([contract_dir / "clips"], schemas)
+    assert result["datasets"][0]["guarded_ticks"] == 0
+    assert result["totals"]["guarded_ticks"] == 0
