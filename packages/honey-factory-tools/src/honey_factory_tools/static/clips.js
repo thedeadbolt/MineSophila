@@ -3,7 +3,9 @@
 // The clip player (M12-2): a clip's frames play like a GIF, the mask overlay and box follow
 // each frame, and a timeline shows the honey's state, its bearing and the teacher's mode
 // across the clip, so a label that disagrees with its frame stands out. Uses api(),
-// element(), facts(), number(), humane() and showBanner() from app.js.
+// element(), facts(), number(), humane() and showBanner() from app.js;
+// everything else stays inside this block, so its names never replace app.js's.
+{
 
 const FPS = 60;
 const STATUS_COLOURS = {
@@ -207,7 +209,8 @@ function actualSize() {
 }
 
 function placed() {
-  $("clip-zoom-level").textContent = clip.view.fit ? "Fit" : `${Math.round(clip.view.scale * devicePixelRatio * 100)}%`;
+  $("clip-zoom-level").textContent = `${Math.round(clip.view.scale * devicePixelRatio * 100)}%`;
+  $("clip-zoom-fit").classList.toggle("on", clip.view.fit);
   drawFrame();
   refineDetail();
 }
@@ -369,7 +372,7 @@ function describe(frame) {
     ["Executed", command(labels.executed)],
     ["Drifting", labels.drifting ? "yes" : "no"],
     ["Seen so far", `${number(labels.coverage * 100, 1)}%`],
-    ["Speed", `${number(labels.senses.forward_speed, 3)} blocks/tick`],
+    ["Speed", `${number(labels.senses.forward_speed + 0, 3)} blocks/tick`],
     ["On ground", labels.senses.on_ground ? "yes" : "no"],
   ] : []);
   $("frame-record").textContent = JSON.stringify(frame, null, 2);
@@ -511,3 +514,6 @@ $("find").addEventListener("submit", (event) => {
   const id = $("find-id").value.trim();
   if (id) openClip(id).catch(report);
 }, true);
+
+window.startClips = startClips;
+}
