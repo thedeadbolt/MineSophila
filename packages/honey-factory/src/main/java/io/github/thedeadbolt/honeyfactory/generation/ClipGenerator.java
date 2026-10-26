@@ -40,6 +40,7 @@ import io.github.thedeadbolt.honeyfactory.scene.ViewpointCandidate;
 import io.github.thedeadbolt.honeyfactory.scene.ViewpointPlan;
 import io.github.thedeadbolt.honeyfactory.teacher.HoneyMemory;
 import io.github.thedeadbolt.honeyfactory.teacher.Perception;
+import io.github.thedeadbolt.honeyfactory.teacher.RealizableTeacher;
 import io.github.thedeadbolt.honeyfactory.teacher.SeenMap;
 import io.github.thedeadbolt.honeyfactory.teacher.Teacher;
 import io.github.thedeadbolt.honeyfactory.teacher.TeacherContext;
@@ -497,7 +498,7 @@ public final class ClipGenerator implements Generator {
 		private final String clipId;
 		private final int ticks;
 		private final int framesPerTick;
-		private final Teacher teacher = Teacher.idle();
+		private final Teacher teacher = new RealizableTeacher(ClipGenerator.this.clips.teacher().reacquireTicks());
 		private final SeenMap seen = new SeenMap(ClipGenerator.this.arena.core());
 		private final HoneyMemory memory = new HoneyMemory();
 		private @Nullable TeacherContext context;

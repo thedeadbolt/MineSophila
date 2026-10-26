@@ -18,21 +18,4 @@ public interface Teacher {
 	void reset(TeacherContext context);
 
 	Decision decide(TeacherInput input);
-
-	/**
-	 * A teacher that stands still and knows nothing: a placeholder until the realizable
-	 * teacher exists, for development clips only.
-	 */
-	static Teacher idle() {
-		return new Teacher() {
-			@Override
-			public void reset(TeacherContext context) {
-			}
-
-			@Override
-			public Decision decide(TeacherInput input) {
-				return new Decision(MotorCommand.IDLE, TeacherMode.SEARCH, new FrameRecord.Belief(FrameRecord.Belief.Source.NONE, null, input.tick() - 1));
-			}
-		};
-	}
 }

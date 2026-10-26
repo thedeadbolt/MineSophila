@@ -28,6 +28,15 @@ final class Grids implements SightGrid {
 		return this;
 	}
 
+	/** Removes any blocks above the floor in column {@code (x, z)}, for a start position. */
+	Grids clear(int x, int z) {
+		for (int y = 1; y < this.core.maxY() + 1; y++) {
+			this.blocks.remove(SeenMap.key(x, y, z));
+		}
+
+		return this;
+	}
+
 	@Override
 	public boolean solid(int x, int y, int z) {
 		return this.blocks.contains(SeenMap.key(x, y, z));
