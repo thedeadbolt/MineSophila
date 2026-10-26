@@ -87,6 +87,12 @@ public final class ReplayRuns {
 		ReplayScene scene = ReplayScene.load(directory, id);
 		SceneRecord.SourcePatch patch = scene.scene().sourcePatch();
 		IntegratedServer server = Minecraft.getInstance().getSingleplayerServer();
+		String world = scene.world();
+		if (patch != null && server != null && world != null && !world.equals(server.getWorldData().getLevelName())) {
+			throw new ReplayException(ReplayException.Reason.UNAVAILABLE, "scene " + scene.scene().sceneId() + " was generated in world " + world
+				+ ", one of the slices' worlds; open that world to replay it, not " + server.getWorldData().getLevelName());
+		}
+
 		if (patch != null && server != null && server.overworld().getSeed() != patch.worldSeed()) {
 			throw new ReplayException(ReplayException.Reason.UNAVAILABLE, "scene " + scene.scene().sceneId() + " was copied from a world with seed " + patch.worldSeed()
 				+ "; replay it in a dataset world created with that seed, not " + server.overworld().getSeed());

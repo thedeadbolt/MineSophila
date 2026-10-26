@@ -234,7 +234,9 @@ def consistency(manifest: Record, scenes: list[Record], samples: list[Record]) -
                     )
         slice_: Record | None = manifest.get("slice")
         if slice_ is not None and index not in slice_["slots"]:
-            errors.append(label + f"scene_index {index} is not one of slice {slice_['index']}'s slots")
+            errors.append(
+                label + f"scene_index {index} is not one of slice {slice_['index']}'s slots"
+            )
 
         if natural != ("source_patch" in scene):
             errors.append(

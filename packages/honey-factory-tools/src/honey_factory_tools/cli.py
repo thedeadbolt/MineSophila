@@ -1,5 +1,5 @@
 """Command-line entry point: ``validate``, ``validate-dataset``, ``inspect``, ``select``,
-``reviews``, ``acceptance-report`` and ``control-demo``."""
+``reviews``, ``acceptance-report``, ``merge-slices`` and ``control-demo``."""
 
 import argparse
 import json
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from honey_factory_tools import __version__, control, dataset, inspector, report, selection
+from honey_factory_tools import __version__, control, dataset, inspector, merge, report, selection
 from honey_factory_tools.canonical import Json, loads
 from honey_factory_tools.catalog import Catalog
 from honey_factory_tools.reviews import ReviewError, ReviewStore
@@ -84,6 +84,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--output", type=Path, help="write <output>.md and <output>.json instead of printing"
     )
     acceptance.add_argument("directory", type=Path, help="the acceptance folder")
+    joined = commands.add_parser(
+        "merge-slices", help="merge the slices of one dataset into the dataset a single run writes"
+    )
+    joined.add_argument("--schemas", type=Path, help="schema directory for one contract version")
+    joined.add_argument("output", type=Path, help="folder the merged dataset is written into")
+    joined.add_argument("slices", nargs="+", type=Path, help="the slice dataset directories")
     demo = commands.add_parser(
         "control-demo", help="drive the player through a running control server and log every step"
     )
@@ -117,6 +123,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if args.command == "acceptance-report":
         return _acceptance(schemas, args)
+    if args.command == "merge-slices":
+        try:
+            merged = merge.merge(cast(list[Path], args.slices), cast(Path, args.output), schemas)
+        except merge.MergeError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+        print(merged)
+        return 0
     if args.command in ("inspect", "select", "reviews"):
         try:
             catalog = Catalog(cast(Path, args.directory), schemas)

@@ -296,6 +296,14 @@ public final class ReplayScene {
 		return this.config;
 	}
 
+	/**
+	 * The world that generated this scene, as a dataset merged from slices records it, or
+	 * null for a single run's dataset, whose world is the one copied beside it.
+	 */
+	public @Nullable String world() {
+		return this.manifest.worldOf(this.scene.generation().sceneIndex());
+	}
+
 	public SceneRecord scene() {
 		return this.scene;
 	}

@@ -283,6 +283,19 @@
         "slots": {"type": "array", "items": {"type": "integer", "minimum": 0}}
       }
     },
+    "worlds": {
+      "description": "Present only on a dataset merged from slices (M12-1): the world each slice generated in and its scene slots, for replaying natural scenes in their own world.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["world", "slots"],
+        "additionalProperties": false,
+        "properties": {
+          "world": {"type": ["string", "null"]},
+          "slots": {"type": "array", "items": {"type": "integer", "minimum": 0}}
+        }
+      }
+    },
     "integrity": {
       "type": "object",
       "required": ["hash_algorithm", "indexes", "validation"],

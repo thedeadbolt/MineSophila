@@ -37,8 +37,22 @@ public record DatasetManifest(
 	@Nullable Integrity integrity,
 	String licence,
 	String intendedUse,
-	@Nullable Slice slice
+	@Nullable Slice slice,
+	List<World> worlds
 ) {
+	public DatasetManifest {
+		worlds = List.copyOf(worlds);
+	}
+
+	/**
+	 * On a dataset merged from slices (M12-1): the world one slice generated in, when known,
+	 * and its scene slots. Natural scenes replay exactly only in the world that generated them.
+	 */
+	public record World(@Nullable String world, List<Integer> slots) {
+		public World {
+			slots = List.copyOf(slots);
+		}
+	}
 	public static final String UNASSIGNED = "unassigned";
 
 	/**
@@ -176,7 +190,7 @@ public record DatasetManifest(
 
 		return new DatasetManifest(manifest.schemaVersion, manifest.datasetId, manifest.contentVersion, manifest.lifecycle, manifest.createdAtUtc, null,
 			manifest.resolvedConfigSha256, manifest.configuration, null, software, renderEnvironment, Counts.empty(slice.slots().size()), provenance, null,
-			manifest.licence, manifest.intendedUse, slice);
+			manifest.licence, manifest.intendedUse, slice, List.of());
 	}
 
 	private static DatasetManifest generatingWhole(JsonObject configuration, Instant createdAt, Software software, RenderEnvironment renderEnvironment, Provenance provenance) {
@@ -199,7 +213,8 @@ public record DatasetManifest(
 			null,
 			UNASSIGNED,
 			UNASSIGNED,
-			null
+			null,
+			List.of()
 		);
 	}
 
@@ -228,7 +243,8 @@ public record DatasetManifest(
 			integrity,
 			this.licence,
 			this.intendedUse,
-			this.slice
+			this.slice,
+			this.worlds
 		);
 	}
 
@@ -242,6 +258,17 @@ public record DatasetManifest(
 
 	public int acceptedScenesRequested() {
 		return generator().get("accepted_scenes").getAsInt();
+	}
+
+	/** The world that generated scene slot {@code sceneIndex}, as a merged dataset records it, or null when not recorded. */
+	public @Nullable String worldOf(int sceneIndex) {
+		for (World world : this.worlds) {
+			if (world.slots().contains(sceneIndex)) {
+				return world.world();
+			}
+		}
+
+		return null;
 	}
 
 	/** The dataset directory's name: the dataset ID, plus {@code .slice-<index>-of-<count>} for a slice. */
@@ -372,6 +399,20 @@ public record DatasetManifest(
 		if (this.slice != null) {
 			json.add("slice", this.slice.toJson());
 		}
+
+		if (!this.worlds.isEmpty()) {
+			JsonArray worlds = new JsonArray();
+			for (World world : this.worlds) {
+				JsonObject entry = new JsonObject();
+				entry.add("world", JsonWrite.nullable(world.world()));
+				JsonArray slots = new JsonArray();
+				world.slots().forEach(slots::add);
+				entry.add("slots", slots);
+				worlds.add(entry);
+			}
+
+			json.add("worlds", worlds);
+		}
 		if (this.integrity != null) {
 			JsonObject integrity = new JsonObject();
 			integrity.addProperty("hash_algorithm", Sha256.ALGORITHM);
@@ -473,7 +514,8 @@ public record DatasetManifest(
 			integrity,
 			fields.string("licence"),
 			fields.string("intended_use"),
-			fields.has("slice") ? slice(fields.object("slice")) : null
+			fields.has("slice") ? slice(fields.object("slice")) : null,
+			fields.has("worlds") ? worlds(fields) : List.of()
 		);
 		manifest.checkLifecycle(fields);
 		return manifest;
@@ -663,6 +705,25 @@ public record DatasetManifest(
 			packs,
 			settings
 		);
+	}
+
+	private static List<World> worlds(JsonFields fields) {
+		List<World> worlds = new ArrayList<>();
+		for (JsonElement element : fields.array("worlds")) {
+			if (!element.isJsonObject()) {
+				throw fields.error("worlds", "must hold objects of a world and its slots");
+			}
+
+			JsonFields world = JsonFields.of(element.getAsJsonObject());
+			List<Integer> slots = new ArrayList<>();
+			for (JsonElement slot : world.array("slots")) {
+				slots.add(slot.getAsInt());
+			}
+
+			worlds.add(new World(world.isNull("world") ? null : world.string("world"), slots));
+		}
+
+		return worlds;
 	}
 
 	private static Slice slice(JsonFields slice) {
