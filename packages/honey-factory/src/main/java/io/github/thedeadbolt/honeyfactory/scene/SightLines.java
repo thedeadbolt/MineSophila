@@ -37,6 +37,14 @@ public final class SightLines {
 		return estimate(grid, eye, cell).clear();
 	}
 
+	/**
+	 * Whether the line from {@code eye} to the centre of {@code cell} reaches the cell
+	 * without crossing drawn geometry; the cell's own block does not hide it.
+	 */
+	public static boolean sees(SightGrid grid, double[] eye, int[] cell) {
+		return reach(grid, eye, new double[] {cell[0] + 0.5, cell[1] + 0.5, cell[2] + 0.5}, cell) != BLOCKED;
+	}
+
 	/** Both fractions; each is 0 when the eye is inside the cell. */
 	public static Estimate estimate(SightGrid grid, double[] eye, int[] cell) {
 		int samples = 0;

@@ -38,6 +38,9 @@ import io.github.thedeadbolt.honeyfactory.scene.SightGrid;
 import io.github.thedeadbolt.honeyfactory.scene.SolidGrid;
 import io.github.thedeadbolt.honeyfactory.scene.ViewpointCandidate;
 import io.github.thedeadbolt.honeyfactory.scene.ViewpointPlan;
+import io.github.thedeadbolt.honeyfactory.teacher.HoneyMemory;
+import io.github.thedeadbolt.honeyfactory.teacher.Perception;
+import io.github.thedeadbolt.honeyfactory.teacher.SeenMap;
 import io.github.thedeadbolt.honeyfactory.teacher.Teacher;
 import io.github.thedeadbolt.honeyfactory.teacher.TeacherContext;
 import io.github.thedeadbolt.honeyfactory.teacher.TeacherInput;
@@ -495,6 +498,9 @@ public final class ClipGenerator implements Generator {
 		private final int ticks;
 		private final int framesPerTick;
 		private final Teacher teacher = Teacher.idle();
+		private final SeenMap seen = new SeenMap(ClipGenerator.this.arena.core());
+		private final HoneyMemory memory = new HoneyMemory();
+		private @Nullable TeacherContext context;
 		private final Map<TeacherMode, Integer> modes = new EnumMap<>(TeacherMode.class);
 		private final List<MotorCommand> executed = new ArrayList<>();
 		private @Nullable ClipWriter writer;
@@ -517,8 +523,9 @@ public final class ClipGenerator implements Generator {
 
 		CompletableFuture<ClipRecord> run() {
 			this.driver = ClipDriver.of(this.type, this.seeds.drive(), this.start.pose(), this.scene.target, ClipGenerator.this.clips.motor());
-			this.teacher.reset(new TeacherContext(this.scene.grid, ClipGenerator.this.arena.core(), ClipGenerator.this.clips.motor(), ClipGenerator.this.clips.teacher().minVisiblePixels(),
-				ClipGenerator.this.config.viewpoints().eyeHeightBlocks(), ClipGenerator.this.projection));
+			this.context = new TeacherContext(this.scene.grid, ClipGenerator.this.arena.core(), ClipGenerator.this.clips.motor(), ClipGenerator.this.clips.teacher().minVisiblePixels(),
+				ClipGenerator.this.config.viewpoints().eyeHeightBlocks(), ClipGenerator.this.projection);
+			this.teacher.reset(this.context);
 			return request(GenerationTimings.Phase.RESET, () -> ClipGenerator.this.environment.reset(ClipGenerator.this.arena, this.scene.scene.plan(), this.start.pose(),
 				ClipGenerator.this.projection, this.seeds.drive(), this.framesPerTick))
 				.thenCompose(reset -> {
@@ -586,12 +593,11 @@ public final class ClipGenerator implements Generator {
 			});
 		}
 
-		/** What the teacher may know at {@code tick}: the honey's cell only if the previous tick's end frame showed enough of it. */
+		/** What the teacher may know at {@code tick}, from the previous tick's end frame (see {@link Perception}). */
 		private TeacherInput perceive(int tick) {
 			ControlStep previous = this.last;
-			int visible = previous.truth().target().visiblePixels();
-			boolean seen = this.scene.target != null && visible >= ClipGenerator.this.clips.teacher().minVisiblePixels();
-			return new TeacherInput(tick, previous.truth().pose(), previous.senses(), seen ? this.scene.target.clone() : null);
+			return Perception.perceive(tick, previous.truth().pose(), previous.senses(), this.scene.target, previous.truth().target().visiblePixels(), this.context, this.seen,
+				this.memory);
 		}
 
 		private FrameRecord.TickLabels labels(ControlStep step, @Nullable MotorCommand executed, Teacher.@Nullable Decision decision) {
