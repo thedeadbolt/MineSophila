@@ -1,0 +1,8 @@
+{
+  "dataset": {"name": "m12-2-pilot-l5", "seed": 2026105, "difficulty": 5},
+  "capture": {"mode": "PANORAMA_310", "width": 2480, "height": 1280, "cube_face_size": 1024},
+  "quotas": {"accepted_scenes": 50, "scene_attempts_per_accepted_scene": 4},
+  "target": {"present_fraction": 0.8},
+  "clips": {"clips_per_scene": 4},
+  "output": {"root": "/mnt/fastvault/minesophila/pilot/m12-2"}
+}
