@@ -52,6 +52,16 @@ class ClipLabelsTest {
 	}
 
 	@Test
+	void inBetweenFramesPastTheWrapRecordAWrappedYaw() {
+		// A turn across ±180 interpolates to yaws such as 181.5 between ticks; the record keeps [-180, 180).
+		CameraPose past = new CameraPose(0.5, 0.0, 0.5, 181.5f, 0.0f);
+		FrameRecord frame = label(past, new int[] {0, 1, -5}, empty());
+		assertEquals(-178.5f, frame.pose().yawDegrees(), 1e-4f);
+		assertEquals(ClipLabels.bearing(past, EYE, new int[] {0, 1, -5}).azimuthDegrees(), frame.bearing().azimuthDegrees(), 1e-9);
+		assertEquals(frame.toJson(), FrameRecord.fromJson(frame.toJson()).toJson());
+	}
+
+	@Test
 	void absentHoneyHasNoBearing() {
 		FrameRecord frame = label(POSE, null, empty());
 		assertEquals(TargetStatus.ABSENT, frame.target().targetStatus());

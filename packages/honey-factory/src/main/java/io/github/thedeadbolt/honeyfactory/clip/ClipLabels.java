@@ -28,13 +28,22 @@ public final class ClipLabels {
 	public static FrameRecord frame(String clipId, int frame, int tick, int subFrame, int framesPerTick, ClipEnvironment.Frame captured, int @Nullable [] target,
 		CaptureProjection projection, double eyeHeight, FrameRecord.@Nullable TickLabels labels) {
 		CapturedImages images = captured.images();
-		CameraPose pose = captured.pose();
+		CameraPose pose = wrapped(captured.pose());
 		BlockBox box = target == null ? null : BlockBox.cell(target);
 		CameraFrame camera = CameraFrame.of(pose, eyeHeight);
 		SampleRecord.Target labelled = SampleRecord.Target.of(box != null, box != null && projection.intersects(camera, box),
 			MaskStatistics.of(images.visibleMask(), images.width(), images.height()), images.unoccludedPixels(), box == null ? null : camera.distanceTo(box.center()));
 		return new FrameRecord(SchemaVersion.CURRENT, clipId, frame, tick, subFrame, framesPerTick, captured.partialTick(), pose, labelled,
 			box != null && images.unoccludedTouchesEdge(), target == null ? null : bearing(pose, eyeHeight, target), labels);
+	}
+
+	/**
+	 * {@code pose} with its yaw in [-180, 180). A turn across ±180 degrees interpolates to
+	 * yaws such as 181.5 between ticks; the camera looks the same way either way.
+	 */
+	static CameraPose wrapped(CameraPose pose) {
+		float yaw = pose.yawDegrees();
+		return yaw >= -180.0f && yaw < 180.0f ? pose : new CameraPose(pose.x(), pose.y(), pose.z(), (float) ClipDriver.wrap(yaw), pose.pitchDegrees());
 	}
 
 	/**
