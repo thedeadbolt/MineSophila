@@ -1,5 +1,5 @@
 """Command-line entry point: ``validate``, ``validate-dataset``, ``inspect``, ``select``,
-``reviews``, ``acceptance-report``, ``merge-slices`` and ``control-demo``."""
+``reviews``, ``acceptance-report``, ``merge-slices``, ``generate`` and ``control-demo``."""
 
 import argparse
 import json
@@ -10,7 +10,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from honey_factory_tools import __version__, control, dataset, inspector, merge, report, selection
+from honey_factory_tools import (
+    __version__,
+    control,
+    dataset,
+    inspector,
+    merge,
+    orchestrate,
+    report,
+    selection,
+)
 from honey_factory_tools.canonical import Json, loads
 from honey_factory_tools.catalog import Catalog
 from honey_factory_tools.reviews import ReviewError, ReviewStore
@@ -90,6 +99,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     joined.add_argument("--schemas", type=Path, help="schema directory for one contract version")
     joined.add_argument("output", type=Path, help="folder the merged dataset is written into")
     joined.add_argument("slices", nargs="+", type=Path, help="the slice dataset directories")
+    run = commands.add_parser(
+        "generate", help="generate a dataset on several game instances and merge their slices"
+    )
+    run.add_argument("--schemas", type=Path, help="schema directory for one contract version")
+    run.add_argument("--instances", type=int, default=1, help="game instances to run at once")
+    run.add_argument("--root", type=Path, required=True, help="output folder for the dataset")
+    run.add_argument("--world-seed", type=int, help="seed of every instance's world")
+    run.add_argument(
+        "--project", type=Path, help="the honey-factory mod project (found from here by default)"
+    )
+    run.add_argument("config", type=Path, help="the dataset configuration JSON")
     demo = commands.add_parser(
         "control-demo", help="drive the player through a running control server and log every step"
     )
@@ -123,6 +143,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if args.command == "acceptance-report":
         return _acceptance(schemas, args)
+    if args.command == "generate":
+        project = cast(Path | None, args.project) or _mod_project()
+        if project is None:
+            print("error: no honey-factory mod project found; use --project", file=sys.stderr)
+            return 2
+        try:
+            made = orchestrate.generate(
+                cast(Path, args.config),
+                cast(int, args.instances),
+                cast(Path, args.root),
+                orchestrate.GradleLauncher(project),
+                schemas,
+                cast(int | None, args.world_seed),
+            )
+        except orchestrate.GenerateError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+        print(made)
+        return 0
     if args.command == "merge-slices":
         try:
             merged = merge.merge(cast(list[Path], args.slices), cast(Path, args.output), schemas)
@@ -155,6 +194,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 failures += 1
     print(f"{failures} error(s)", file=sys.stderr)
     return 1 if failures else 0
+
+
+def _mod_project() -> Path | None:
+    """The mod project above the working directory: ``packages/honey-factory``."""
+    for folder in (Path.cwd(), *Path.cwd().parents):
+        candidate = folder / "packages" / "honey-factory"
+        if (candidate / "gradlew").is_file():
+            return candidate
+    return None
 
 
 def _validate_dataset(schemas: Schemas, directory: Path, allow_generating: bool) -> int:

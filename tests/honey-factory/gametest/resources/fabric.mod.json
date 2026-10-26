@@ -26,7 +26,8 @@
 			"io.github.thedeadbolt.honeyfactory.gametest.M12ResetTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M9MatrixTest",
 			"io.github.thedeadbolt.honeyfactory.gametest.M9PilotTest",
-			"io.github.thedeadbolt.honeyfactory.gametest.ProductionRunTest"
+			"io.github.thedeadbolt.honeyfactory.gametest.ProductionRunTest",
+			"io.github.thedeadbolt.honeyfactory.gametest.GenerationJobTest"
 		]
 	},
 	"depends": {
