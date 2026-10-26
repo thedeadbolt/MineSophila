@@ -14,7 +14,7 @@ CONFIGURATION_MEMBERS = ("difficulty", "target", "generator", "capture", "splits
 
 def _kind(path: Path) -> Kind:
     kind = path.name.split("-")[0]
-    assert kind in ("dataset", "scene", "sample")
+    assert kind in ("dataset", "scene", "sample", "clip", "frame")
     return kind
 
 

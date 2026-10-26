@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "clip_id": "s000000-c00",
+  "scene_id": "s000000",
+  "split": "validation",
+  "clip_index": 0,
+  "requested_type": "approach",
+  "clip_type": "approach",
+  "attempt": 0,
+  "seeds": {
+    "start": 1046135432770826,
+    "drive": 4199623011031045,
+    "drift": 14837503747635
+  },
+  "start_pose": {
+    "position": [
+      16.5,
+      65.0,
+      24.5
+    ],
+    "yaw_degrees": 180.0,
+    "pitch_degrees": 10.0
+  },
+  "frames_per_tick": 3,
+  "tick_count": 2,
+  "frame_count": 7,
+  "end_reason": "length",
+  "codec": {
+    "name": "h264-lossless"
+  },
+  "files": {
+    "rgb": {
+      "path": "clips/validation/c1/s000000-c00/rgb.mkv",
+      "media_type": "video/x-matroska",
+      "width": 64,
+      "height": 64,
+      "frames": 7,
+      "bytes": 2048,
+      "sha256": "b27876856c54941f486efdc2e460f298d44e23ed445dec163fe4e89a7feecc51"
+    },
+    "visible_mask": {
+      "path": "clips/validation/c1/s000000-c00/visible.mkv",
+      "media_type": "video/x-matroska",
+      "width": 64,
+      "height": 64,
+      "frames": 7,
+      "bytes": 2048,
+      "sha256": "a5469e95073ac4e58bfc8263fcd2837672e8c0a68f1ebd2eabaaf723ae76ad36"
+    },
+    "frames": {
+      "path": "clips/validation/c1/s000000-c00/frames.jsonl",
+      "media_type": "application/jsonl",
+      "bytes": 2048,
+      "sha256": "0215919e5cbb805512092a07da20d75a0734fcc9d918eb8c591f70a792f0315d"
+    }
+  },
+  "executed": [
+    {
+      "forward": 1.0,
+      "strafe": 0.0,
+      "turn_rate": 4.5,
+      "pitch_rate": 0.0,
+      "jump": false,
+      "delay_ticks": 0
+    },
+    {
+      "forward": 1.0,
+      "strafe": 0.0,
+      "turn_rate": 4.5,
+      "pitch_rate": 0.0,
+      "jump": false,
+      "delay_ticks": 0
+    }
+  ],
+  "summary": {
+    "drift_ticks": 0,
+    "reached": false,
+    "coverage_final": 0.42,
+    "ticks_by_mode": {
+      "track": 2,
+      "reacquire": 0,
+      "search": 0
+    }
+  }
+}

@@ -22,6 +22,8 @@ public final class Ids {
 	/** A namespaced resource ID, for example a block or dimension. */
 	public static final Pattern NAMESPACED_ID = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
 	public static final Pattern SAMPLE_ID = Pattern.compile("s[0-9]{6}-v[0-9]{2}");
+	public static final Pattern CLIP_ID = Pattern.compile("s[0-9]{6}-c[0-9]{2}");
+	public static final int MAX_CLIPS = 99;
 	public static final int MAX_SCENES = 999_999;
 	public static final int MAX_VIEWPOINTS = 99;
 
@@ -57,6 +59,20 @@ public final class Ids {
 		}
 
 		return String.format("%s-v%02d", sceneId, viewpointIndex);
+	}
+
+	/** A motion clip's ID: its scene's ID and its index in the scene (M12-2). */
+	public static String clipId(String sceneId, int clipIndex) {
+		if (!SCENE_ID.matcher(sceneId).matches() || clipIndex < 0 || clipIndex > MAX_CLIPS) {
+			throw new IllegalArgumentException("Invalid scene ID or clip index");
+		}
+
+		return String.format("%s-c%02d", sceneId, clipIndex);
+	}
+
+	/** The folder of a clip's videos and frame records, sharded by the clip's ID as samples are. */
+	public static String clipDirectory(Split split, String clipId) {
+		return "clips/" + split.jsonName() + "/" + shard(clipId) + "/" + clipId;
 	}
 
 	public static String shard(String sampleId) {

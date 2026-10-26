@@ -117,7 +117,7 @@ public final class ContractExamples {
 			splitCounts,
 			base.software(),
 			base.renderEnvironment(),
-			new DatasetManifest.Counts(scenes.size(), scenes.size() + 1, scenes.size(), 1, 0, samples.size(), Map.of("visibility", 1)),
+			new DatasetManifest.Counts(scenes.size(), scenes.size() + 1, scenes.size(), 1, 0, samples.size(), 0, Map.of("visibility", 1)),
 			base.provenance(),
 			new DatasetManifest.Integrity(digest(generating.scenesJsonl()), digest(generating.samplesJsonl()), true, 0),
 			base.licence(),

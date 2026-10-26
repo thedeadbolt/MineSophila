@@ -14,6 +14,8 @@ recorded in [ADR 0006](../../docs/adr/0006-dataset-contract-and-algorithms.md).
 | `dataset.schema.json` | `dataset.json` |
 | `scene.schema.json` | each line of `scenes.jsonl` |
 | `sample.schema.json` | each line of `samples.jsonl` |
+| `clip.schema.json` | each line of `clips.jsonl` in a clip dataset |
+| `frame.schema.json` | each line of a clip's `frames.jsonl` |
 | `common.schema.json` | shared definitions referenced by the others |
 
 Every record carries `schema_version`. Readers reject another major version and tolerate
@@ -65,6 +67,8 @@ Hash the [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) canonical form of th
 | Augmented sample | base sample ID + `-` + transform name | `s000123-v03-hflip` |
 | Shard | first 2 hex of SHA-256(sample ID) | `4c` |
 | RGB / mask | `rgb/<split>/<shard>/<sample>.png`, `masks/<split>/<shard>/<sample>.png` | |
+| Clip | scene ID + `-c` + clip index, 2 digits | `s000012-c03` |
+| Clip folder | `clips/<split>/<shard>/<clip>/`, holding `rgb.mkv`, `visible.mkv` and `frames.jsonl`; the shard is the first 2 hex of SHA-256(clip ID) | `clips/validation/de/s000012-c03/` |
 
 Dataset names match `[a-z0-9][a-z0-9-]{0,47}`. Identical resolved configurations share a
 dataset ID, so a writer must refuse an existing dataset directory.
@@ -79,6 +83,35 @@ seed = first 8 bytes, big-endian, of SHA-256("honey-factory/seed-v1/<purpose>/<d
 
 Numbers are decimal without padding. Seeds are independent per scene and attempt, so a
 rejected attempt never changes another scene.
+
+A motion clip's seeds use purposes `clip-start`, `clip-drive` and `clip-drift`, with the
+attempt index `<clip index> × 1000 + <clip attempt>`, so redrawing one clip never changes
+another clip or the scene.
+
+## Clip datasets (M12-2)
+
+A manifest with `kind: "clips"` describes motion clips; without `kind` it describes stills.
+A clip dataset:
+
+- has `generator.clips`, the clip settings, which enter the configuration hash;
+- uses the clip `storage` layout, whose `encodings` name the RGB video codec and the
+  lossless mask codec;
+- counts clips in `counts.accepted_clips` and `splits.counts.<split>.clips`, keeps
+  `accepted_samples` at 0, and digests `clips.jsonl` under `integrity.indexes.clips`;
+- writes `accepted_sample_count: 0` and `accepted_clip_count` in each scene record.
+
+Codecs:
+
+| Name | Meaning |
+|---|---|
+| `h264-lossless` | lossless H.264 (`libx264rgb -qp 0`), predicting frames from earlier ones; the default |
+| `ffv1` | FFV1, lossless and intra-only |
+| `h264-lossy` | lossy H.264 at `crf`; RGB only |
+
+Masks always use a lossless codec: `ffv1` beside `ffv1`, otherwise `h264-lossless`. A video
+holds every frame of its clip in order: the reset frame, then `frames_per_tick` frames per
+tick. Frame records follow the same order; tick labels (senses, commands, the teacher's
+mode and belief) sit on the reset frame and on each tick's last frame.
 
 ### `scene-slots-v1`: target class and split per scene
 

@@ -82,6 +82,8 @@ def test_shared_semantic_record_cases(
         "dataset": records.manifest_errors,
         "scene": records.scene_errors,
         "sample": records.sample_errors,
+        "clip": records.clip_errors,
+        "frame": records.frame_errors,
     }
     errors = rules[case["kind"]](record)  # type: ignore[arg-type]
     if case["expect"] == "valid":

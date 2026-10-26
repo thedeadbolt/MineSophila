@@ -13,6 +13,7 @@
     "schema_version": {"$ref": "common.schema.json#/$defs/schemaVersion"},
     "dataset_id": {"$ref": "common.schema.json#/$defs/datasetId"},
     "content_version": {"type": "string", "minLength": 1},
+    "kind": {"description": "Absent for still datasets; \"clips\" for motion-clip datasets (M12-2).", "enum": ["stills", "clips"]},
     "lifecycle": {"enum": ["generating", "complete", "failed"]},
     "created_at_utc": {"$ref": "common.schema.json#/$defs/timestampUtc"},
     "completed_at_utc": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/timestampUtc"}]},
@@ -101,6 +102,23 @@
             "min_ratio": {"oneOf": [{"type": "null"}, {"type": "number", "minimum": 0, "maximum": 1}]},
             "max_ratio": {"oneOf": [{"type": "null"}, {"type": "number", "minimum": 0, "maximum": 1}]},
             "min_visible_pixels": {"type": "integer", "minimum": 0}
+          }
+        },
+        "clips": {
+          "description": "Present exactly on a clip dataset (M12-2): how clips are driven, labelled and stored.",
+          "type": "object",
+          "required": ["frames_per_tick", "clips_per_scene", "attempts_per_clip", "ticks", "approach_linger_ticks", "mix", "drift", "teacher", "motor", "codec"],
+          "properties": {
+            "frames_per_tick": {"type": "integer", "minimum": 1, "maximum": 8},
+            "clips_per_scene": {"type": "integer", "minimum": 1, "maximum": 99},
+            "attempts_per_clip": {"type": "integer", "minimum": 1, "maximum": 999},
+            "ticks": {"type": "object", "required": ["approach", "pass_by", "scan", "occlusion", "detour", "no_honey"], "additionalProperties": {"type": "integer", "minimum": 1}},
+            "approach_linger_ticks": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+            "mix": {"type": "object", "required": ["approach", "pass_by", "scan", "occlusion", "detour"], "additionalProperties": {"type": "number", "minimum": 0}},
+            "drift": {"type": "object", "required": ["rate", "mean_ticks", "max_turn_rate", "max_forward"], "additionalProperties": {"type": "number", "minimum": 0}},
+            "teacher": {"type": "object", "required": ["min_visible_pixels", "reacquire_ticks", "reach_distance_blocks"], "additionalProperties": {"type": "number", "minimum": 0}},
+            "motor": {"type": "object", "required": ["max_turn_rate", "max_turn_accel", "max_pitch_rate", "max_pitch_accel"], "additionalProperties": {"type": "number", "exclusiveMinimum": 0}},
+            "codec": {"$ref": "clip.schema.json#/$defs/codec"}
           }
         },
         "algorithms": {
@@ -193,7 +211,8 @@
               "required": ["scenes", "samples"],
               "properties": {
                 "scenes": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
-                "samples": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
+                "samples": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+                "clips": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
               }
             }
           }
@@ -241,13 +260,29 @@
       }
     },
     "storage": {
-      "const": {
-        "indexes": {"scenes": "scenes.jsonl", "samples": "samples.jsonl"},
-        "image_roots": {"rgb": "rgb", "mask": "masks"},
-        "encodings": {"rgb": "png-rgb8", "mask": "png-gray8"},
-        "sharding": "ids-v1",
-        "channels": ["rgb", "mask"]
-      }
+      "oneOf": [
+        {
+          "const": {
+            "indexes": {"scenes": "scenes.jsonl", "samples": "samples.jsonl"},
+            "image_roots": {"rgb": "rgb", "mask": "masks"},
+            "encodings": {"rgb": "png-rgb8", "mask": "png-gray8"},
+            "sharding": "ids-v1",
+            "channels": ["rgb", "mask"]
+          }
+        },
+        {
+          "description": "A clip dataset: encodings name the RGB and mask codecs.",
+          "type": "object",
+          "required": ["indexes", "clip_root", "encodings", "sharding", "channels"],
+          "properties": {
+            "indexes": {"const": {"scenes": "scenes.jsonl", "clips": "clips.jsonl"}},
+            "clip_root": {"const": "clips"},
+            "encodings": {"type": "object", "required": ["rgb", "mask", "frames"], "properties": {"rgb": {"type": "string"}, "mask": {"type": "string"}, "frames": {"const": "jsonl"}}},
+            "sharding": {"const": "ids-v1"},
+            "channels": {"const": ["rgb", "mask"]}
+          }
+        }
+      ]
     },
     "counts": {
       "type": "object",
@@ -259,6 +294,7 @@
         "rejected_scenes": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
         "failed_scenes": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
         "accepted_samples": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "accepted_clips": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
         "rejection_reasons": {"type": "object", "additionalProperties": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}}
       }
     },
@@ -303,8 +339,9 @@
         "hash_algorithm": {"const": "sha256"},
         "indexes": {
           "type": "object",
-          "required": ["scenes", "samples"],
-          "properties": {"scenes": {"$ref": "#/$defs/indexDigest"}, "samples": {"$ref": "#/$defs/indexDigest"}}
+          "required": ["scenes"],
+          "anyOf": [{"required": ["samples"]}, {"required": ["clips"]}],
+          "properties": {"scenes": {"$ref": "#/$defs/indexDigest"}, "samples": {"$ref": "#/$defs/indexDigest"}, "clips": {"$ref": "#/$defs/indexDigest"}}
         },
         "validation": {
           "type": "object",

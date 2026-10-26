@@ -3,6 +3,8 @@ package io.github.thedeadbolt.honeyfactory.contract;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import io.github.thedeadbolt.honeyfactory.clip.ClipCodec;
+import io.github.thedeadbolt.honeyfactory.clip.ClipCodecs;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -89,7 +91,11 @@ public record DatasetManifest(
 		}
 	}
 
-	public record SplitCount(int scenes, int samples) {
+	/** A split's final counts; {@code clips} counts the clips of a clip dataset and is 0 for stills. */
+	public record SplitCount(int scenes, int samples, int clips) {
+		public SplitCount(int scenes, int samples) {
+			this(scenes, samples, 0);
+		}
 	}
 
 	/** {@code gitCommit} is null outside a Git checkout. */
@@ -156,10 +162,11 @@ public record DatasetManifest(
 		int rejectedScenes,
 		int failedScenes,
 		int acceptedSamples,
+		int acceptedClips,
 		Map<String, Integer> rejectionReasons
 	) {
 		public static Counts empty(int requestedScenes) {
-			return new Counts(requestedScenes, 0, 0, 0, 0, 0, Map.of());
+			return new Counts(requestedScenes, 0, 0, 0, 0, 0, 0, Map.of());
 		}
 	}
 
@@ -169,6 +176,7 @@ public record DatasetManifest(
 	public record IndexDigest(long bytes, String sha256) {
 	}
 
+	/** Index digests at completion; {@code samples} digests {@code samples.jsonl}, or {@code clips.jsonl} in a clip dataset. */
 	public record Integrity(IndexDigest scenes, IndexDigest samples, boolean validationPassed, int validationErrors) {
 	}
 
@@ -335,6 +343,24 @@ public record DatasetManifest(
 		return SplitGrouping.fromJson(this.configuration.getAsJsonObject("splits").get("grouping").getAsString());
 	}
 
+	/** Stills, or motion clips when the configuration has {@code generator.clips} (M12-2). */
+	public DatasetKind kind() {
+		return generator().has("clips") ? DatasetKind.CLIPS : DatasetKind.STILLS;
+	}
+
+	/**
+	 * A clip dataset's {@code generator.clips}.
+	 *
+	 * @throws IllegalStateException for a still dataset
+	 */
+	public ClipSettings clipSettings() {
+		if (kind() != DatasetKind.CLIPS) {
+			throw new IllegalStateException(this.datasetId + " is not a clip dataset");
+		}
+
+		return ClipSettings.fromJson(JsonFields.of(generator().getAsJsonObject("clips")));
+	}
+
 	private JsonObject generator() {
 		return this.configuration.getAsJsonObject("generator");
 	}
@@ -346,6 +372,11 @@ public record DatasetManifest(
 	public JsonObject toJson() {
 		JsonObject json = new JsonObject();
 		json.addProperty("schema_version", this.schemaVersion);
+		boolean clips = kind() == DatasetKind.CLIPS;
+		if (clips) {
+			json.addProperty("kind", DatasetKind.CLIPS.jsonName());
+		}
+
 		json.addProperty("dataset_id", this.datasetId);
 		json.addProperty("content_version", this.contentVersion);
 		json.addProperty("lifecycle", this.lifecycle.jsonName());
@@ -363,6 +394,10 @@ public record DatasetManifest(
 				JsonObject entry = new JsonObject();
 				entry.addProperty("scenes", count.scenes());
 				entry.addProperty("samples", count.samples());
+				if (clips) {
+					entry.addProperty("clips", count.clips());
+				}
+
 				counts.add(split.jsonName(), entry);
 			}
 
@@ -379,7 +414,7 @@ public record DatasetManifest(
 		software.addProperty("git_dirty", this.software.gitDirty());
 		json.add("software", software);
 		json.add("render_environment", this.renderEnvironment.toJson());
-		json.add("storage", storageJson());
+		json.add("storage", clips ? clipStorageJson(clipSettings().codec()) : storageJson());
 		JsonObject counts = new JsonObject();
 		counts.addProperty("requested_scenes", this.counts.requestedScenes());
 		counts.addProperty("attempted_scenes", this.counts.attemptedScenes());
@@ -387,6 +422,10 @@ public record DatasetManifest(
 		counts.addProperty("rejected_scenes", this.counts.rejectedScenes());
 		counts.addProperty("failed_scenes", this.counts.failedScenes());
 		counts.addProperty("accepted_samples", this.counts.acceptedSamples());
+		if (clips) {
+			counts.addProperty("accepted_clips", this.counts.acceptedClips());
+		}
+
 		JsonObject reasons = new JsonObject();
 		this.counts.rejectionReasons().forEach(reasons::addProperty);
 		counts.add("rejection_reasons", reasons);
@@ -418,7 +457,7 @@ public record DatasetManifest(
 			integrity.addProperty("hash_algorithm", Sha256.ALGORITHM);
 			JsonObject indexes = new JsonObject();
 			indexes.add("scenes", digestJson(this.integrity.scenes()));
-			indexes.add("samples", digestJson(this.integrity.samples()));
+			indexes.add(clips ? "clips" : "samples", digestJson(this.integrity.samples()));
 			integrity.add("indexes", indexes);
 			JsonObject validation = new JsonObject();
 			validation.addProperty("passed", this.integrity.validationPassed());
@@ -452,6 +491,24 @@ public record DatasetManifest(
 		return storage;
 	}
 
+	/** The layout of a clip dataset (M12-2): its indexes, clip folders and the codecs of its videos. */
+	static JsonObject clipStorageJson(ClipCodec codec) {
+		JsonObject storage = new JsonObject();
+		JsonObject indexes = new JsonObject();
+		indexes.addProperty("scenes", "scenes.jsonl");
+		indexes.addProperty("clips", "clips.jsonl");
+		storage.add("indexes", indexes);
+		storage.addProperty("clip_root", "clips");
+		JsonObject encodings = new JsonObject();
+		encodings.addProperty("rgb", codec.name());
+		encodings.addProperty("mask", ClipCodecs.maskCodecFor(codec).name());
+		encodings.addProperty("frames", "jsonl");
+		storage.add("encodings", encodings);
+		storage.addProperty("sharding", Algorithms.IDS);
+		storage.add("channels", JsonWrite.strings(List.of("rgb", "mask")));
+		return storage;
+	}
+
 	private static JsonObject digestJson(IndexDigest digest) {
 		JsonObject json = new JsonObject();
 		json.addProperty("bytes", digest.bytes());
@@ -474,6 +531,15 @@ public record DatasetManifest(
 		Instant completed = fields.isNull("completed_at_utc") ? null : timestamp(fields, "completed_at_utc");
 
 		JsonObject configuration = configuration(json, fields);
+		DatasetKind kind = configuration.getAsJsonObject("generator").has("clips") ? DatasetKind.CLIPS : DatasetKind.STILLS;
+		DatasetKind declared = fields.has("kind") ? fields.enumValue("kind", DatasetKind::fromJson) : DatasetKind.STILLS;
+		if (declared != kind) {
+			throw kind == DatasetKind.CLIPS
+				? fields.object("generator").error("clips", "only a clip dataset (kind clips) has clip settings")
+				: fields.object("generator").error("clips", "a clip dataset needs its clip settings");
+		}
+
+		ClipSettings clipSettings = kind == DatasetKind.CLIPS ? ClipSettings.fromJson(fields.object("generator").object("clips")) : null;
 		String configSha = fields.string("resolved_config_sha256");
 		String actualSha = CanonicalJson.sha256(configuration);
 		if (!configSha.equals(actualSha)) {
@@ -490,13 +556,18 @@ public record DatasetManifest(
 		Software software = software(fields.object("software"));
 		RenderEnvironment render = render(fields.object("render_environment"));
 		JsonFields storage = fields.object("storage");
-		if (!storage.raw().equals(storageJson())) {
-			throw fields.error("storage", "must describe the contract " + SchemaVersion.MAJOR + ".x layout exactly");
+		JsonObject layout = clipSettings == null ? storageJson() : clipStorageJson(clipSettings.codec());
+		if (!storage.raw().equals(layout)) {
+			throw fields.error("storage", "must describe the contract " + SchemaVersion.MAJOR + ".x " + kind.jsonName() + " layout exactly: " + layout);
+		}
+
+		if (clipSettings != null && !fields.object("counts").has("accepted_clips")) {
+			throw fields.object("counts").error("accepted_clips", "a clip dataset counts its clips");
 		}
 
 		Counts counts = counts(fields.object("counts"));
 		Provenance provenance = provenance(fields.object("provenance"));
-		Integrity integrity = fields.has("integrity") ? integrity(fields.object("integrity")) : null;
+		Integrity integrity = fields.has("integrity") ? integrity(fields.object("integrity"), kind) : null;
 		DatasetManifest manifest = new DatasetManifest(
 			version,
 			datasetId,
@@ -566,6 +637,11 @@ public record DatasetManifest(
 			int samples = this.splitCounts.values().stream().mapToInt(SplitCount::samples).sum();
 			if (scenes != this.counts.acceptedScenes() || samples != this.counts.acceptedSamples()) {
 				throw fields.object("splits").error("counts", "must sum to the accepted scene and sample counts");
+			}
+
+			int clips = this.splitCounts.values().stream().mapToInt(SplitCount::clips).sum();
+			if (kind() == DatasetKind.CLIPS && clips != this.counts.acceptedClips()) {
+				throw fields.object("splits").error("counts", "clips must sum to the accepted clip count");
 			}
 		}
 	}
@@ -651,7 +727,7 @@ public record DatasetManifest(
 		Map<Split, SplitCount> result = new EnumMap<>(Split.class);
 		for (Split split : Split.values()) {
 			JsonFields entry = counts.object(split.jsonName());
-			result.put(split, new SplitCount(entry.integer32("scenes", 0, Ids.MAX_SCENES), entry.integer32("samples", 0, Integer.MAX_VALUE)));
+			result.put(split, new SplitCount(entry.integer32("scenes", 0, Ids.MAX_SCENES), entry.integer32("samples", 0, Integer.MAX_VALUE), entry.integer32("clips", 0, Integer.MAX_VALUE, 0)));
 		}
 
 		return result;
@@ -772,7 +848,8 @@ public record DatasetManifest(
 			throw counts.error("rejection_reasons", "must sum to rejected_scenes (" + rejected + ")");
 		}
 
-		return new Counts(requested, attempted, accepted, rejected, failed, counts.integer32("accepted_samples", 0, Integer.MAX_VALUE), Map.copyOf(rejectionReasons));
+		return new Counts(requested, attempted, accepted, rejected, failed, counts.integer32("accepted_samples", 0, Integer.MAX_VALUE), counts.integer32("accepted_clips", 0, Integer.MAX_VALUE, 0),
+			Map.copyOf(rejectionReasons));
 	}
 
 	private static Provenance provenance(JsonFields provenance) {
@@ -786,14 +863,15 @@ public record DatasetManifest(
 		return new Provenance(provenance.string("tool"), parents, provenance.strings("derivations"));
 	}
 
-	private static Integrity integrity(JsonFields integrity) {
+	private static Integrity integrity(JsonFields integrity, DatasetKind kind) {
 		if (!Sha256.ALGORITHM.equals(integrity.string("hash_algorithm"))) {
 			throw integrity.error("hash_algorithm", "must be " + Sha256.ALGORITHM);
 		}
 
 		JsonFields indexes = integrity.object("indexes");
 		JsonFields validation = integrity.object("validation");
-		return new Integrity(digest(indexes.object("scenes")), digest(indexes.object("samples")), validation.bool("passed"), validation.integer32("error_count", 0, Integer.MAX_VALUE));
+		String items = kind == DatasetKind.CLIPS ? "clips" : "samples";
+		return new Integrity(digest(indexes.object("scenes")), digest(indexes.object(items)), validation.bool("passed"), validation.integer32("error_count", 0, Integer.MAX_VALUE));
 	}
 
 	private static IndexDigest digest(JsonFields digest) {

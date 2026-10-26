@@ -24,6 +24,8 @@ class RecordCasesTest {
 			case "dataset" -> DatasetManifest::fromJson;
 			case "scene" -> SceneRecord::fromJson;
 			case "sample" -> SampleRecord::fromJson;
+			case "clip" -> ClipRecord::fromJson;
+			case "frame" -> FrameRecord::fromJson;
 			default -> throw new IllegalArgumentException(kind);
 		};
 	}

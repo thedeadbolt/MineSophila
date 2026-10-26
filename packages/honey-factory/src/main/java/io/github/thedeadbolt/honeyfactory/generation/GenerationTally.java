@@ -53,7 +53,7 @@ final class GenerationTally {
 	}
 
 	DatasetManifest.Counts counts() {
-		return new DatasetManifest.Counts(this.requestedScenes, this.attempted, this.accepted, this.rejected, this.failed, this.acceptedSamples, Map.copyOf(this.rejectionReasons));
+		return new DatasetManifest.Counts(this.requestedScenes, this.attempted, this.accepted, this.rejected, this.failed, this.acceptedSamples, 0, Map.copyOf(this.rejectionReasons));
 	}
 
 	Map<Split, DatasetManifest.SplitCount> splitCounts() {
