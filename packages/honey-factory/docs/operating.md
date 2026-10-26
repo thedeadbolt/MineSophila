@@ -55,6 +55,33 @@ The dataset is written to `<output root>/<dataset id>/`; the ID ends with the fi
 hex digits of the resolved configuration's hash. It is marked `complete` only when the
 mod's own validation passes.
 
+### Several game instances
+
+One dataset can be generated on several game clients at once (M12-1, ADR 0019). From the
+repository:
+
+```sh
+uv run --package honey-factory-tools honey-factory-tools generate \
+  --instances 2 --root /mnt/fastvault/minesophila/datasets/<run> config.json
+```
+
+- Each instance generates a slice of the scene groups (scenes on a platform, source patches
+  on natural terrain) in its own world, `<dataset name>-i<index>`, with its own game folder
+  under `packages/honey-factory/build/run/instance-<index>/`.
+- `<root>/jobs/` holds each instance's configuration, job file and log;
+  `<root>/slices/` the slices; `<root>/worlds/` the worlds; `<root>/metrics/` the
+  measurements.
+- When every instance completes, the slices are merged into `<root>/<dataset id>/`, the
+  dataset one run would write, and validated. The merged manifest's `worlds` lists each
+  slice's world and scene slots. A level-5 scene replays only in its own world, copied under
+  `worlds/`.
+- If an instance fails, the command names its slice and stops. The finished slices stay
+  for inspection, and nothing is merged.
+- `merge-slices OUTPUT SLICE...` merges slices by hand. It links the images, so the slices
+  stay as they are.
+- Two or three instances fit the reference machine's 8 GB of VRAM. Each instance takes about
+  20–30 s to start, so small datasets gain little.
+
 ## 4. Validate outside the game
 
 ```sh

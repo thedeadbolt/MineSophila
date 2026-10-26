@@ -55,7 +55,8 @@ this package.
 | M9 | Acceptance matrix and production pilot | M0–M8 | Exit gate passed; [findings](m9-acceptance.md) |
 | M10 | Phase-1 production datasets | M9 | Planned |
 | M11 | Animal-like control: lock-step continuous commands, one frame per tick | M7, M9 | Exit gate passed; [findings](m11-animal-like-control.md), ADR 0018 |
-| M12 | Motion clips generated through that control | M10, M11 | Planned |
+| M12-1 | Fast and parallel generation | M10, M11 | Exit gate passed; [findings](m12-1-fast-parallel-generation.md), ADR 0019 |
+| M12-2 | Motion clips generated through that control, and the first teacher | M12-1 | Planned |
 | M13 | Level-6 active-search environment and teacher episodes | M11, M12 | Planned |
 | M14 | Live adapter for the fly brain | M13 | Planned |
 
@@ -379,10 +380,26 @@ Deliverables:
 - Determinism: the same command sequence from the same state gives the same frames on the
   reference setup, whatever the caller's speed.
 
-### M12 — Motion clips
+### M12-1 — Fast and parallel generation
+
+Faster still datasets and control steps on one machine, and one generation job on several
+game instances, before M12-2 builds clips on the same machinery. Design:
+`docs/superpowers/specs/2026-10-25-m12-1-fast-parallel-generation-design.md`.
+
+Delivered:
+
+- a benchmark of every phase on fixed-seed reference workloads, with a frame-for-frame
+  quality comparison;
+- frame-rate, vsync and inactivity limits lifted while generating, and every arena section
+  rebuilt before a capture;
+- reprojection on worker threads and readback overlapped with rendering;
+- several frames per control tick;
+- slices of a dataset's scene groups, `merge-slices`, and `generate --instances N`.
+
+### M12-2 — Motion clips
 
 Short frame streams for training motion-sensitive vision offline, generated within M11's
-constraints.
+constraints. Design: `docs/superpowers/specs/2026-10-25-m12-2-motion-clips-design.md`.
 
 Deliverables:
 
