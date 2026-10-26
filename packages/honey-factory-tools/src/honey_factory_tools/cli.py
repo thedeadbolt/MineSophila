@@ -1,5 +1,6 @@
 """Command-line entry point: ``validate``, ``validate-dataset``, ``inspect``, ``select``,
-``reviews``, ``acceptance-report``, ``merge-slices``, ``generate`` and ``control-demo``."""
+``reviews``, ``acceptance-report``, ``merge-slices``, ``generate``, ``clip-report`` and
+``control-demo``."""
 
 import argparse
 import json
@@ -12,6 +13,7 @@ from typing import cast
 
 from honey_factory_tools import (
     __version__,
+    clip_report,
     control,
     dataset,
     inspector,
@@ -104,6 +106,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     joined.add_argument("--schemas", type=Path, help="schema directory for one contract version")
     joined.add_argument("output", type=Path, help="folder the merged dataset is written into")
     joined.add_argument("slices", nargs="+", type=Path, help="the slice dataset directories")
+    clip_metrics = commands.add_parser(
+        "clip-report", help="report the metrics of clip datasets (M12-2 pilot)"
+    )
+    clip_metrics.add_argument(
+        "--schemas", type=Path, help="schema directory for one contract version"
+    )
+    clip_metrics.add_argument("--output", type=Path, help="also write the report as JSON here")
+    clip_metrics.add_argument("datasets", nargs="+", type=Path, help="clip dataset directories")
     run = commands.add_parser(
         "generate", help="generate a dataset on several game instances and merge their slices"
     )
@@ -169,6 +179,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"error: {error}", file=sys.stderr)
             return 1
         print(made)
+        return 0
+    if args.command == "clip-report":
+        result = clip_report.report(cast(list[Path], args.datasets), schemas)
+        if args.output is not None:
+            output = cast(Path, args.output)
+            output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+        print(clip_report.table(result))
         return 0
     if args.command == "merge-slices":
         try:
