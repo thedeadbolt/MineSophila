@@ -10,6 +10,8 @@ import com.mojang.renderpearl.api.device.GpuDevice;
 import com.mojang.renderpearl.api.textures.GpuTexture;
 import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
+import io.github.thedeadbolt.honeyfactory.client.mixin.SectionOcclusionGraphAccessor;
+import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -51,11 +53,15 @@ public final class CaptureService {
 	private static int injectedFailureView;
 
 	/**
-	 * One capture: the output images and the rendered views they were assembled from. Times
-	 * are CPU wall time for render submission and readback, summed over views, and for
-	 * assembly.
+	 * One capture: the output images, the rendered views they were assembled from, and the
+	 * camera's pose, feet position and view rotation. Times are CPU wall time for render
+	 * submission and readback, summed over views, and for assembly.
 	 */
-	public record Capture(CapturedImages images, List<CapturedImages> views, long worldTick, double partialTick, long renderNanos, long readbackNanos, long assembleNanos) {
+	public record Capture(CapturedImages images, List<CapturedImages> views, long worldTick, double partialTick, long renderNanos, long readbackNanos, long assembleNanos, CameraPose pose) {
+		/** The same capture recorded at {@code partialTick} of its tick. */
+		Capture atPartialTick(double partialTick) {
+			return new Capture(this.images, this.views, this.worldTick, partialTick, this.renderNanos, this.readbackNanos, this.assembleNanos, this.pose);
+		}
 	}
 
 	/** The player's rotation, saved before the views turn it. */
@@ -123,6 +129,7 @@ public final class CaptureService {
 		}
 
 		long worldTick = minecraft.level.getGameTime();
+		CameraPose pose = new CameraPose(player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot());
 		Rotation original = Rotation.of(player);
 		try (CaptureSetup ignored = CaptureSetup.apply(minecraft, first)) {
 			List<Readback> pending = new ArrayList<>(views.size());
@@ -151,7 +158,7 @@ public final class CaptureService {
 
 			long assembleStart = System.nanoTime();
 			CapturedImages images = projection.assemble(rendered);
-			return new Capture(images, List.copyOf(rendered), worldTick, PARTIAL_TICK, renderNanos, readbackNanos, System.nanoTime() - assembleStart);
+			return new Capture(images, List.copyOf(rendered), worldTick, PARTIAL_TICK, renderNanos, readbackNanos, System.nanoTime() - assembleStart, pose);
 		} catch (EnvironmentException | UnsupportedOperationException e) {
 			throw e;
 		} catch (RuntimeException e) {
@@ -159,6 +166,67 @@ public final class CaptureService {
 		} finally {
 			original.restore(player);
 		}
+	}
+
+	/**
+	 * Captures from {@code pose}, a point the camera passes during the current tick, as the
+	 * frame at {@code partialTick} of it (M12-1, several frames per control tick). The client
+	 * player is moved there, the section graph brought up to date for its position, then put
+	 * back exactly; the world is frozen and the player does not tick in between, so nothing
+	 * else sees the move.
+	 */
+	public static Capture captureAt(Minecraft minecraft, CaptureProjection projection, @Nullable BlockPos target, CameraPose pose, double partialTick) {
+		checkCanCapture(minecraft);
+		LocalPlayer player = minecraft.player;
+		double x = player.getX();
+		double y = player.getY();
+		double z = player.getZ();
+		float yaw = player.getYRot();
+		float pitch = player.getXRot();
+		try {
+			place(player, pose.x(), pose.y(), pose.z(), pose.yawDegrees(), pose.pitchDegrees());
+			settleSectionGraph(minecraft);
+			return capture(minecraft, projection, target).atPartialTick(partialTick);
+		} finally {
+			place(player, x, y, z, yaw, pitch);
+		}
+	}
+
+	/** Puts the player at a pose with its interpolation settled, without wrapping or snapping its angles. */
+	private static void place(LocalPlayer player, double x, double y, double z, float yaw, float pitch) {
+		player.setPos(x, y, z);
+		player.setYRot(yaw);
+		player.setXRot(pitch);
+		player.setOldPosAndRot();
+	}
+
+	/**
+	 * Renders a frame from the camera's position so the section graph updates for it, and
+	 * when that needs a full rebuild, as after moving into another section, waits for the
+	 * rebuild and renders once more so the next render uses it.
+	 */
+	private static void settleSectionGraph(Minecraft minecraft) {
+		for (int attempt = 0; attempt < 4; attempt++) {
+			renderFrame(minecraft, null);
+			SectionOcclusionGraphAccessor graph = (SectionOcclusionGraphAccessor) minecraft.levelRenderer.sectionOcclusionGraph();
+			Future<?> rebuild = graph.honeyFactory$fullUpdateTask();
+			if (!graph.honeyFactory$needsFullUpdate() && (rebuild == null || rebuild.isDone())) {
+				return;
+			}
+
+			if (rebuild != null) {
+				try {
+					rebuild.get();
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					throw failure("interrupted while rebuilding the section graph");
+				} catch (ExecutionException e) {
+					throw failure("rebuilding the section graph failed: " + e.getCause());
+				}
+			}
+		}
+
+		throw failure("the section graph did not settle at the interpolated camera position");
 	}
 
 	/** Checks the client can capture at all: a level, a player and improved transparency. */

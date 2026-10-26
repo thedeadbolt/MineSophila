@@ -62,6 +62,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.server.level.ChunkTrackingView;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LightLayer;
@@ -139,8 +140,16 @@ public final class EnvironmentRuntime {
 	}
 
 	/** One control step, the capture it returned, and the control session it belongs to. */
-	public record ControlResult(ControlStep step, CaptureService.Capture capture, long session) {
+	/**
+	 * A control step's record and its captures: {@code capture} at the end of the tick, and
+	 * {@code frames} at partial ticks {@code k / framesPerTick}, the last being
+	 * {@code capture}. A reset's step 0 has the one still frame.
+	 */
+	public record ControlResult(ControlStep step, CaptureService.Capture capture, long session, List<CaptureService.Capture> frames) {
 	}
+
+	/** The most frames a control tick captures. */
+	public static final int MAX_FRAMES_PER_TICK = 8;
 
 	private static final EnvironmentRuntime INSTANCE = new EnvironmentRuntime(Timing.DEFAULT);
 	private static final double POSE_TOLERANCE = 1e-6;
@@ -358,6 +367,19 @@ public final class EnvironmentRuntime {
 	 * auto-jump option are borrowed until {@link #controlEnd}.
 	 */
 	public CompletableFuture<ControlResult> controlReset(ArenaLayout layout, ScenePlan plan, CameraPose start, CaptureProjection projection, long seed) {
+		return controlReset(layout, plan, start, projection, seed, 1);
+	}
+
+	/**
+	 * The same, capturing {@code framesPerTick} frames per later step (1 to
+	 * {@value #MAX_FRAMES_PER_TICK}): the tick's end and evenly spaced points the camera
+	 * passes during it, for motion clips.
+	 */
+	public CompletableFuture<ControlResult> controlReset(ArenaLayout layout, ScenePlan plan, CameraPose start, CaptureProjection projection, long seed, int framesPerTick) {
+		if (framesPerTick < 1 || framesPerTick > MAX_FRAMES_PER_TICK) {
+			return CompletableFuture.failedFuture(new EnvironmentException(EnvironmentException.Reason.INVALID_REQUEST, "frames per tick must be 1 to " + MAX_FRAMES_PER_TICK + ", got " + framesPerTick));
+		}
+
 		Minecraft minecraft = Minecraft.getInstance();
 		if (minecraft.isPaused()) {
 			return CompletableFuture.failedFuture(paused());
@@ -370,7 +392,7 @@ public final class EnvironmentRuntime {
 		releaseStill(minecraft);
 		return reset(layout, plan, start).thenCompose(state -> start(OperationKind.CONTROL_RESET, (server, operation) -> {
 			ControlSession session = this.control == null ? new ControlSession(minecraft) : this.control.restart();
-			session.install(minecraft, projection, seed, this.settings.autoJump());
+			session.install(minecraft, projection, seed, framesPerTick, this.settings.autoJump());
 			// Held from here on, so a failure gives the input back (see onFailure).
 			this.control = session;
 			TickStepper.get().hold(server);
@@ -380,7 +402,8 @@ public final class EnvironmentRuntime {
 				minecraft.level.tickRateManager().isFrozen() && minecraft.gameMode.getPlayerMode() == GameType.ADVENTURE && inArena(minecraft) && sectionsCompiled(minecraft)
 			), (embodied, settled) -> {
 				this.coordinator.advance(operation, OperationState.CAPTURING);
-				return session.record(minecraft, operation, controlStep(minecraft, operation, session, 0, null, null, ControlStep.Executed.STUDENT, MotorState.ZERO, levelTime(server), new double[3]));
+				Captured still = controlStep(minecraft, operation, session, 0, null, null, ControlStep.Executed.STUDENT, MotorState.ZERO, levelTime(server), new double[3]);
+				return session.record(minecraft, operation, still, List.of(still.capture()));
 			});
 			pending.afterWork = () -> this.coordinator.advance(operation, OperationState.SETTLING);
 			return pending;
@@ -437,7 +460,9 @@ public final class EnvironmentRuntime {
 				this.coordinator.advance(operation, OperationState.CAPTURING);
 				session.motor = achieved[0];
 				int index = session.last.step().index() + 1;
-				return session.record(minecraft, operation, controlStep(minecraft, operation, session, index, student, teacher, executed, achieved[0], tick.serverTick(), tick.displacement()));
+				CameraPose from = session.last.step().truth().pose();
+				Captured captured = controlStep(minecraft, operation, session, index, student, teacher, executed, achieved[0], tick.serverTick(), tick.displacement());
+				return session.record(minecraft, operation, captured, frames(minecraft, session, from, captured));
 			});
 			pending.afterWork = () -> this.coordinator.advance(operation, OperationState.SETTLING);
 			return pending;
@@ -510,6 +535,40 @@ public final class EnvironmentRuntime {
 	private record Captured(ControlStep step, CaptureService.Capture capture) {
 	}
 
+	/**
+	 * A step's frames: the camera's poses at partial ticks {@code k / framesPerTick} between
+	 * the last step's pose and this one's, then the end-of-tick capture. The tick only moves
+	 * the body a fraction of a block, so the readiness check of the end pose holds for them;
+	 * a frame that moves into another section rebuilds the section graph first (see
+	 * {@link CaptureService#captureAt}).
+	 */
+	private List<CaptureService.Capture> frames(Minecraft minecraft, ControlSession session, CameraPose from, Captured captured) {
+		int count = session.framesPerTick;
+		if (count == 1) {
+			return List.of(captured.capture());
+		}
+
+		CameraPose to = captured.step().truth().pose();
+		int[] cell = this.scene.targetPosition(this.arena);
+		BlockPos target = cell == null ? null : new BlockPos(cell[0], cell[1], cell[2]);
+		List<CaptureService.Capture> frames = new ArrayList<>(count);
+		for (int k = 1; k < count; k++) {
+			double t = k / (double) count;
+			CameraPose at = new CameraPose(
+				from.x() + (to.x() - from.x()) * t,
+				from.y() + (to.y() - from.y()) * t,
+				from.z() + (to.z() - from.z()) * t,
+				// Poses may hold wrapped yaws (181.8 as -178.2), so turn the short way.
+				(float) (from.yawDegrees() + Mth.wrapDegrees(to.yawDegrees() - from.yawDegrees()) * t),
+				(float) (from.pitchDegrees() + (to.pitchDegrees() - from.pitchDegrees()) * t)
+			);
+			frames.add(CaptureService.captureAt(minecraft, session.projection, target, at, t));
+		}
+
+		frames.add(captured.capture());
+		return List.copyOf(frames);
+	}
+
 	private static long levelTime(IntegratedServer server) {
 		ServerPlayer player = player(server);
 		return player.level().getGameTime();
@@ -536,6 +595,7 @@ public final class EnvironmentRuntime {
 		private FramePacing.@Nullable Lease pacing;
 		private CaptureProjection projection;
 		private long seed;
+		private int framesPerTick = 1;
 		private MotorState motor = MotorState.ZERO;
 		private MotorCommand lastExecuted = MotorCommand.IDLE;
 		private @Nullable ControlResult last;
@@ -552,9 +612,10 @@ public final class EnvironmentRuntime {
 			return next;
 		}
 
-		void install(Minecraft minecraft, CaptureProjection projection, long seed, boolean autoJump) {
+		void install(Minecraft minecraft, CaptureProjection projection, long seed, int framesPerTick, boolean autoJump) {
 			this.projection = projection;
 			this.seed = seed;
+			this.framesPerTick = framesPerTick;
 			if (this.savedInput == null) {
 				this.savedInput = minecraft.player.input;
 				this.savedAutoJump = minecraft.options.autoJump().get();
@@ -569,8 +630,8 @@ public final class EnvironmentRuntime {
 			minecraft.options.autoJump().set(autoJump);
 		}
 
-		ControlResult record(Minecraft minecraft, Operation operation, Captured captured) {
-			this.last = new ControlResult(captured.step(), captured.capture(), this.id);
+		ControlResult record(Minecraft minecraft, Operation operation, Captured captured, List<CaptureService.Capture> frames) {
+			this.last = new ControlResult(captured.step(), captured.capture(), this.id, frames);
 			return this.last;
 		}
 

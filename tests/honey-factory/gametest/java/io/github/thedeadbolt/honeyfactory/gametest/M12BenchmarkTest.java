@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import io.github.thedeadbolt.honeyfactory.HoneyFactory;
 import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
 import io.github.thedeadbolt.honeyfactory.capture.PanoramicProjection;
+import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
 import io.github.thedeadbolt.honeyfactory.client.generation.DatasetRuns;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
 import io.github.thedeadbolt.honeyfactory.contract.Sha256;
@@ -215,8 +216,9 @@ public class M12BenchmarkTest implements FabricClientGameTest {
 		long[] readbackNanos = new long[CONTROL_TICKS];
 		long[] reprojectNanos = new long[CONTROL_TICKS];
 		long resetStart = System.nanoTime();
+		int framesPerTick = Integer.getInteger("honeyfactory.benchmarkFramesPerTick", 1);
 		EnvironmentRuntime.ControlResult result = GameTestSupport.await(context, runtime -> runtime.controlReset(preview.arena(), preview.scene().plan(),
-			preview.viewpoint().pose(preview.arena()), projection, CONTROL_SEED));
+			preview.viewpoint().pose(preview.arena()), projection, CONTROL_SEED, framesPerTick));
 		double resetSeconds = (System.nanoTime() - resetStart) / 1e9;
 		lines.add(save(directory, 0, result));
 		for (int tick = 1; tick <= CONTROL_TICKS; tick++) {
@@ -224,9 +226,9 @@ public class M12BenchmarkTest implements FabricClientGameTest {
 			long start = System.nanoTime();
 			result = GameTestSupport.await(context, runtime -> runtime.controlStep(command, null, ControlStep.Executed.STUDENT));
 			stepNanos[tick - 1] = System.nanoTime() - start;
-			renderNanos[tick - 1] = result.capture().renderNanos();
-			readbackNanos[tick - 1] = result.capture().readbackNanos();
-			reprojectNanos[tick - 1] = result.capture().assembleNanos();
+			renderNanos[tick - 1] = result.frames().stream().mapToLong(CaptureService.Capture::renderNanos).sum();
+			readbackNanos[tick - 1] = result.frames().stream().mapToLong(CaptureService.Capture::readbackNanos).sum();
+			reprojectNanos[tick - 1] = result.frames().stream().mapToLong(CaptureService.Capture::assembleNanos).sum();
 			lines.add(save(directory, tick, result));
 		}
 
@@ -239,7 +241,7 @@ public class M12BenchmarkTest implements FabricClientGameTest {
 
 		JsonObject json = new JsonObject();
 		json.addProperty("ticks", CONTROL_TICKS);
-		json.addProperty("frames_per_tick", 1);
+		json.addProperty("frames_per_tick", framesPerTick);
 		json.addProperty("reset_seconds", resetSeconds);
 		JsonObject phases = new JsonObject();
 		phases.add("control_step", total(GenerationTimings.Total.of(stepNanos)));
