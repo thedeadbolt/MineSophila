@@ -16,7 +16,9 @@ import org.jspecify.annotations.Nullable;
  *   <li><b>Search</b> after that, or if it was never seen: systematic frontier coverage.
  * </ul>
  *
- * Its decisions depend only on its inputs, so a teacher replays exactly.
+ * Every command passes the {@link EdgeBrake} before it is given, so the teacher never walks
+ * off a ledge it has seen nor onto floor it has not. Its decisions depend only on its
+ * inputs, so a teacher replays exactly.
  */
 public final class RealizableTeacher implements Teacher {
 	/** How far around the last sighting re-acquiring searches, in blocks. */
@@ -48,6 +50,11 @@ public final class RealizableTeacher implements Teacher {
 			throw new IllegalStateException("reset the teacher with a context first");
 		}
 
+		Decision decision = unbraked(input, context);
+		return new Decision(EdgeBrake.apply(decision.command(), input, context), decision.mode(), decision.belief());
+	}
+
+	private Decision unbraked(TeacherInput input, TeacherContext context) {
 		int observed = input.tick() - 1;
 		if (input.honeySeen() != null) {
 			this.arrived = false;

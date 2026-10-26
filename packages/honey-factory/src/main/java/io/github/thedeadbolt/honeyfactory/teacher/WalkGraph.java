@@ -8,7 +8,9 @@ import java.util.List;
 /**
  * Where the body could stand and step, as far as the teacher knows. Cells are
  * arena-relative. A block counts only once it has been seen; unseen space is planned as
- * open floor at the body's height, and every tick's new view corrects the plan.
+ * open floor at the body's height, and every tick's new view corrects the plan. A drop is
+ * planned only onto floor the teacher has seen: it never steps down blind, since it may not
+ * climb back.
  */
 public final class WalkGraph {
 	/** A side step, its cost and whether it is diagonal. */
@@ -41,6 +43,18 @@ public final class WalkGraph {
 	public record Edge(int[] to, double cost) {
 	}
 
+	/** What the body would find entering a column from a given feet height, as far as the teacher has seen. */
+	public enum Footing {
+		/** Seen floor at the same height, one step up, or a drop of at most {@link SeenMap#MAX_DROP}. */
+		SAFE,
+		/** A block the body walks against; it stops or slides there, it does not fall. */
+		BLOCKED,
+		/** The floor is not seen yet. */
+		UNKNOWN,
+		/** Seen open space deeper than the body may drop. */
+		LEDGE
+	}
+
 	/** A seen block in {@code (x, y, z)}; outside the arena counts as solid. */
 	public boolean knownSolid(int x, int y, int z) {
 		if (x < 0 || z < 0 || x >= this.width || z >= this.length || y < 0) {
@@ -59,6 +73,31 @@ public final class WalkGraph {
 		return !this.seen.seen(x, y - 1, z) || this.grid.solid(x, y - 1, z);
 	}
 
+	/** Whether the body could stand in {@code (x, y, z)} on floor the teacher has seen. */
+	public boolean standable(int x, int y, int z) {
+		return walkable(x, y, z) && this.seen.seen(x, y - 1, z) && this.grid.solid(x, y - 1, z);
+	}
+
+	/** What the body finds entering column {@code (x, z)} with its feet at {@code y}. */
+	public Footing footing(int x, int y, int z) {
+		if (!passable(x, y, z)) {
+			return !knownSolid(x, y + 2, z) && standable(x, y + SeenMap.STEP_UP, z) ? Footing.SAFE : Footing.BLOCKED;
+		}
+
+		for (int drop = 0; drop <= SeenMap.MAX_DROP; drop++) {
+			int feet = y - drop;
+			if (feet < 1 || !this.seen.seen(x, feet - 1, z)) {
+				return Footing.UNKNOWN;
+			}
+
+			if (this.grid.solid(x, feet - 1, z)) {
+				return Footing.SAFE;
+			}
+		}
+
+		return Footing.LEDGE;
+	}
+
 	/** Whether the body's height is clear in column {@code (x, z)} at feet height {@code y}. */
 	public boolean passable(int x, int y, int z) {
 		return !knownSolid(x, y, z) && !knownSolid(x, y + 1, z);
@@ -67,7 +106,7 @@ public final class WalkGraph {
 	/**
 	 * Steps from {@code cell} to each side and diagonal neighbour: level when the neighbour
 	 * is walkable there, up one block (auto-jump) with head room, or down up to
-	 * {@value SeenMap#MAX_DROP}. A diagonal needs both sides it passes clear.
+	 * {@value SeenMap#MAX_DROP} onto seen floor. A diagonal needs both sides it passes clear.
 	 */
 	public List<Edge> edges(int[] cell) {
 		List<Edge> edges = new ArrayList<>(8);
@@ -89,12 +128,12 @@ public final class WalkGraph {
 				edges.add(new Edge(new int[] {nx, y + SeenMap.STEP_UP, nz}, base + CLIMB_COST + nearWall(nx, y + SeenMap.STEP_UP, nz)));
 			} else if (passable(nx, y, nz)) {
 				for (int drop = 1; drop <= SeenMap.MAX_DROP; drop++) {
-					if (walkable(nx, y - drop, nz)) {
+					if (standable(nx, y - drop, nz)) {
 						edges.add(new Edge(new int[] {nx, y - drop, nz}, base + DROP_COST * drop + nearWall(nx, y - drop, nz)));
 						break;
 					}
 
-					if (knownSolid(nx, y - drop, nz)) {
+					if (knownSolid(nx, y - drop, nz) || !this.seen.seen(nx, y - drop - 1, nz)) {
 						break;
 					}
 				}

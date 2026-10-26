@@ -28,6 +28,17 @@ final class Grids implements SightGrid {
 		return this;
 	}
 
+	/** Fills columns {@code x0..x1 × z0..z1} from y = 1 to {@code top}: a raised platform whose top is {@code top}. */
+	Grids platform(int x0, int z0, int x1, int z1, int top) {
+		for (int x = x0; x <= x1; x++) {
+			for (int z = z0; z <= z1; z++) {
+				wall(x, z, top);
+			}
+		}
+
+		return this;
+	}
+
 	/** Removes any blocks above the floor in column {@code (x, z)}, for a start position. */
 	Grids clear(int x, int z) {
 		for (int y = 1; y < this.core.maxY() + 1; y++) {

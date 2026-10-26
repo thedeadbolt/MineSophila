@@ -10,7 +10,8 @@ import java.util.List;
  * Track: the honey is visible, so turn to it and approach it. When the straight way is
  * clear of blocks the teacher has seen, it steers at the honey itself; otherwise it follows
  * a path to the walkable cell beside the honey that is nearest, steering two cells ahead.
- * Within reach it stops and keeps the honey centred.
+ * Within reach it stops and keeps the honey centred. With no known way to it (across a
+ * gap, below a ledge) it turns to the honey and watches it instead of walking at it.
  */
 public final class TrackBehaviour {
 	/** Path cells ahead of the body the teacher steers at. */
@@ -50,14 +51,17 @@ public final class TrackBehaviour {
 		int[] feet = {(int) Math.floor(pose.x()) - origin[0], (int) Math.floor(pose.y()) - origin[1], (int) Math.floor(pose.z()) - origin[2]};
 		int[] target = {honey[0] - origin[0], honey[1] - origin[1], honey[2] - origin[2]};
 		double[] aim = centre;
+		boolean walk = true;
 		if (!clear(graph, pose, origin, feet[1], centre)) {
 			List<int[]> path = pathBeside(graph, feet, target);
 			if (path != null && path.size() > 1) {
 				aim = ahead(graph, pose, origin, feet[1], path);
+			} else {
+				walk = false;
 			}
 		}
 
-		MotorCommand steer = Steering.toward(pose, input.senses(), aim, context.eyeHeight(), context.limits(), true, false);
+		MotorCommand steer = Steering.toward(pose, input.senses(), aim, context.eyeHeight(), context.limits(), walk, false);
 		MotorCommand look = Steering.toward(pose, input.senses(), centre, context.eyeHeight(), context.limits(), false, true);
 		return new MotorCommand(steer.forward(), steer.strafe(), steer.turnRate(), look.pitchRate(), false, 0);
 	}
@@ -102,7 +106,10 @@ public final class TrackBehaviour {
 		return best;
 	}
 
-	/** Whether the body could walk straight towards {@code centre}: every column on the way is clear at its feet's height. */
+	/**
+	 * Whether the body could walk straight towards {@code centre}: under its whole width, every
+	 * column on the way has seen floor at its feet's height.
+	 */
 	static boolean clear(WalkGraph graph, CameraPose pose, int[] origin, int feetY, double[] centre) {
 		double dx = centre[0] - pose.x();
 		double dz = centre[2] - pose.z();
@@ -110,14 +117,20 @@ public final class TrackBehaviour {
 		int honeyX = (int) Math.floor(centre[0]) - origin[0];
 		int honeyZ = (int) Math.floor(centre[2]) - origin[2];
 		for (double t = LINE_STEP; t < length; t += LINE_STEP) {
-			int x = (int) Math.floor(pose.x() + dx * t / length) - origin[0];
-			int z = (int) Math.floor(pose.z() + dz * t / length) - origin[2];
-			if (x == honeyX && z == honeyZ) {
+			double px = pose.x() + dx * t / length;
+			double pz = pose.z() + dz * t / length;
+			if ((int) Math.floor(px) - origin[0] == honeyX && (int) Math.floor(pz) - origin[2] == honeyZ) {
 				return true;
 			}
 
-			if (!graph.walkable(x, feetY, z)) {
-				return false;
+			for (double ox : new double[] {-BODY_RADIUS, BODY_RADIUS}) {
+				for (double oz : new double[] {-BODY_RADIUS, BODY_RADIUS}) {
+					int x = (int) Math.floor(px + ox) - origin[0];
+					int z = (int) Math.floor(pz + oz) - origin[2];
+					if ((x != honeyX || z != honeyZ) && !graph.standable(x, feetY, z)) {
+						return false;
+					}
+				}
 			}
 		}
 

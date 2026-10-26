@@ -48,6 +48,23 @@ class TrackBehaviourTest {
 	}
 
 	@Test
+	void honeyWithNoKnownWayIsWatchedNotWalkedTo() {
+		// The honey stands on a second platform across a gap with a 4-block drop: no path,
+		// so the tracker faces it and waits instead of walking at it (no brake involved).
+		Grids grid = new Grids(33, 10, 33).platform(4, 4, 28, 14, 4).platform(4, 18, 28, 28, 4);
+		int[] honey = {16, 5, 24};
+		grid.wall(honey[0], honey[2], 5);
+		TeacherContext context = new TeacherContext(grid, grid.core, MotorLimits.DEFAULT, 50, EYE, PANORAMA, REACH);
+		BodySim body = new BodySim(grid, new CameraPose(16.5, 5.0, 10.5, 0.0f, 0.0f));
+		SeenMap seen = new SeenMap(grid.core);
+		HoneyMemory memory = new HoneyMemory();
+		for (int tick = 1; tick <= 80; tick++) {
+			body.step(TrackBehaviour.decide(Perception.perceive(tick, body.pose(), body.senses(), honey, 1000, context, seen, memory), context).command());
+			assertTrue(body.pose().y() >= 5.0, "tick " + tick + ": walked into the gap to " + body.pose());
+		}
+	}
+
+	@Test
 	void reachesHoneyOnOpenPlatform() {
 		SplittableRandom random = new SplittableRandom(2026);
 		int reached = 0;
