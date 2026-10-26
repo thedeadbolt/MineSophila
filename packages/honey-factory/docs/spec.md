@@ -883,6 +883,29 @@ M12-1, ADR 0019:
 - Merged slices form exactly the dataset one run would write. On natural terrain, each
   slice's world is kept, and its scenes replay only there.
 
+### Motion clips
+
+M12-2, ADR 0020:
+
+- A clip dataset (`kind: "clips"`) holds clips instead of samples. A clip resets its scene
+  at a start drawn as a still viewpoint is, then drives the body through the control loop;
+  every frame is a capture of the body's camera, 3 per tick by default.
+- Every frame's labels come from its own capture and pose: the visible mask, the honey's
+  status, its bearing and distance, and whether it touches the frame edge. Honey at the edge
+  is labelled, never rejected. Each tick records the senses, the executed and the teacher's
+  command, the teacher's mode and belief, who drove it (teacher, teacher with drift, or a
+  script), whether the edge guard stopped the walk, drift and search coverage. The policy's
+  target is always the teacher's command.
+- The teacher acts only on what the fly could know: the honey's position only when the
+  observed frame shows at least `teacher.min_visible_pixels`, its last sighting, and the
+  cells that have been in view. Both validators check this on every tick. It plans drops
+  only onto floor it has seen and never walks off a ledge; drift and scripts are kept on
+  the floor by an edge guard that knows the true layout, and some drift pushes towards
+  ledges and walls so the data holds recoveries there.
+- RGB is stored as lossless video by default; masks are always lossless.
+- A clip replays from its scene seeds and executed commands: poses, labels and masks
+  exactly, and RGB unless the codec is lossy or the scene animates.
+
 ## Environment control
 
 Agreed 2026-10-22: build a synchronous environment API inside the mod and keep it
