@@ -76,6 +76,7 @@
     "teacher_mode": null,
     "belief": null,
     "drifting": false,
+    "driver": null,
     "coverage": 0.3
   }
 }

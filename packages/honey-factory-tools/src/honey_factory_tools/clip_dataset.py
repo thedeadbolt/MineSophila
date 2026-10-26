@@ -11,7 +11,8 @@ own rules:
   (the previous tick's last) to show at least ``teacher.min_visible_pixels`` and names the
   scene's honey; ``memory`` names the last sighting; nothing is seen without honey;
 - the executed commands, as the clip and its ticks record them, within the motor limits;
-  drift ticks and ticks by mode as the ticks record them;
+  drift ticks, ticks by mode and ticks by driver as the ticks record them; scripts drive
+  only scan and pass-by clips and the start of an occlusion clip;
 - files: present with the recorded size and SHA-256, videos holding every frame, and each
   frame's mask pixel count and box as its record states (skipped by ``quick``); folders
   under ``clips/`` no clip references are errors.
@@ -134,6 +135,9 @@ def frame_errors(
     executed: list[Record] = []
     drifting = 0
     modes: Counter[str] = Counter()
+    drivers: Counter[str] = Counter()
+    scripted_type = clip["clip_type"] in ("scan", "pass_by")
+    teacher_took_over = False
     last_seen: list[int] | None = None
     for tick in range(1, clip["tick_count"] + 1):
         frame = ticks.get(tick)
@@ -173,6 +177,22 @@ def frame_errors(
                 )
         drifting += 1 if labels["drifting"] else 0
         modes[labels["teacher_mode"]] += 1
+        driver: str = labels["driver"]
+        drivers[driver] += 1
+        if driver == "script":
+            if not scripted_type and clip["clip_type"] != "occlusion":
+                errors.append(
+                    label + f"tick {tick}: driven by a script in a {clip['clip_type']} clip"
+                )
+            elif teacher_took_over:
+                errors.append(label + f"tick {tick}: script ticks after the teacher took over")
+        elif scripted_type:
+            errors.append(
+                label + f"tick {tick}: a {clip['clip_type']} clip is driven by its script, "
+                f"not {driver}"
+            )
+        else:
+            teacher_took_over = True
     if [_command(command) for command in executed] != [
         _command(command) for command in clip["executed"]
     ]:
@@ -186,6 +206,12 @@ def frame_errors(
         mode: modes[mode] for mode in ("track", "reacquire", "search")
     }:
         errors.append(label + f"summary.ticks_by_mode differs from the ticks' modes {dict(modes)}")
+    if dict(summary["ticks_by_driver"]) != {
+        driver: drivers[driver] for driver in ("teacher", "teacher_drift", "script")
+    }:
+        errors.append(
+            label + f"summary.ticks_by_driver differs from the ticks' drivers {dict(drivers)}"
+        )
     return errors
 
 

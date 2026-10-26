@@ -8,6 +8,7 @@ import io.github.thedeadbolt.honeyfactory.contract.FrameRecord;
 import io.github.thedeadbolt.honeyfactory.contract.MaskStatistics;
 import io.github.thedeadbolt.honeyfactory.contract.SceneRecord;
 import io.github.thedeadbolt.honeyfactory.contract.Split;
+import io.github.thedeadbolt.honeyfactory.contract.Driver;
 import io.github.thedeadbolt.honeyfactory.contract.TeacherMode;
 import io.github.thedeadbolt.honeyfactory.control.MotorCommand;
 import io.github.thedeadbolt.honeyfactory.control.MotorLimits;
@@ -36,7 +37,8 @@ import org.jspecify.annotations.Nullable;
  *       (a seen belief needs the observed frame to show at least the visible threshold and
  *       names the scene's honey, memory names the last sighting, nothing is seen without
  *       honey); executed commands as the clip records them and within the motor limits;
- *       drift ticks and ticks by mode as the ticks record them;
+ *       drift ticks, ticks by mode and ticks by driver as the ticks record them; scripts
+ *       drive only scan and pass-by clips and the start of an occlusion clip;
  *   <li>files: videos holding every frame, and each frame's mask pixel count and box as
  *       its record states.
  * </ul>
@@ -146,6 +148,9 @@ public final class ClipConsistency {
 		List<MotorCommand> executed = new ArrayList<>();
 		int drifting = 0;
 		Map<TeacherMode, Integer> modes = new EnumMap<>(TeacherMode.class);
+		Map<Driver, Integer> drivers = new EnumMap<>(Driver.class);
+		boolean scriptedType = clip.clipType() == ClipType.SCAN || clip.clipType() == ClipType.PASS_BY;
+		boolean teacherTookOver = false;
 		int[] lastSeen = null;
 		for (int tick = 1; tick <= clip.tickCount(); tick++) {
 			FrameRecord frame = ticks.get(tick);
@@ -185,6 +190,19 @@ public final class ClipConsistency {
 			executed.add(labels.executed());
 			drifting += labels.drifting() ? 1 : 0;
 			modes.merge(labels.mode(), 1, Integer::sum);
+			Driver driver = labels.driver();
+			drivers.merge(driver, 1, Integer::sum);
+			if (driver == Driver.SCRIPT) {
+				if (!scriptedType && clip.clipType() != ClipType.OCCLUSION) {
+					errors.add(label + "tick " + tick + ": driven by a script in a " + clip.clipType().jsonName() + " clip");
+				} else if (teacherTookOver) {
+					errors.add(label + "tick " + tick + ": script ticks after the teacher took over");
+				}
+			} else if (scriptedType) {
+				errors.add(label + "tick " + tick + ": a " + clip.clipType().jsonName() + " clip is driven by its script, not " + driver.jsonName());
+			} else {
+				teacherTookOver = true;
+			}
 		}
 
 		if (!executed.equals(clip.executed())) {
@@ -198,6 +216,13 @@ public final class ClipConsistency {
 		for (TeacherMode mode : TeacherMode.values()) {
 			if (clip.summary().ticksByMode().getOrDefault(mode, 0).intValue() != modes.getOrDefault(mode, 0).intValue()) {
 				errors.add(label + "summary.ticks_by_mode differs from the ticks' modes " + modes);
+				break;
+			}
+		}
+
+		for (Driver driver : Driver.values()) {
+			if (clip.summary().ticksByDriver().getOrDefault(driver, 0).intValue() != drivers.getOrDefault(driver, 0).intValue()) {
+				errors.add(label + "summary.ticks_by_driver differs from the ticks' drivers " + drivers);
 				break;
 			}
 		}

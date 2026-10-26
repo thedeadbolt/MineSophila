@@ -50,7 +50,7 @@
     "executed": {"type": "array", "items": {"$ref": "#/$defs/motorCommand"}},
     "summary": {
       "type": "object",
-      "required": ["drift_ticks", "reached", "coverage_final", "ticks_by_mode"],
+      "required": ["drift_ticks", "reached", "coverage_final", "ticks_by_mode", "ticks_by_driver"],
       "properties": {
         "drift_ticks": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
         "reached": {"type": ["boolean", "null"]},
@@ -63,6 +63,15 @@
             "reacquire": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
             "search": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
           }
+        },
+        "ticks_by_driver": {
+          "type": "object",
+          "required": ["teacher", "teacher_drift", "script"],
+          "properties": {
+            "teacher": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+            "teacher_drift": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+            "script": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
+          }
         }
       }
     }
@@ -71,6 +80,7 @@
     "clipId": {"type": "string", "pattern": "^s[0-9]{6}-c[0-9]{2}$"},
     "clipType": {"enum": ["approach", "pass_by", "scan", "occlusion", "detour", "no_honey"]},
     "teacherMode": {"enum": ["track", "reacquire", "search"]},
+    "driver": {"description": "Who chose a tick's executed command; the teacher's command is the policy target either way.", "enum": ["teacher", "teacher_drift", "script"]},
     "codec": {
       "type": "object",
       "required": ["name"],

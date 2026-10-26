@@ -8,7 +8,7 @@ Per dataset, and in total:
   no-honey clips;
 - realizability violations: ticks whose belief the validators reject (see
   :func:`honey_factory_tools.clip_dataset.frame_errors`);
-- the honey's status over frames and the teacher's mode over ticks;
+- the honey's status over frames, and the teacher's mode and who drove over ticks;
 - generation time per clip and frames per second, from the manifest's timestamps;
 - disk use per clip, and the compression ratio against raw RGB frames.
 """
@@ -71,6 +71,7 @@ def _dataset(path: Path, schemas: Schemas) -> Record:
     )
     statuses: Counter[str] = Counter()
     modes: Counter[str] = Counter()
+    drivers: Counter[str] = Counter()
     coverage: dict[int, list[float]] = {tick: [] for tick in COVERAGE_TICKS}
     violations = 0
     frames_total = 0
@@ -105,6 +106,7 @@ def _dataset(path: Path, schemas: Schemas) -> Record:
             if labels is None or frame["tick"] == 0:
                 continue
             modes[labels["teacher_mode"]] += 1
+            drivers[labels["driver"]] += 1
             if clip["clip_type"] == "no_honey" and frame["tick"] in coverage:
                 coverage[frame["tick"]].append(labels["coverage"])
         errors = clip_dataset.frame_errors(manifest, scenes.get(clip["scene_id"]), clip, frames)
@@ -133,6 +135,9 @@ def _dataset(path: Path, schemas: Schemas) -> Record:
         },
         "statuses": dict(statuses),
         "ticks_by_mode": {mode: modes[mode] for mode in ("track", "reacquire", "search")},
+        "ticks_by_driver": {
+            driver: drivers[driver] for driver in ("teacher", "teacher_drift", "script")
+        },
         "seconds": seconds,
         "seconds_per_clip": seconds / len(clips) if clips and seconds else None,
         "frames_per_second": frames_total / seconds if seconds else None,

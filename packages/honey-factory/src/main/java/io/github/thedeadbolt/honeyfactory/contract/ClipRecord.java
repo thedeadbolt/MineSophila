@@ -70,10 +70,12 @@ public record ClipRecord(
 	/**
 	 * @param reached whether an approach clip reached the honey; null for other types
 	 * @param coverageFinal the share of reachable cells the teacher had seen at the end
+	 * @param ticksByDriver ticks by who chose the executed command (see {@link Driver})
 	 */
-	public record Summary(int driftTicks, @Nullable Boolean reached, double coverageFinal, Map<TeacherMode, Integer> ticksByMode) {
+	public record Summary(int driftTicks, @Nullable Boolean reached, double coverageFinal, Map<TeacherMode, Integer> ticksByMode, Map<Driver, Integer> ticksByDriver) {
 		public Summary {
 			ticksByMode = Map.copyOf(ticksByMode);
+			ticksByDriver = Map.copyOf(ticksByDriver);
 		}
 	}
 
@@ -126,6 +128,12 @@ public record ClipRecord(
 		}
 
 		summary.add("ticks_by_mode", modes);
+		JsonObject drivers = new JsonObject();
+		for (Driver driver : Driver.values()) {
+			drivers.addProperty(driver.jsonName(), this.summary.ticksByDriver().getOrDefault(driver, 0));
+		}
+
+		summary.add("ticks_by_driver", drivers);
 		json.add("summary", summary);
 		return json;
 	}
@@ -255,8 +263,27 @@ public record ClipRecord(
 			throw summary.error("ticks_by_mode", "must add up to the tick count");
 		}
 
+		JsonFields drivers = summary.object("ticks_by_driver");
+		Map<Driver, Integer> ticksByDriver = new EnumMap<>(Driver.class);
+		int driven = 0;
+		for (Driver driver : Driver.values()) {
+			int count = drivers.integer32(driver.jsonName(), 0, ticks);
+			ticksByDriver.put(driver, count);
+			driven += count;
+		}
+
+		if (driven != ticks) {
+			throw summary.error("ticks_by_driver", "must add up to the tick count");
+		}
+
+		int scripted = ticksByDriver.get(Driver.SCRIPT);
+		boolean scriptedType = clipType == ClipType.SCAN || clipType == ClipType.PASS_BY;
+		if (scriptedType && scripted != ticks || !scriptedType && clipType != ClipType.OCCLUSION && scripted != 0) {
+			throw summary.error("ticks_by_driver", "a script drives every tick of scan and pass-by clips, part of an occlusion clip, and no tick of others");
+		}
+
 		return new ClipRecord(version, clipId, sceneId, split, clipIndex, requested, clipType, attempt, clipSeeds, start, framesPerTick, ticks, frameCount, endReason, codec, rgb, mask, frames,
-			executed, new Summary(driftTicks, reached, summary.decimal("coverage_final", 0.0, 1.0), ticksByMode));
+			executed, new Summary(driftTicks, reached, summary.decimal("coverage_final", 0.0, 1.0), ticksByMode, ticksByDriver));
 	}
 
 	private static VideoFile video(JsonFields files, String name, String path, int frameCount) {

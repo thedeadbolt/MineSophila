@@ -113,6 +113,12 @@ holds every frame of its clip in order: the reset frame, then `frames_per_tick` 
 tick. Frame records follow the same order; tick labels (senses, commands, the teacher's
 mode and belief) sit on the reset frame and on each tick's last frame.
 
+Each tick's `driver` names who chose the executed command: `teacher`, `teacher_drift` (the
+teacher's command with drift added) or `script` (scan and pass-by clips throughout, and an
+occlusion clip's walk to its waypoint). The teacher's command, `tick_labels.teacher`, is
+recorded on every tick and is the policy's training target; a scripted tick's executed
+command is not. The clip summary counts `ticks_by_driver`.
+
 ### `scene-slots-v1`: target class and split per scene
 
 Every accepted-scene slot `0 … N-1` receives its class and split before generation:

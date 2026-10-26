@@ -404,6 +404,17 @@ def clip_errors(clip: Record) -> list[str]:
         errors.append("/summary/ticks_by_mode: must add up to the tick count")
     if summary["drift_ticks"] > ticks:
         errors.append("/summary/drift_ticks: must not exceed the tick count")
+    drivers = cast(dict[str, int], summary["ticks_by_driver"])
+    if sum(drivers.values()) != ticks:
+        errors.append("/summary/ticks_by_driver: must add up to the tick count")
+    scripted_type = clip_type in ("scan", "pass_by")
+    if (scripted_type and drivers["script"] != ticks) or (
+        not scripted_type and clip_type != "occlusion" and drivers["script"] != 0
+    ):
+        errors.append(
+            "/summary/ticks_by_driver: a script drives every tick of scan and pass-by clips, "
+            "part of an occlusion clip, and no tick of others"
+        )
 
     codec: Record = clip["codec"]
     if codec["name"] not in CODECS:
@@ -435,11 +446,29 @@ def frame_errors(frame: Record) -> list[str]:
     if (sub in (0, per_tick)) != (labels is not None):
         errors.append("/tick_labels: appear exactly on the reset frame and each tick's last frame")
     if labels is not None:
-        commands = (labels["executed"], labels["teacher"], labels["teacher_mode"], labels["belief"])
+        commands = (
+            labels["executed"],
+            labels["teacher"],
+            labels["teacher_mode"],
+            labels["belief"],
+            labels["driver"],
+        )
         if tick == 0 and any(value is not None for value in commands):
-            errors.append("/tick_labels/executed: the reset frame carries no commands or belief")
+            errors.append(
+                "/tick_labels/executed: the reset frame carries no commands, belief or driver"
+            )
         if tick > 0 and any(value is None for value in commands):
-            errors.append("/tick_labels/executed: a later tick carries its commands and belief")
+            errors.append(
+                "/tick_labels/executed: a later tick carries its commands, mode, belief and driver"
+            )
+        driver: str | None = labels["driver"]
+        if (driver == "teacher_drift" and not labels["drifting"]) or (
+            driver == "teacher" and labels["drifting"]
+        ):
+            errors.append(
+                "/tick_labels/driver: is teacher_drift exactly when the teacher drove a "
+                "drifting tick"
+            )
         belief: Record | None = labels["belief"]
         if belief is not None:
             if (belief["source"] == "none") != (belief["position"] is None):

@@ -98,3 +98,13 @@ def test_open_clip_names_a_missing_clip(contract_dir: Path) -> None:
 
     with pytest.raises(KeyError, match="s000009-c00"):
         open_clip(contract_dir / "clips", "s000009-c00")
+
+
+def test_clip_frame_driver(contract_dir: Path) -> None:
+    """Every frame after the reset names who drove its tick, interpolated frames included."""
+    from honey_factory_tools.clips import open_clip
+
+    frames = list(open_clip(contract_dir / "clips", "s000002-c00").frames())
+    assert frames[0].driver is None
+    assert {frame.driver for frame in frames[1:]} == {"teacher"}
+    assert frames[1].labels.get("tick_labels") is None

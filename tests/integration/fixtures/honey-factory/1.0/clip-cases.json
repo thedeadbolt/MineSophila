@@ -304,6 +304,93 @@
         }
       ],
       "expect_error": "frame records for"
+    },
+    {
+      "name": "scripts drive only scan, pass-by and occlusion clips",
+      "edits": [
+        {
+          "file": "clips/validation/c1/s000000-c00/frames.jsonl",
+          "line": 3,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/tick_labels/driver",
+              "value": "script"
+            }
+          ]
+        }
+      ],
+      "expect_error": "driven by a script in a approach clip"
+    },
+    {
+      "name": "the summary counts ticks by driver",
+      "edits": [
+        {
+          "file": "clips.jsonl",
+          "line": 0,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/summary/ticks_by_driver/teacher",
+              "value": 3
+            },
+            {
+              "op": "set",
+              "path": "/summary/ticks_by_driver/teacher_drift",
+              "value": 1
+            }
+          ]
+        }
+      ],
+      "expect_error": "summary.ticks_by_driver differs"
+    },
+    {
+      "name": "an occlusion clip's script comes before the teacher",
+      "edits": [
+        {
+          "file": "clips.jsonl",
+          "line": 0,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/clip_type",
+              "value": "occlusion"
+            },
+            {
+              "op": "set",
+              "path": "/requested_type",
+              "value": "occlusion"
+            },
+            {
+              "op": "set",
+              "path": "/summary/reached",
+              "value": null
+            },
+            {
+              "op": "set",
+              "path": "/summary/ticks_by_driver/teacher",
+              "value": 3
+            },
+            {
+              "op": "set",
+              "path": "/summary/ticks_by_driver/script",
+              "value": 1
+            }
+          ]
+        },
+        {
+          "file": "clips/validation/c1/s000000-c00/frames.jsonl",
+          "line": 6,
+          "patch": [
+            {
+              "op": "set",
+              "path": "/tick_labels/driver",
+              "value": "script"
+            }
+          ]
+        }
+      ],
+      "expect_error": "script ticks after the teacher took over"
     }
   ]
 }

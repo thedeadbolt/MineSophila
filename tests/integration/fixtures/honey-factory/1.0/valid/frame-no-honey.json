@@ -81,6 +81,7 @@
       "observed_tick": 1
     },
     "drifting": true,
+    "driver": "teacher_drift",
     "coverage": 0.35
   }
 }

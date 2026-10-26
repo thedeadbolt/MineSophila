@@ -13,6 +13,7 @@ import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
 import io.github.thedeadbolt.honeyfactory.contract.ClipRecord;
 import io.github.thedeadbolt.honeyfactory.contract.ClipSeeds;
 import io.github.thedeadbolt.honeyfactory.contract.ClipSettings;
+import io.github.thedeadbolt.honeyfactory.contract.Driver;
 import io.github.thedeadbolt.honeyfactory.contract.ClipType;
 import io.github.thedeadbolt.honeyfactory.contract.DatasetManifest;
 import io.github.thedeadbolt.honeyfactory.contract.FrameRecord;
@@ -516,6 +517,7 @@ public final class ClipGenerator implements Generator {
 		private final HoneyMemory memory = new HoneyMemory();
 		private @Nullable TeacherContext context;
 		private final Map<TeacherMode, Integer> modes = new EnumMap<>(TeacherMode.class);
+		private final Map<Driver, Integer> drivers = new EnumMap<>(Driver.class);
 		private final List<MotorCommand> executed = new ArrayList<>();
 		private @Nullable ClipWriter writer;
 		private @Nullable ClipDriver driver;
@@ -562,7 +564,7 @@ public final class ClipGenerator implements Generator {
 
 					open();
 					ControlStep step = reset.step().step();
-					record(0, 0, reset.step().frames().getFirst(), labels(step, null, null, false));
+					record(0, 0, reset.step().frames().getFirst(), labels(step, null, null, false, null));
 					this.last = step;
 					return tick(1);
 				})
@@ -610,11 +612,13 @@ public final class ClipGenerator implements Generator {
 				}
 
 				boolean drifting = this.driver.drifting();
+				Driver driver = this.driver.driver();
 				for (int k = 1; k <= this.framesPerTick; k++) {
-					record(tick, k, frames.get(k - 1), k == this.framesPerTick ? labels(control, command, decision, drifting) : null);
+					record(tick, k, frames.get(k - 1), k == this.framesPerTick ? labels(control, command, decision, drifting, driver) : null);
 				}
 
 				this.driftTicks += drifting ? 1 : 0;
+				this.drivers.merge(driver, 1, Integer::sum);
 				if (this.type == ClipType.APPROACH && this.reachedTick < 0 && TrackBehaviour.reached(control.truth().pose(), this.scene.target, this.context)) {
 					this.reachedTick = tick;
 				}
@@ -634,9 +638,9 @@ public final class ClipGenerator implements Generator {
 				this.memory);
 		}
 
-		private FrameRecord.TickLabels labels(ControlStep step, @Nullable MotorCommand executed, Teacher.@Nullable Decision decision, boolean drifting) {
+		private FrameRecord.TickLabels labels(ControlStep step, @Nullable MotorCommand executed, Teacher.@Nullable Decision decision, boolean drifting, @Nullable Driver driver) {
 			return new FrameRecord.TickLabels(step.truth().serverTick(), step.truth().velocity(), step.senses(), executed, decision == null ? null : decision.command(),
-				decision == null ? null : decision.mode(), decision == null ? null : decision.belief(), drifting, this.coverage);
+				decision == null ? null : decision.mode(), decision == null ? null : decision.belief(), drifting, driver, this.coverage);
 		}
 
 		private void record(int tick, int subFrame, ClipEnvironment.Frame captured, FrameRecord.@Nullable TickLabels labels) {
@@ -665,12 +669,17 @@ public final class ClipGenerator implements Generator {
 				modes.put(mode, this.modes.getOrDefault(mode, 0));
 			}
 
+			Map<Driver, Integer> drivers = new EnumMap<>(Driver.class);
+			for (Driver driver : Driver.values()) {
+				drivers.put(driver, this.drivers.getOrDefault(driver, 0));
+			}
+
 			boolean reached = this.reachedTick >= 0;
 			ClipRecord.EndReason end = reached && this.ran < this.ticks ? ClipRecord.EndReason.REACHED : ClipRecord.EndReason.LENGTH;
 			return new ClipRecord(SchemaVersion.CURRENT, this.clipId, this.scene.descriptor.sceneId(), this.scene.descriptor.split(), this.index, this.requested, this.type, this.attempt,
 				this.seeds, this.start.pose(), this.framesPerTick, this.ran, ClipRecord.frameCount(this.ran, this.framesPerTick), end,
 				ClipGenerator.this.clips.codec(), files.rgb(), files.visibleMask(), files.frames(), this.executed,
-				new ClipRecord.Summary(this.driftTicks, this.type == ClipType.APPROACH ? reached : null, this.coverage, modes));
+				new ClipRecord.Summary(this.driftTicks, this.type == ClipType.APPROACH ? reached : null, this.coverage, modes, drivers));
 		}
 	}
 }

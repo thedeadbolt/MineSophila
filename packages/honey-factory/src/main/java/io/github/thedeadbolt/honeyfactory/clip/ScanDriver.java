@@ -1,5 +1,6 @@
 package io.github.thedeadbolt.honeyfactory.clip;
 
+import io.github.thedeadbolt.honeyfactory.contract.Driver;
 import io.github.thedeadbolt.honeyfactory.control.MotorCommand;
 import io.github.thedeadbolt.honeyfactory.control.MotorLimits;
 import io.github.thedeadbolt.honeyfactory.teacher.Teacher;
@@ -22,5 +23,10 @@ final class ScanDriver implements ClipDriver {
 	@Override
 	public MotorCommand next(int tick, TeacherInput input, Teacher.Decision teacher) {
 		return this.command;
+	}
+
+	@Override
+	public Driver driver() {
+		return Driver.SCRIPT;
 	}
 }

@@ -191,6 +191,7 @@ def frame_record(
             "teacher_mode": modes[tick],
             "belief": beliefs[tick],
             "drifting": False,
+            "driver": None if tick == 0 else "teacher",
             "coverage": round(0.1 * tick, 3),
         }
     return record
@@ -309,6 +310,7 @@ def main() -> None:
                     "ticks_by_mode": {
                         mode: modes.count(mode) for mode in ("track", "reacquire", "search")
                     },
+                    "ticks_by_driver": {"teacher": TICKS, "teacher_drift": 0, "script": 0},
                 },
             }
         )

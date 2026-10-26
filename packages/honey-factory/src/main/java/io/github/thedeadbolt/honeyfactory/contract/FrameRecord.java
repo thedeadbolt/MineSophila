@@ -56,8 +56,8 @@ public record FrameRecord(
 	}
 
 	/**
-	 * One tick's labels. At tick 0 the commands, mode and belief are null: nothing has been
-	 * decided yet.
+	 * One tick's labels. At tick 0 the commands, mode, belief and driver are null: nothing
+	 * has been decided yet.
 	 */
 	public record TickLabels(
 		long serverTick,
@@ -68,6 +68,7 @@ public record FrameRecord(
 		@Nullable TeacherMode mode,
 		@Nullable Belief belief,
 		boolean drifting,
+		@Nullable Driver driver,
 		double coverage
 	) {
 	}
@@ -119,6 +120,7 @@ public record FrameRecord(
 			}
 
 			tick.addProperty("drifting", labels.drifting());
+			tick.add("driver", JsonWrite.nullable(labels.driver() == null ? null : labels.driver().jsonName()));
 			tick.addProperty("coverage", labels.coverage());
 			json.add("tick_labels", tick);
 		}
@@ -201,14 +203,20 @@ public record FrameRecord(
 			belief = new Belief(source, position, observed);
 		}
 
-		boolean decided = executed != null && teacher != null && mode != null && belief != null;
-		boolean undecided = executed == null && teacher == null && mode == null && belief == null;
+		Driver driver = labels.isNull("driver") ? null : labels.enumValue("driver", Driver::fromJson);
+		boolean decided = executed != null && teacher != null && mode != null && belief != null && driver != null;
+		boolean undecided = executed == null && teacher == null && mode == null && belief == null && driver == null;
 		if (tick == 0 ? !undecided : !decided) {
-			throw labels.error("executed", tick == 0 ? "the reset frame carries no commands or belief" : "a later tick carries its commands, mode and belief");
+			throw labels.error("executed", tick == 0 ? "the reset frame carries no commands, belief or driver" : "a later tick carries its commands, mode, belief and driver");
+		}
+
+		boolean drifting = labels.bool("drifting");
+		if (driver == Driver.TEACHER_DRIFT && !drifting || driver == Driver.TEACHER && drifting) {
+			throw labels.error("driver", "is teacher_drift exactly when the teacher drove a drifting tick");
 		}
 
 		return new TickLabels(labels.integer("server_tick", 0, Long.MAX_VALUE), labels.decimals("velocity", 3), senses(labels.object("senses")), executed, teacher, mode, belief,
-			labels.bool("drifting"), labels.decimal("coverage", 0.0, 1.0));
+			drifting, driver, labels.decimal("coverage", 0.0, 1.0));
 	}
 
 	private static BodySenses senses(JsonFields senses) {

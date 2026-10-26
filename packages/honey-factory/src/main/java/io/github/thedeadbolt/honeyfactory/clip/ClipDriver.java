@@ -1,5 +1,6 @@
 package io.github.thedeadbolt.honeyfactory.clip;
 
+import io.github.thedeadbolt.honeyfactory.contract.Driver;
 import io.github.thedeadbolt.honeyfactory.contract.ClipType;
 import io.github.thedeadbolt.honeyfactory.control.MotorCommand;
 import io.github.thedeadbolt.honeyfactory.control.MotorLimits;
@@ -20,6 +21,9 @@ public interface ClipDriver {
 	default boolean drifting() {
 		return false;
 	}
+
+	/** Who chose the last command. */
+	Driver driver();
 
 	/**
 	 * The driver of a clip that starts at {@code start}: scan and pass-by follow their scripts;

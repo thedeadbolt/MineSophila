@@ -32,7 +32,7 @@
     },
     "tick_labels": {
       "type": "object",
-      "required": ["server_tick", "velocity", "senses", "executed", "teacher", "teacher_mode", "belief", "drifting", "coverage"],
+      "required": ["server_tick", "velocity", "senses", "executed", "teacher", "teacher_mode", "belief", "drifting", "driver", "coverage"],
       "properties": {
         "server_tick": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
         "velocity": {"$ref": "common.schema.json#/$defs/vec3"},
@@ -65,6 +65,7 @@
           ]
         },
         "drifting": {"type": "boolean"},
+        "driver": {"oneOf": [{"type": "null"}, {"$ref": "clip.schema.json#/$defs/driver"}]},
         "coverage": {"type": "number", "minimum": 0, "maximum": 1}
       }
     }

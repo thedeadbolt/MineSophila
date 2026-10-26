@@ -17,6 +17,9 @@ const STATUS_COLOURS = {
   absent: "#34495e",
 };
 const MODE_COLOURS = { track: "#e0a100", reacquire: "#8e44ad", search: "#2980b9" };
+// Ticks the teacher did not drive alone are marked under the mode lane.
+const DRIVER_COLOURS = { script: "#555c63", teacher_drift: "#d35400" };
+const DRIVER_NAMES = { teacher: "teacher", teacher_drift: "teacher + drift", script: "script" };
 const MASK_TINT = [24, 200, 240];
 const DETAILS = [0.25, 0.5, 1];
 const MIN_ZOOM = 0.05;
@@ -53,6 +56,7 @@ async function startClips(dataset) {
   $("timeline-legend").replaceChildren(
     ...Object.entries(STATUS_COLOURS).map(([name, colour]) => legend(humane(name), colour)),
     ...Object.entries(MODE_COLOURS).map(([name, colour]) => legend(name, colour)),
+    ...Object.entries(DRIVER_COLOURS).map(([name, colour]) => legend(`driven by ${DRIVER_NAMES[name]}`, colour)),
   );
   await listClips(true);
 }
@@ -121,6 +125,7 @@ async function openClip(id) {
     ["Drifting ticks", record.summary.drift_ticks],
     ["Seen at the end", `${number(record.summary.coverage_final * 100, 1)}% of reachable cells`],
     ["Teacher ticks", Object.entries(record.summary.ticks_by_mode).map(([mode, ticks]) => `${mode} ${ticks}`).join(", ")],
+    ["Driven by", Object.entries(record.summary.ticks_by_driver).filter(([, ticks]) => ticks > 0).map(([driver, ticks]) => `${DRIVER_NAMES[driver]} ${ticks}`).join(", ")],
     ["Codec", record.codec.name + (record.codec.crf === undefined ? "" : ` crf ${record.codec.crf}`)],
     ["Attempt", record.attempt],
   ]);
@@ -314,6 +319,12 @@ function drawTimeline() {
     const mode = labels && labels.teacher_mode;
     context.fillStyle = mode ? MODE_COLOURS[mode] : "transparent";
     context.fillRect(x, lane + bearing + 4, Math.ceil(step), lane - 2);
+    const driver = labels && DRIVER_COLOURS[labels.driver];
+    if (driver) {
+      const mark = Math.max(2, Math.round((lane - 2) / 3));
+      context.fillStyle = driver;
+      context.fillRect(x, lane + bearing + 4 + lane - 2 - mark, Math.ceil(step), mark);
+    }
   });
   const top = lane;
   context.strokeStyle = "rgba(127, 127, 127, 0.5)";
@@ -367,6 +378,7 @@ function describe(frame) {
   const belief = labels && labels.belief;
   facts($("tick-facts"), labels ? [
     ["Teacher mode", labels.teacher_mode || "—"],
+    ["Driven by", labels.driver ? DRIVER_NAMES[labels.driver] : "—"],
     ["Teacher believes", belief ? (belief.position ? `${humane(belief.source)} at ${belief.position.join(", ")}` : humane(belief.source)) : "—"],
     ["Teacher command", command(labels.teacher)],
     ["Executed", command(labels.executed)],

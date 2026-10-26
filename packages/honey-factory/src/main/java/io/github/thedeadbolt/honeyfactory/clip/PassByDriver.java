@@ -1,5 +1,6 @@
 package io.github.thedeadbolt.honeyfactory.clip;
 
+import io.github.thedeadbolt.honeyfactory.contract.Driver;
 import io.github.thedeadbolt.honeyfactory.control.MotorCommand;
 import io.github.thedeadbolt.honeyfactory.control.MotorLimits;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
@@ -57,5 +58,10 @@ final class PassByDriver implements ClipDriver {
 		double forward = size <= FULL_SPEED_ERROR ? 1.0 : size >= STOP_ERROR ? 0.0 : (STOP_ERROR - size) / (STOP_ERROR - FULL_SPEED_ERROR);
 		double pitch = Math.clamp(-PITCH_GAIN * input.pose().pitchDegrees(), -this.limits.maxPitchRate(), this.limits.maxPitchRate());
 		return new MotorCommand(forward, 0.0, turn, pitch, false, 0);
+	}
+
+	@Override
+	public Driver driver() {
+		return Driver.SCRIPT;
 	}
 }

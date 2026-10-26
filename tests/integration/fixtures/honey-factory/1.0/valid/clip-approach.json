@@ -80,6 +80,11 @@
       "track": 2,
       "reacquire": 0,
       "search": 0
+    },
+    "ticks_by_driver": {
+      "teacher": 2,
+      "teacher_drift": 0,
+      "script": 0
     }
   }
 }

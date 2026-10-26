@@ -56,3 +56,14 @@ def test_cli_writes_the_report(
     written = json.loads(output.read_text(encoding="utf-8"))
     assert written["totals"]["clips"] == 4
     assert "approach reached" in capsys.readouterr().out
+
+
+def test_report_counts_ticks_by_driver(contract_dir: Path, schemas: Schemas) -> None:
+    from honey_factory_tools import clip_report
+
+    result = clip_report.report([contract_dir / "clips"], schemas)
+    assert result["datasets"][0]["ticks_by_driver"] == {
+        "teacher": 16,
+        "teacher_drift": 0,
+        "script": 0,
+    }

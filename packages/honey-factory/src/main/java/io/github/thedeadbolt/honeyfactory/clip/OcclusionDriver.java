@@ -1,5 +1,6 @@
 package io.github.thedeadbolt.honeyfactory.clip;
 
+import io.github.thedeadbolt.honeyfactory.contract.Driver;
 import io.github.thedeadbolt.honeyfactory.control.MotorCommand;
 import io.github.thedeadbolt.honeyfactory.control.MotorLimits;
 import io.github.thedeadbolt.honeyfactory.teacher.Steering;
@@ -42,5 +43,11 @@ final class OcclusionDriver implements ClipDriver {
 	@Override
 	public boolean drifting() {
 		return this.drift.active();
+	}
+
+	/** The script until the waypoint, then the teacher. */
+	@Override
+	public Driver driver() {
+		return !this.arrived ? Driver.SCRIPT : drifting() ? Driver.TEACHER_DRIFT : Driver.TEACHER;
 	}
 }

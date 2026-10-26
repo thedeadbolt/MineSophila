@@ -157,12 +157,18 @@ def _png(image: Image.Image) -> bytes:
 
 @dataclass(frozen=True)
 class ClipFrame:
-    """One frame of a clip: its RGB image, its visible-target mask and its frame record."""
+    """One frame of a clip: its RGB image, its visible-target mask and its frame record.
+
+    ``driver`` names who chose the executed command of the frame's tick (``teacher``,
+    ``teacher_drift`` or ``script``; None on the reset frame). Train a policy on the
+    teacher's command, ``tick_labels.teacher``, never on a scripted tick's executed command.
+    """
 
     index: int
     rgb: Image.Image
     visible_mask: Image.Image
     labels: dict[str, Any]
+    driver: str | None
 
 
 @dataclass(frozen=True)
@@ -191,8 +197,14 @@ class Clip:
         rgb = decode_frames(self.dataset / files["rgb"]["path"], self.width, self.height, "RGB")
         mask_file = self.dataset / files["visible_mask"]["path"]
         masks = decode_frames(mask_file, self.width, self.height, "L")
-        for index, (image, mask, labels) in enumerate(zip(rgb, masks, self.labels(), strict=True)):
-            yield ClipFrame(index, image, mask, labels)
+        records = self.labels()
+        drivers = {
+            record["tick"]: record["tick_labels"]["driver"]
+            for record in records
+            if "tick_labels" in record
+        }
+        for index, (image, mask, labels) in enumerate(zip(rgb, masks, records, strict=True)):
+            yield ClipFrame(index, image, mask, labels, drivers.get(labels["tick"]))
 
 
 def iter_clips(dataset: Path, split: str | None = None) -> Iterator[Clip]:
