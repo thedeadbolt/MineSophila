@@ -7,6 +7,7 @@ import io.github.thedeadbolt.honeyfactory.scene.ArenaLayout;
 import io.github.thedeadbolt.honeyfactory.scene.Placement;
 import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
 import io.github.thedeadbolt.honeyfactory.scene.SourcePatch;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.util.List;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
@@ -61,8 +62,10 @@ public final class ArenaExecutor {
 	}
 
 	/**
-	 * Resets the arena to {@code plan}: stage players, clear the reset volume, restore the
-	 * template, apply the delta in order, set the environment and verify the layout.
+	 * Resets the arena to {@code plan}: stage players, write every cell of the reset volume
+	 * that differs from the template with the delta applied in order (air elsewhere), set the
+	 * environment and verify the layout. Cells that already hold the scene's state are left
+	 * alone, so a reset costs only what changed since the last scene.
 	 *
 	 * @throws EnvironmentException if the world is not owned or the result differs from the plan
 	 */
@@ -86,22 +89,32 @@ public final class ArenaExecutor {
 		AABB bounds = new AABB(volume.minX(), volume.minY(), volume.minZ(), volume.maxX() + 1, volume.maxY() + 1, volume.maxZ() + 1);
 		level.getEntitiesOfClass(Entity.class, bounds, entity -> !(entity instanceof Player)).forEach(Entity::discard);
 
+		// The scene's state of every cell it sets, the template first and the delta over it;
+		// every other cell of the reset volume is air. Only cells that hold something else are
+		// written, so the client is sent, and rebuilds, only what changed since the last scene.
+		Long2ObjectOpenHashMap<BlockState> wanted = new Long2ObjectOpenHashMap<>();
+		BlockBox core = arena.core();
+		for (List<Placement> placements : List.of(plan.template().blocks(), plan.delta())) {
+			for (Placement placement : placements) {
+				wanted.put(BlockPos.asLong(core.minX() + placement.x(), core.minY() + placement.y(), core.minZ() + placement.z()), BlockStates.parse(placement.state(), blocks));
+			}
+		}
+
 		long written = 0;
 		BlockState air = Blocks.AIR.defaultBlockState();
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 		for (int y = volume.minY(); y <= volume.maxY(); y++) {
 			for (int z = volume.minZ(); z <= volume.maxZ(); z++) {
 				for (int x = volume.minX(); x <= volume.maxX(); x++) {
-					if (!level.getBlockState(pos.set(x, y, z)).isAir()) {
-						level.setBlock(pos, air, FLAGS);
+					BlockState want = wanted.getOrDefault(BlockPos.asLong(x, y, z), air);
+					if (level.getBlockState(pos.set(x, y, z)) != want) {
+						level.setBlock(pos, want, FLAGS);
 						written++;
 					}
 				}
 			}
 		}
 
-		written += place(level, arena, plan.template().blocks(), blocks);
-		written += place(level, arena, plan.delta(), blocks);
 		Baseline.applyEnvironment(server, plan.timeOfDayTicks(), plan.weather());
 
 		String expected = plan.layoutSha256(arena);
