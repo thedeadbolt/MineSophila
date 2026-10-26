@@ -229,7 +229,8 @@
         "mod": {"type": "string", "minLength": 1},
         "java": {"type": "string", "minLength": 1},
         "git_commit": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9a-f]{40}$"}]},
-        "git_dirty": {"type": "boolean"}
+        "git_dirty": {"type": "boolean"},
+        "ffmpeg": {"description": "Clip datasets (M12-2): the first line of ffmpeg -version, which encoded the videos.", "type": "string", "minLength": 1}
       }
     },
     "render_environment": {

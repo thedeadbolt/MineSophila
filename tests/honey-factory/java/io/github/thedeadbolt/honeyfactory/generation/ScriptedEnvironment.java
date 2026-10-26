@@ -32,7 +32,7 @@ import org.jspecify.annotations.Nullable;
  * floor occlude it.
  */
 public final class ScriptedEnvironment implements GenerationEnvironment {
-	static final double EYE_HEIGHT = 1.62;
+	public static final double EYE_HEIGHT = 1.62;
 
 	private final Deque<Runnable> queue = new ArrayDeque<>();
 	private int operations;
@@ -142,6 +142,14 @@ public final class ScriptedEnvironment implements GenerationEnvironment {
 	}
 
 	private CapturedImages render(CaptureProjection projection, int @Nullable [] target, CameraPose pose) {
+		return render(projection, this.hideTarget || this.hideOn.test(this.observations) ? null : target, this.occluders, pose);
+	}
+
+	/**
+	 * Ray casts each pixel centre from {@code pose}'s eye against the target cell and the
+	 * occluding cells; colour is a flat grey with the visible target in honey colour.
+	 */
+	public static CapturedImages render(CaptureProjection projection, int @Nullable [] target, List<int[]> occluders, CameraPose pose) {
 		int width = projection.width();
 		int height = projection.height();
 		byte[] rgb = new byte[width * height * 3];
@@ -152,9 +160,9 @@ public final class ScriptedEnvironment implements GenerationEnvironment {
 			for (int x = 0; x < width; x++) {
 				int p = y * width + x;
 				double[] direction = projection.direction(camera, x + 0.5, y + 0.5);
-				double distance = target == null || this.hideTarget || this.hideOn.test(this.observations) ? Double.NaN : distance(camera.eye(), direction, target);
+				double distance = target == null ? Double.NaN : distance(camera.eye(), direction, target);
 				boolean inView = !Double.isNaN(distance);
-				boolean hit = inView && this.occluders.stream().noneMatch(block -> distance(camera.eye(), direction, block) < distance);
+				boolean hit = inView && occluders.stream().noneMatch(block -> distance(camera.eye(), direction, block) < distance);
 				unoccluded[p] = inView ? (byte) 255 : 0;
 				mask[p] = hit ? (byte) 255 : 0;
 				rgb[p * 3] = (byte) (hit ? 230 : 140);
@@ -188,6 +196,22 @@ public final class ScriptedEnvironment implements GenerationEnvironment {
 		}
 
 		return near <= far ? near : Double.NaN;
+	}
+
+	/** The occluding cells of a platform scene: every block above the floor except the target. */
+	public static List<int[]> occluders(ArenaLayout arena, ScenePlan plan) {
+		return plan.layoutBlocks(arena).stream()
+			.filter(block -> block.y() > arena.core().minY() && !Arrays.equals(new int[] {block.x(), block.y(), block.z()}, plan.targetPosition(arena)))
+			.map(block -> new int[] {block.x(), block.y(), block.z()})
+			.toList();
+	}
+
+	public static DatasetManifest.Software scriptedSoftware() {
+		return new DatasetManifest.Software("26.3", "0.19.5", "0.163.0+26.3", "0.0.1", "25", null, false);
+	}
+
+	public static DatasetManifest.RenderEnvironment scriptedRenderEnvironment() {
+		return new DatasetManifest.RenderEnvironment("scripted", "none", "none", true, 8, 0.5, "off", null, List.of(new DatasetManifest.ResourcePack("vanilla", null)), new JsonObject());
 	}
 
 	@Override

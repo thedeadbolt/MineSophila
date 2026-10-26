@@ -110,6 +110,9 @@
     {"name": "clip dataset storage names its codec", "kind": "dataset", "base": "valid/dataset-clips-complete.json", "expect": "semantic", "patch": [{"op": "set", "path": "/storage/encodings/rgb", "value": "ffv1"}]},
     {"name": "clip dataset masks are lossless", "kind": "dataset", "base": "valid/dataset-clips-complete.json", "expect": "semantic", "patch": [{"op": "set", "path": "/storage/encodings/mask", "value": "h264-lossy"}]},
     {"name": "clip settings need at least one frame per tick", "kind": "dataset", "base": "valid/dataset-clips-complete.json", "expect": "schema", "patch": [{"op": "set", "path": "/generator/clips/frames_per_tick", "value": 0}]},
-    {"name": "clip dataset split counts must add up", "kind": "dataset", "base": "valid/dataset-clips-complete.json", "expect": "semantic", "patch": [{"op": "set", "path": "/splits/counts/train/clips", "value": 5}]}
+    {"name": "clip dataset split counts must add up", "kind": "dataset", "base": "valid/dataset-clips-complete.json", "expect": "semantic", "patch": [{"op": "set", "path": "/splits/counts/train/clips", "value": 5}]},
+    {"name": "a clip scene lists one start draw per clip", "kind": "scene", "base": "valid/scene-present.json", "expect": "valid", "patch": [{"op": "set", "path": "/accepted_sample_count", "value": 0}, {"op": "set", "path": "/accepted_clip_count", "value": 2}]},
+    {"name": "a clip scene keeps no samples", "kind": "scene", "base": "valid/scene-present.json", "expect": "semantic", "patch": [{"op": "set", "path": "/accepted_clip_count", "value": 2}]},
+    {"name": "a clip scene's start draws match its clips", "kind": "scene", "base": "valid/scene-present.json", "expect": "semantic", "patch": [{"op": "set", "path": "/accepted_sample_count", "value": 0}, {"op": "set", "path": "/accepted_clip_count", "value": 3}]}
   ]
 }

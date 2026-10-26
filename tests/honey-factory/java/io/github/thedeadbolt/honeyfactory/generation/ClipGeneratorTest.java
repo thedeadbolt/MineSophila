@@ -1,0 +1,158 @@
+package io.github.thedeadbolt.honeyfactory.generation;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import io.github.thedeadbolt.honeyfactory.config.ConfigResolver;
+import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
+import io.github.thedeadbolt.honeyfactory.contract.ClipRecord;
+import io.github.thedeadbolt.honeyfactory.contract.ClipSeeds;
+import io.github.thedeadbolt.honeyfactory.contract.ClipType;
+import io.github.thedeadbolt.honeyfactory.contract.DatasetKind;
+import io.github.thedeadbolt.honeyfactory.contract.DatasetManifest;
+import io.github.thedeadbolt.honeyfactory.contract.FrameRecord;
+import io.github.thedeadbolt.honeyfactory.contract.JsonFields;
+import io.github.thedeadbolt.honeyfactory.dataset.ClipValidator;
+import io.github.thedeadbolt.honeyfactory.dataset.DatasetWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/** Clip generation against a scripted body: records, frames and videos agree, and failed clips are redrawn. */
+class ClipGeneratorTest {
+	private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-10-26T12:00:00Z"), ZoneOffset.UTC);
+	private static final StorageBudget.DiskSpace DISK = path -> 1L << 50;
+	private static final int TICKS = 4;
+
+	@TempDir
+	Path temp;
+
+	private ResolvedConfig config(Path root) {
+		return ConfigResolver.resolve(("""
+			{
+			  "dataset": {"name": "m12-clip-unit", "seed": 7, "difficulty": 1},
+			  "capture": {"width": 64, "height": 32, "cube_face_size": 16},
+			  "quotas": {"accepted_scenes": 2, "scene_attempts_per_accepted_scene": 3},
+			  "target": {"present_fraction": 1.0},
+			  "splits": {"train": 0.5, "validation": 0.5, "test": 0.0},
+			  "clips": {"clips_per_scene": 2, "frames_per_tick": 3,
+			            "ticks": {"approach": %d, "pass_by": %d, "scan": %d, "occlusion": %d, "detour": %d, "no_honey": %d},
+			            "mix": {"approach": 0, "pass_by": 1, "scan": 1, "occlusion": 0, "detour": 0}},
+			  "output": {"root": "%s", "free_space_reserve_bytes": 1000000}
+			}
+			""").formatted(TICKS, TICKS, TICKS, TICKS, TICKS, TICKS, root.toString().replace("\\", "\\\\")));
+	}
+
+	private static DatasetGenerator.Result run(ClipGenerator generator, ScriptedClipEnvironment environment) throws IOException {
+		CompletableFuture<DatasetGenerator.Result> result = generator.start();
+		environment.pump();
+		assertTrue(result.isDone(), "generation waits on no further requests");
+		return result.join();
+	}
+
+	private static List<String> lines(Path file) throws IOException {
+		return Files.readAllLines(file, StandardCharsets.UTF_8);
+	}
+
+	@Test
+	void writesClipsWithFrameCountsAndValidRecords() throws IOException {
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		DatasetGenerator.Result result = run(new ClipGenerator(config(this.temp.resolve("a")), environment, CLOCK, DISK), environment);
+		assertNull(result.failure(), () -> result.failure() + " " + result.validationErrors());
+		DatasetManifest manifest = result.manifest();
+		assertEquals(DatasetKind.CLIPS, manifest.kind());
+		assertEquals(DatasetManifest.Lifecycle.COMPLETE, manifest.lifecycle());
+		assertEquals(2, manifest.counts().acceptedScenes());
+		assertEquals(4, manifest.counts().acceptedClips());
+		assertTrue(environment.ended);
+
+		List<String> clips = lines(result.directory().resolve(DatasetWriter.CLIPS));
+		assertEquals(4, clips.size());
+		for (String line : clips) {
+			ClipRecord clip = ClipRecord.fromJson(JsonFields.parseObject(line));
+			assertTrue(clip.clipType() == ClipType.SCAN || clip.clipType() == ClipType.PASS_BY, clip.clipType().toString());
+			assertEquals(1 + TICKS * 3, clip.frameCount());
+			List<String> frames = lines(result.directory().resolve(clip.frames().path()));
+			assertEquals(13, frames.size());
+			for (int f = 0; f < frames.size(); f++) {
+				FrameRecord frame = FrameRecord.fromJson(JsonFields.parseObject(frames.get(f)));
+				assertEquals(f, frame.frame());
+				assertEquals(f % 3 == 0, frame.tickLabels() != null, "tick labels on frame " + f);
+			}
+
+			assertEquals(13, videoFrames(result.directory().resolve(clip.rgb().path())));
+			assertEquals(13, videoFrames(result.directory().resolve(clip.visibleMask().path())));
+			assertEquals(64, clip.rgb().width());
+			assertEquals(TICKS, clip.executed().size());
+		}
+
+		assertEquals(List.of(), ClipValidator.validate(result.directory()).errors());
+		assertNoPartials(result.directory());
+
+		ScriptedClipEnvironment again = new ScriptedClipEnvironment();
+		DatasetGenerator.Result repeat = run(new ClipGenerator(config(this.temp.resolve("b")), again, CLOCK, DISK), again);
+		assertArrayEquals(Files.readAllBytes(result.directory().resolve(DatasetWriter.SCENES)), Files.readAllBytes(repeat.directory().resolve(DatasetWriter.SCENES)));
+		assertEquals(environment.executed, again.executed, "the drivers are deterministic per seed");
+	}
+
+	@Test
+	void rejectsAndRedrawsAfterOutOfArena() throws IOException {
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		environment.leaveArena = (reset, tick) -> reset == 1 && tick == 2;
+		ResolvedConfig config = config(this.temp.resolve("c"));
+		DatasetGenerator.Result result = run(new ClipGenerator(config, environment, CLOCK, DISK), environment);
+		assertNull(result.failure(), () -> result.failure() + " " + result.validationErrors());
+		ClipRecord first = ClipRecord.fromJson(JsonFields.parseObject(lines(result.directory().resolve(DatasetWriter.CLIPS)).getFirst()));
+		assertEquals(1, first.attempt());
+		int scene = Integer.parseInt(first.sceneId().substring(1));
+		assertEquals(ClipSeeds.derive(config.seed(), scene, first.clipIndex(), 1), first.seeds());
+		assertEquals(4, result.manifest().counts().acceptedClips());
+		assertNoPartials(result.directory());
+	}
+
+	@Test
+	void ffmpegMissingFailsBeforeFirstScene() {
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		Path root = this.temp.resolve("d");
+		ClipGenerator generator = new ClipGenerator(config(root), environment, CLOCK, DISK, () -> {
+			throw new IllegalStateException("ffmpeg is required for clip datasets: not found");
+		});
+		IllegalStateException error = assertThrows(IllegalStateException.class, generator::start);
+		assertTrue(error.getMessage().contains("ffmpeg is required"), error.getMessage());
+		assertFalse(Files.exists(root));
+		assertEquals(0, environment.resets());
+	}
+
+	private static void assertNoPartials(Path dataset) throws IOException {
+		try (Stream<Path> files = Files.walk(dataset)) {
+			assertEquals(List.of(), files.filter(path -> path.getFileName().toString().endsWith(".partial")).toList());
+		}
+	}
+
+	private static int videoFrames(Path file) throws IOException {
+		Process process = new ProcessBuilder("ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", file.toString())
+			.redirectErrorStream(true).start();
+		try (InputStream out = process.getInputStream()) {
+			String text = new String(out.readAllBytes(), StandardCharsets.UTF_8).strip();
+			assertEquals(0, process.waitFor(), text);
+			return Integer.parseInt(text);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new IOException(e);
+		}
+	}
+}

@@ -16,8 +16,15 @@ public record SceneRecord(
 	Target target,
 	Environment environment,
 	String layoutSha256,
-	int acceptedSampleCount
+	int acceptedSampleCount,
+	@Nullable Integer acceptedClipCount
 ) {
+	/** A still dataset's scene. */
+	public SceneRecord(String schemaVersion, String sceneId, Split split, int difficulty, Generation generation, Template template, Arena arena, @Nullable SourcePatch sourcePatch,
+		Target target, Environment environment, String layoutSha256, int acceptedSampleCount) {
+		this(schemaVersion, sceneId, split, difficulty, generation, template, arena, sourcePatch, target, environment, layoutSha256, acceptedSampleCount, null);
+	}
+
 	/** {@code parameters} is null in records written before generators reported them. */
 	public record Generation(int sceneIndex, int attemptIndex, SceneSeeds seeds, String algorithm, @Nullable Parameters parameters) {
 	}
@@ -128,6 +135,10 @@ public record SceneRecord(
 		json.add("environment", environment);
 		json.addProperty("layout_sha256", this.layoutSha256);
 		json.addProperty("accepted_sample_count", this.acceptedSampleCount);
+		if (this.acceptedClipCount != null) {
+			json.addProperty("accepted_clip_count", this.acceptedClipCount);
+		}
+
 		return json;
 	}
 
@@ -217,11 +228,17 @@ public record SceneRecord(
 
 		String layout = fields.sha256("layout_sha256");
 		int accepted = fields.integer32("accepted_sample_count", 0, Ids.MAX_VIEWPOINTS);
+		Integer clips = fields.has("accepted_clip_count") ? fields.integer32("accepted_clip_count", 0, Ids.MAX_CLIPS) : null;
+		if (clips != null && accepted != 0) {
+			throw fields.error("accepted_sample_count", "is 0 in a clip dataset's scene, whose clips are counted by accepted_clip_count");
+		}
+
 		Parameters parameters = generationRecord.parameters();
 		if (parameters != null) {
 			JsonFields drawn = generation.object("parameters");
-			if (parameters.viewpointDraws().length != accepted) {
-				throw drawn.error("viewpoint_draws", "must list one draw per accepted sample (" + accepted + ")");
+			int draws = clips == null ? accepted : clips;
+			if (parameters.viewpointDraws().length != draws) {
+				throw drawn.error("viewpoint_draws", clips == null ? "must list one draw per accepted sample (" + accepted + ")" : "must list one start draw per accepted clip (" + clips + ")");
 			}
 
 			for (int i = 0; i < 3; i++) {
@@ -231,7 +248,7 @@ public record SceneRecord(
 			}
 		}
 
-		return new SceneRecord(version, sceneId, split, difficulty, generationRecord, templateRecord, arenaRecord, patch, target, environmentRecord, layout, accepted);
+		return new SceneRecord(version, sceneId, split, difficulty, generationRecord, templateRecord, arenaRecord, patch, target, environmentRecord, layout, accepted, clips);
 	}
 
 	private static Parameters parameters(JsonFields parameters) {

@@ -175,11 +175,16 @@ def scene_errors(scene: Record) -> list[str]:
         ):
             errors.append(f"/environment/gamerules/{rule}: must be a boolean or an integer")
 
+    clips: int | None = scene.get("accepted_clip_count")
+    if clips is not None and scene["accepted_sample_count"] != 0:
+        errors.append("/accepted_sample_count: is 0 in a clip dataset's scene")
     parameters: Record | None = generation.get("parameters")
     if parameters is not None:
-        if len(parameters["viewpoint_draws"]) != scene["accepted_sample_count"]:
+        draws = scene["accepted_sample_count"] if clips is None else clips
+        if len(parameters["viewpoint_draws"]) != draws:
             errors.append(
-                "/generation/parameters/viewpoint_draws: needs one draw per accepted sample"
+                "/generation/parameters/viewpoint_draws: needs one draw per accepted sample, "
+                "or per accepted clip in a clip dataset"
             )
         if not _inside(parameters["aim_block"], low, high):
             errors.append("/generation/parameters/aim_block: must lie inside the arena bounds")

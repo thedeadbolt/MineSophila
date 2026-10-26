@@ -5,7 +5,10 @@ import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
 import io.github.thedeadbolt.honeyfactory.client.runtime.FramePacing;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
+import io.github.thedeadbolt.honeyfactory.contract.DatasetKind;
+import io.github.thedeadbolt.honeyfactory.generation.ClipGenerator;
 import io.github.thedeadbolt.honeyfactory.generation.DatasetGenerator;
+import io.github.thedeadbolt.honeyfactory.generation.Generator;
 import io.github.thedeadbolt.honeyfactory.generation.GenerationTimings;
 import java.io.IOException;
 import java.time.Clock;
@@ -16,7 +19,7 @@ import org.jspecify.annotations.Nullable;
 
 /** Runs one dataset generation at a time in the running client. */
 public final class DatasetRuns {
-	private static @Nullable DatasetGenerator running;
+	private static @Nullable Generator running;
 	private static DatasetGenerator.@Nullable Result last;
 	private static @Nullable GenerationTimings lastTimings;
 	private static double @Nullable [] lastCaptureTotals;
@@ -27,7 +30,8 @@ public final class DatasetRuns {
 
 	/**
 	 * Starts generating {@code config} in the current dataset world, with the frame rate
-	 * uncapped until the run ends (see {@link FramePacing}).
+	 * uncapped until the run ends (see {@link FramePacing}): still samples, or motion clips
+	 * through the control loop when the configuration has clip settings (M12-2).
 	 *
 	 * @throws IllegalStateException if a generation is running or improved transparency is off
 	 * @throws IOException if the dataset directory cannot be created, including when it exists
@@ -42,7 +46,9 @@ public final class DatasetRuns {
 		}
 
 		RuntimeGenerationEnvironment environment = new RuntimeGenerationEnvironment(EnvironmentRuntime.get());
-		DatasetGenerator generator = new DatasetGenerator(config, environment, Clock.systemUTC());
+		Generator generator = config.kind() == DatasetKind.CLIPS
+			? new ClipGenerator(config, new RuntimeClipEnvironment(EnvironmentRuntime.get()), Clock.systemUTC())
+			: new DatasetGenerator(config, environment, Clock.systemUTC());
 		Minecraft minecraft = Minecraft.getInstance();
 		FramePacing.Lease pacing = FramePacing.uncap(minecraft);
 		CompletableFuture<DatasetGenerator.Result> result;
@@ -67,7 +73,7 @@ public final class DatasetRuns {
 		});
 	}
 
-	public static @Nullable DatasetGenerator running() {
+	public static @Nullable Generator running() {
 		return running;
 	}
 

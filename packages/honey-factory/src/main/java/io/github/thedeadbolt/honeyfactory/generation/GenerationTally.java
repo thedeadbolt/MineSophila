@@ -20,6 +20,7 @@ final class GenerationTally {
 	private int rejected;
 	private int failed;
 	private int acceptedSamples;
+	private int acceptedClips;
 
 	GenerationTally(int requestedScenes) {
 		this.requestedScenes = requestedScenes;
@@ -43,6 +44,14 @@ final class GenerationTally {
 		this.splitCounts.put(split, new DatasetManifest.SplitCount(count.scenes() + 1, count.samples() + samples));
 	}
 
+	/** A clip dataset's accepted scene and its clips. */
+	void acceptClips(Split split, int clips) {
+		this.accepted++;
+		this.acceptedClips += clips;
+		DatasetManifest.SplitCount count = this.splitCounts.get(split);
+		this.splitCounts.put(split, new DatasetManifest.SplitCount(count.scenes() + 1, 0, count.clips() + clips));
+	}
+
 	void reject(String reason) {
 		this.rejected++;
 		this.rejectionReasons.merge(reason, 1, Integer::sum);
@@ -53,7 +62,7 @@ final class GenerationTally {
 	}
 
 	DatasetManifest.Counts counts() {
-		return new DatasetManifest.Counts(this.requestedScenes, this.attempted, this.accepted, this.rejected, this.failed, this.acceptedSamples, 0, Map.copyOf(this.rejectionReasons));
+		return new DatasetManifest.Counts(this.requestedScenes, this.attempted, this.accepted, this.rejected, this.failed, this.acceptedSamples, this.acceptedClips, Map.copyOf(this.rejectionReasons));
 	}
 
 	Map<Split, DatasetManifest.SplitCount> splitCounts() {
@@ -61,6 +70,6 @@ final class GenerationTally {
 	}
 
 	DatasetGenerator.Progress progress(Duration elapsed) {
-		return new DatasetGenerator.Progress(this.requestedScenes, this.accepted, this.attempted, this.acceptedSamples, this.rejected, Map.copyOf(this.rejectionReasons), elapsed);
+		return new DatasetGenerator.Progress(this.requestedScenes, this.accepted, this.attempted, this.acceptedSamples + this.acceptedClips, this.rejected, Map.copyOf(this.rejectionReasons), elapsed);
 	}
 }

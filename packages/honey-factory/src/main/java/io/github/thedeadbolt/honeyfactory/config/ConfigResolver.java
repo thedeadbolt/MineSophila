@@ -3,6 +3,7 @@ package io.github.thedeadbolt.honeyfactory.config;
 import com.google.gson.JsonObject;
 import io.github.thedeadbolt.honeyfactory.capture.PanoramicProjection;
 import io.github.thedeadbolt.honeyfactory.contract.CaptureMode;
+import io.github.thedeadbolt.honeyfactory.contract.ClipSettings;
 import io.github.thedeadbolt.honeyfactory.contract.ContractException;
 import io.github.thedeadbolt.honeyfactory.contract.Ids;
 import io.github.thedeadbolt.honeyfactory.contract.JsonFields;
@@ -47,6 +48,15 @@ import org.jspecify.annotations.Nullable;
  * output         root (required, absolute), free_space_reserve_bytes, slice ({index, count,
  *                world}: generate only scene groups g with g % count == index, for one of
  *                several instances; see {@link ResolvedConfig.Slice})
+ * clips          makes a motion-clip dataset (M12-2): frames_per_tick, clips_per_scene,
+ *                attempts_per_clip, ticks {&lt;type&gt;}, approach_linger_ticks, mix {&lt;type&gt;},
+ *                drift {rate, mean_ticks, max_turn_rate, max_forward}, teacher
+ *                {min_visible_pixels, reacquire_ticks, reach_distance_blocks}, motor
+ *                {max_turn_rate, max_turn_accel, max_pitch_rate, max_pitch_accel}, codec
+ *                {name, crf}; defaults in {@link ClipSettings#defaults}. A clip dataset
+ *                captures PANORAMA_310 by default, aims image_uniform, draws one start per
+ *                clip (viewpoints.count is clips_per_scene) and defaults present_fraction to
+ *                0.8, the target-absent scenes giving the no-honey clips.
  * </pre>
  */
 public final class ConfigResolver {
@@ -54,7 +64,7 @@ public final class ConfigResolver {
 	public static final double EYE_HEIGHT_BLOCKS = 1.62;
 
 	private static final Set<String> SECTIONS = Set.of(
-		"dataset", "target", "arena", "viewpoints", "scene", "visibility", "capture", "quotas", "splits", "output"
+		"dataset", "target", "arena", "viewpoints", "scene", "visibility", "capture", "quotas", "splits", "output", "clips"
 	);
 	private static final double SPLIT_SUM_TOLERANCE = 1e-9;
 	private static final int MAX_ARENA_HEIGHT_WITH_MARGIN = 256;
@@ -91,16 +101,17 @@ public final class ConfigResolver {
 
 		int difficulty = dataset.integer32("difficulty", 1, 5);
 
+		ClipSettings clips = root.has("clips") ? clips(root.object("clips")) : null;
 		ResolvedConfig.Target target = target(root.objectOrEmpty("target"));
 		ResolvedConfig.Arena arena = arena(root.objectOrEmpty("arena"));
-		ResolvedConfig.Viewpoints viewpoints = viewpoints(root.objectOrEmpty("viewpoints"));
+		ResolvedConfig.Viewpoints viewpoints = viewpoints(root.objectOrEmpty("viewpoints"), clips);
 		SceneSpec scene = SceneSpec.read(root.objectOrEmpty("scene"), ScenePresets.forLevel(difficulty));
 		boolean natural = scene.base() instanceof SceneBase.NaturalTerrain;
 		if (natural && root.has("arena")) {
 			throw root.error("arena", "applies to platform bases; a natural_patch base sets its own region");
 		}
 		ResolvedConfig.Visibility visibility = visibility(root.objectOrEmpty("visibility"), difficulty);
-		ResolvedConfig.Capture capture = capture(root.objectOrEmpty("capture"));
+		ResolvedConfig.Capture capture = capture(root.objectOrEmpty("capture"), clips != null ? CaptureMode.PANORAMA_310 : CaptureMode.PERSPECTIVE_90);
 		ResolvedConfig.Quotas quotas = quotas(root.objectOrEmpty("quotas"), target.presentFraction());
 		ResolvedConfig.Splits splits = splits(root.objectOrEmpty("splits"), natural);
 		if (scene.base() instanceof SceneBase.NaturalTerrain base && Math.ceilDiv(quotas.acceptedScenes(), base.scenesPerPatch()) > SourcePatches.maxPatches()) {
@@ -108,7 +119,7 @@ public final class ConfigResolver {
 		}
 		ResolvedConfig.Output output = output(root.object("output"));
 
-		return new ResolvedConfig(name, difficulty, seed, target, arena, viewpoints, scene, visibility, capture, quotas, splits, output);
+		return new ResolvedConfig(name, difficulty, seed, target, arena, viewpoints, scene, visibility, capture, quotas, splits, output, clips);
 	}
 
 	/**
@@ -184,6 +195,9 @@ public final class ConfigResolver {
 		quotas.addProperty("scene_attempts_per_accepted_scene", limit / accepted);
 		input.add("quotas", quotas);
 		input.add("splits", ratios.raw().deepCopy());
+		if (generator.has("clips")) {
+			input.add("clips", generator.object("clips").raw().deepCopy());
+		}
 
 		JsonObject output = new JsonObject();
 		output.addProperty("root", outputRoot.toAbsolutePath().toString());
@@ -229,7 +243,8 @@ public final class ConfigResolver {
 		return resolved;
 	}
 
-	private static ResolvedConfig.Viewpoints viewpoints(JsonFields viewpoints) {
+	/** Viewpoints; a clip dataset draws one start per clip and aims image_uniform by default. */
+	private static ResolvedConfig.Viewpoints viewpoints(JsonFields viewpoints, @Nullable ClipSettings clips) {
 		viewpoints.rejectUnknown(Set.of(
 			"count", "distance_min_blocks", "distance_max_blocks", "aim", "yaw_jitter_degrees", "pitch_jitter_degrees", "attempts_per_viewpoint"
 		));
@@ -239,7 +254,11 @@ public final class ConfigResolver {
 			throw viewpoints.error("distance_min_blocks", "must not exceed distance_max_blocks (" + max + ")");
 		}
 
-		ViewpointAim aim = viewpoints.has("aim") ? viewpoints.enumValue("aim", ViewpointAim::fromJson) : ViewpointAim.TARGET_JITTER;
+		ViewpointAim aim = viewpoints.has("aim") ? viewpoints.enumValue("aim", ViewpointAim::fromJson) : clips != null ? ViewpointAim.IMAGE_UNIFORM : ViewpointAim.TARGET_JITTER;
+		int count = viewpoints.integer32("count", 1, Ids.MAX_VIEWPOINTS, clips != null ? clips.clipsPerScene() : 8);
+		if (clips != null && count != clips.clipsPerScene()) {
+			throw viewpoints.error("count", "a clip dataset draws one start per clip; set clips.clips_per_scene (" + clips.clipsPerScene() + ") instead");
+		}
 		boolean jitter = aim == ViewpointAim.TARGET_JITTER;
 		// The manifest records 0 for both, so a replayed configuration may name them.
 		for (String name : List.of("yaw_jitter_degrees", "pitch_jitter_degrees")) {
@@ -249,7 +268,7 @@ public final class ConfigResolver {
 		}
 
 		return new ResolvedConfig.Viewpoints(
-			viewpoints.integer32("count", 1, Ids.MAX_VIEWPOINTS, 8),
+			count,
 			min,
 			max,
 			aim,
@@ -258,6 +277,24 @@ public final class ConfigResolver {
 			viewpoints.integer32("attempts_per_viewpoint", 1, 10_000, 50),
 			EYE_HEIGHT_BLOCKS
 		);
+	}
+
+	/** The {@code clips} section over {@link ClipSettings#defaults}; nested objects merge member by member, {@code codec} is replaced whole. */
+	private static ClipSettings clips(JsonFields clips) {
+		JsonObject merged = ClipSettings.defaults().toJson();
+		clips.rejectUnknown(merged.keySet());
+		for (String member : clips.raw().keySet()) {
+			JsonObject defaults = merged.get(member).isJsonObject() ? merged.getAsJsonObject(member) : null;
+			if (defaults != null && !member.equals("codec")) {
+				JsonFields given = clips.object(member);
+				given.rejectUnknown(defaults.keySet());
+				given.raw().entrySet().forEach(entry -> defaults.add(entry.getKey(), entry.getValue()));
+			} else {
+				merged.add(member, clips.raw().get(member));
+			}
+		}
+
+		return ClipSettings.fromJson(JsonFields.of(merged));
 	}
 
 	/** A seed for a configuration that names none; the resolved configuration records it. */
@@ -299,9 +336,9 @@ public final class ConfigResolver {
 		return new ResolvedConfig.Visibility(difficulty == 3 ? VisibilityRule.PARTIALLY_VISIBLE : VisibilityRule.AT_LEAST_PARTLY_VISIBLE, min, max, minPixels);
 	}
 
-	private static ResolvedConfig.Capture capture(JsonFields capture) {
+	private static ResolvedConfig.Capture capture(JsonFields capture, CaptureMode defaultMode) {
 		capture.rejectUnknown(Set.of("mode", "width", "height", "cube_face_size"));
-		CaptureMode mode = capture.has("mode") ? capture.enumValue("mode", CaptureMode::fromJson) : CaptureMode.PERSPECTIVE_90;
+		CaptureMode mode = capture.has("mode") ? capture.enumValue("mode", CaptureMode::fromJson) : defaultMode;
 		boolean panorama = mode == CaptureMode.PANORAMA_310;
 		int width = capture.integer32("width", 16, 16_384, panorama ? 2480 : 1280);
 		int height = capture.integer32("height", 16, 16_384, 1280);

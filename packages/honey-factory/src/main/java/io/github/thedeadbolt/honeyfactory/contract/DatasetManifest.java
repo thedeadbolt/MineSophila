@@ -98,8 +98,19 @@ public record DatasetManifest(
 		}
 	}
 
-	/** {@code gitCommit} is null outside a Git checkout. */
-	public record Software(String minecraft, String fabricLoader, String fabricApi, String mod, String java, @Nullable String gitCommit, boolean gitDirty) {
+	/**
+	 * {@code gitCommit} is null outside a Git checkout; {@code ffmpeg}, the first line of
+	 * {@code ffmpeg -version}, is recorded by clip datasets, whose videos it encodes.
+	 */
+	public record Software(String minecraft, String fabricLoader, String fabricApi, String mod, String java, @Nullable String gitCommit, boolean gitDirty, @Nullable String ffmpeg) {
+		public Software(String minecraft, String fabricLoader, String fabricApi, String mod, String java, @Nullable String gitCommit, boolean gitDirty) {
+			this(minecraft, fabricLoader, fabricApi, mod, java, gitCommit, gitDirty, null);
+		}
+
+		/** This software with the ffmpeg that encodes a clip dataset's videos. */
+		public Software withFfmpeg(String version) {
+			return new Software(this.minecraft, this.fabricLoader, this.fabricApi, this.mod, this.java, this.gitCommit, this.gitDirty, version);
+		}
 	}
 
 	public record ResourcePack(String id, @Nullable String sha256) {
@@ -412,6 +423,10 @@ public record DatasetManifest(
 		software.addProperty("java", this.software.java());
 		software.add("git_commit", JsonWrite.nullable(this.software.gitCommit()));
 		software.addProperty("git_dirty", this.software.gitDirty());
+		if (this.software.ffmpeg() != null) {
+			software.addProperty("ffmpeg", this.software.ffmpeg());
+		}
+
 		json.add("software", software);
 		json.add("render_environment", this.renderEnvironment.toJson());
 		json.add("storage", clips ? clipStorageJson(clipSettings().codec()) : storageJson());
@@ -746,7 +761,8 @@ public record DatasetManifest(
 			software.string("mod"),
 			software.string("java"),
 			commit,
-			software.bool("git_dirty")
+			software.bool("git_dirty"),
+			software.has("ffmpeg") ? software.string("ffmpeg") : null
 		);
 	}
 

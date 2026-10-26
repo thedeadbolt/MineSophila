@@ -80,7 +80,7 @@ import org.jspecify.annotations.Nullable;
  * <p>Not thread-safe: run it on the thread the environment completes its futures on. Only
  * image encoding and writing run elsewhere, on its own worker threads.
  */
-public final class DatasetGenerator {
+public final class DatasetGenerator implements Generator {
 	public static final String TOOL = "honey-factory";
 	public static final String SCENE_ATTEMPT_LIMIT = "scene_attempt_limit";
 	public static final String CANCELLED = "cancelled";
@@ -176,6 +176,7 @@ public final class DatasetGenerator {
 	 * @throws IOException if the storage preflight fails or the directory cannot be created,
 	 *     including when it already exists
 	 */
+	@Override
 	public CompletableFuture<Result> start() throws IOException {
 		if (this.writer != null) {
 			throw new IllegalStateException("A generator runs once");
@@ -215,10 +216,12 @@ public final class DatasetGenerator {
 	}
 
 	/** Requests cancellation at the next safe boundary; see the class description. */
+	@Override
 	public void cancel() {
 		this.cancelled = true;
 	}
 
+	@Override
 	public Progress progress() {
 		Duration elapsed = this.started == null ? Duration.ZERO : Duration.between(this.started, this.clock.instant());
 		return this.tally.progress(elapsed);
@@ -329,6 +332,7 @@ public final class DatasetGenerator {
 	}
 
 	/** Where the run's time went so far. */
+	@Override
 	public GenerationTimings timings() {
 		return this.timings;
 	}

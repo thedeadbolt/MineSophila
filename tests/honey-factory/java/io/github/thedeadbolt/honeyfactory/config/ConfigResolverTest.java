@@ -7,8 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.google.gson.JsonObject;
+import io.github.thedeadbolt.honeyfactory.clip.ClipCodec;
 import io.github.thedeadbolt.honeyfactory.contract.CaptureMode;
+import io.github.thedeadbolt.honeyfactory.contract.ClipSettings;
+import io.github.thedeadbolt.honeyfactory.contract.ClipType;
 import io.github.thedeadbolt.honeyfactory.contract.ContractException;
+import io.github.thedeadbolt.honeyfactory.contract.DatasetKind;
 import io.github.thedeadbolt.honeyfactory.contract.SplitGrouping;
 import io.github.thedeadbolt.honeyfactory.contract.ViewpointAim;
 import io.github.thedeadbolt.honeyfactory.contract.VisibilityRule;
@@ -44,6 +48,68 @@ class ConfigResolverTest {
 		assertEquals(VisibilityRule.FULLY_VISIBLE, config.visibility().rule());
 		assertEquals(Path.of("/srv/datasets"), config.outputRoot());
 		assertEquals(10L << 30, config.output().freeSpaceReserveBytes());
+	}
+
+	@Test
+	void clipsDefaultToPanoramaAndTheM12Settings() {
+		ResolvedConfig config = ConfigResolver.resolve(with("clips", "{}"));
+		assertEquals(DatasetKind.CLIPS, config.kind());
+		assertEquals(new ResolvedConfig.Capture(CaptureMode.PANORAMA_310, 2480, 1280, 1024), config.capture());
+		assertEquals(ClipSettings.defaults(), config.clips());
+		assertEquals(0.8, config.target().presentFraction());
+		assertEquals(4, config.viewpoints().count());
+		assertEquals(ViewpointAim.IMAGE_UNIFORM, config.viewpoints().aim());
+		assertEquals(ClipSettings.defaults().toJson(), config.toJson().getAsJsonObject("generator").getAsJsonObject("clips"));
+	}
+
+	@Test
+	void stillsHaveNoClipSettings() {
+		ResolvedConfig config = ConfigResolver.resolve(MINIMAL);
+		assertEquals(DatasetKind.STILLS, config.kind());
+		assertNull(config.clips());
+		assertFalse(config.toJson().getAsJsonObject("generator").has("clips"));
+	}
+
+	@Test
+	void clipSettingsOverrideDefaults() {
+		ResolvedConfig config = ConfigResolver.resolve(with("clips", """
+			{"frames_per_tick": 2, "clips_per_scene": 3, "ticks": {"scan": 40}, "mix": {"approach": 0, "occlusion": 0, "detour": 0},
+			 "codec": {"name": "h264-lossy", "crf": 23}, "teacher": {"min_visible_pixels": 80}}
+			"""));
+		ClipSettings clips = config.clips();
+		assertEquals(2, clips.framesPerTick());
+		assertEquals(3, config.viewpoints().count());
+		assertEquals(40, clips.ticks(ClipType.SCAN));
+		assertEquals(100, clips.ticks(ClipType.APPROACH));
+		assertEquals(0.0, clips.mix().get(ClipType.APPROACH));
+		assertEquals(0.15, clips.mix().get(ClipType.SCAN));
+		assertEquals(new ClipCodec.H264Lossy(23), clips.codec());
+		assertEquals(80, clips.teacher().minVisiblePixels());
+	}
+
+	@Test
+	void clipSettingsRejectUnknownMembers() {
+		assertThrows(ContractException.class, () -> ConfigResolver.resolve(with("clips", "{\"fps\": 60}")));
+		assertThrows(ContractException.class, () -> ConfigResolver.resolve(with("clips", "{\"ticks\": {\"dance\": 3}}")));
+		assertThrows(ContractException.class, () -> ConfigResolver.resolve(with("clips", "{\"codec\": {\"name\": \"gif\"}}")));
+		assertThrows(ContractException.class, () -> ConfigResolver.resolve(with("clips", "{\"mix\": {\"approach\": 0, \"pass_by\": 0, \"scan\": 0, \"occlusion\": 0, \"detour\": 0}}")));
+	}
+
+	@Test
+	void clipViewpointCountIsTheClipsPerScene() {
+		String input = """
+			{"dataset": {"name": "honey-l1", "seed": 7, "difficulty": 1}, "output": {"root": "/srv/datasets"},
+			 "clips": {"clips_per_scene": 2}, "viewpoints": {"count": 5}}
+			""";
+		assertThrows(ContractException.class, () -> ConfigResolver.resolve(input));
+	}
+
+	@Test
+	void clipConfigurationsResolveFromTheirManifest() {
+		ResolvedConfig config = ConfigResolver.resolve(with("clips", "{\"codec\": {\"name\": \"ffv1\"}, \"frames_per_tick\": 2}"));
+		ResolvedConfig again = ConfigResolver.fromManifest(config.toJson(), Path.of("/elsewhere"));
+		assertEquals(config.sha256(), again.sha256());
+		assertEquals(config.clips(), again.clips());
 	}
 
 	@ParameterizedTest
