@@ -46,6 +46,7 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.RandomState;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -533,7 +534,9 @@ public final class NaturalPatches {
 		boolean fluid = !state.getFluidState().isEmpty();
 		flags |= state.isAir() ? 0 : PatchTerrain.OCCUPIED;
 		flags |= state.isSolidRender() ? PatchTerrain.OCCLUDES : 0;
-		flags |= state.getCollisionShape(level, pos).isEmpty() ? 0 : PatchTerrain.COLLIDES;
+		VoxelShape collision = state.getCollisionShape(level, pos);
+		flags |= collision.isEmpty() ? 0 : PatchTerrain.COLLIDES;
+		flags |= !collision.isEmpty() && collision.max(Direction.Axis.Y) > 1.0 ? PatchTerrain.TALL : 0;
 		flags |= fluid ? PatchTerrain.FLUID : 0;
 		flags |= state.isFaceSturdy(level, pos, Direction.UP) ? PatchTerrain.STURDY_TOP : 0;
 		flags |= state.isAir() || (state.canBeReplaced() && !fluid) ? PatchTerrain.REPLACEABLE : 0;

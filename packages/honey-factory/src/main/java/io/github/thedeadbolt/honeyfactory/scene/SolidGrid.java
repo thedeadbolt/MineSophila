@@ -19,6 +19,8 @@ public final class SolidGrid implements SightGrid {
 	/** Index into {@link #shapes} plus one per cell; 0 is air. */
 	private final short[] cells;
 	private final List<List<BlockShapes.Box>> shapes = new ArrayList<>();
+	/** Per palette entry, whether a body {@linkplain #collides collides} with it and whether it is {@linkplain #tall tall}. */
+	private final List<boolean[]> bodies = new ArrayList<>();
 	private final Map<String, Short> palette = new HashMap<>();
 
 	private SolidGrid(int width, int height, int length) {
@@ -43,6 +45,7 @@ public final class SolidGrid implements SightGrid {
 	private short paletteIndex(String state) {
 		return this.palette.computeIfAbsent(state, key -> {
 			this.shapes.add(BlockShapes.boxes(key));
+			this.bodies.add(new boolean[] {BlockShapes.collides(key), BlockShapes.tall(key)});
 			return (short) this.shapes.size();
 		});
 	}
@@ -50,6 +53,16 @@ public final class SolidGrid implements SightGrid {
 	@Override
 	public boolean solid(int x, int y, int z) {
 		return inside(x, y, z) && this.cells[index(x, y, z)] != 0;
+	}
+
+	@Override
+	public boolean collides(int x, int y, int z) {
+		return solid(x, y, z) && this.bodies.get(this.cells[index(x, y, z)] - 1)[0];
+	}
+
+	@Override
+	public boolean tall(int x, int y, int z) {
+		return solid(x, y, z) && this.bodies.get(this.cells[index(x, y, z)] - 1)[1];
 	}
 
 	/**

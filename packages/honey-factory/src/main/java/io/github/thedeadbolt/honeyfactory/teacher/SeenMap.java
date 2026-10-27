@@ -156,9 +156,16 @@ public final class SeenMap {
 		return frontiers;
 	}
 
-	/** Whether the body could stand with its feet in {@code (x, y, z)}: air there and above, a block below. */
+	/**
+	 * Whether the body could stand with its feet in {@code (x, y, z)}: nothing it bumps into
+	 * there or above, no tall block below either, and a block to stand on.
+	 */
 	public static boolean walkable(SightGrid grid, int x, int y, int z) {
-		return !grid.solid(x, y, z) && !grid.solid(x, y + 1, z) && grid.solid(x, y - 1, z);
+		return open(grid, x, y, z) && open(grid, x, y + 1, z) && grid.collides(x, y - 1, z);
+	}
+
+	private static boolean open(SightGrid grid, int x, int y, int z) {
+		return !grid.collides(x, y, z) && !(y >= 1 && grid.tall(x, y - 1, z));
 	}
 
 	/**

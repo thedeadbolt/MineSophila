@@ -45,4 +45,15 @@ class WalkGraphTest {
 		WalkGraph blind = WalkGraph.of(grid, grid.core, new SeenMap(grid.core));
 		assertFalse(blind.edges(new int[] {10, 5, 5}).stream().anyMatch(edge -> edge.to()[1] < 5), "no drop onto unseen floor");
 	}
+
+	@Test
+	void aFenceIsNoStepAndAPlantNoObstacle() {
+		Grids grid = new Grids(16, 6, 16).fence(6, 5).plant(6, 8);
+		WalkGraph seen = WalkGraph.of(grid, grid.core, SeenMap.everything(grid.core));
+		assertEquals(WalkGraph.Footing.BLOCKED, seen.footing(6, 1, 5), "a fence stands 1.5 high: no auto-jump clears it");
+		assertFalse(seen.edges(new int[] {5, 1, 5}).stream().anyMatch(edge -> edge.to()[0] == 6 && edge.to()[2] == 5), "no step onto a fence");
+		assertFalse(seen.walkable(6, 2, 5), "nobody stands on a fence post");
+		assertEquals(WalkGraph.Footing.SAFE, seen.footing(6, 1, 8), "a plant is walked through");
+		assertTrue(seen.edges(new int[] {5, 1, 8}).stream().anyMatch(edge -> edge.to()[0] == 6 && edge.to()[1] == 1 && edge.to()[2] == 8), "a level step through the plant");
+	}
 }

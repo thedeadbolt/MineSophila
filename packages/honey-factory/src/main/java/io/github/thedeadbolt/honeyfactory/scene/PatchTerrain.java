@@ -24,6 +24,8 @@ public final class PatchTerrain implements SightGrid {
 	/** Air, or a non-fluid block a placement may replace, such as grass or snow. */
 	public static final int REPLACEABLE = 32;
 	public static final int LEAVES = 64;
+	/** Its collision rises above the cell, as a fence's or wall's does. */
+	public static final int TALL = 128;
 
 	private final int width;
 	private final int height;
@@ -71,6 +73,16 @@ public final class PatchTerrain implements SightGrid {
 	@Override
 	public boolean solid(int x, int y, int z) {
 		return has(x, y, z, OCCUPIED);
+	}
+
+	@Override
+	public boolean collides(int x, int y, int z) {
+		return has(x, y, z, COLLIDES);
+	}
+
+	@Override
+	public boolean tall(int x, int y, int z) {
+		return has(x, y, z, TALL);
 	}
 
 	/** Only full opaque cubes block an estimate on natural terrain, so it errs towards keeping views. */

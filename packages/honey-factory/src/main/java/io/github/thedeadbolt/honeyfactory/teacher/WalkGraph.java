@@ -8,7 +8,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Where the body could stand and step, as far as the teacher knows. Cells are
- * arena-relative. A block counts only once it has been seen; unseen space is planned as
+ * arena-relative. Blocks count as the body meets them: plants not at all, a fence or wall as
+ * 1.5 high, closing the cell above it. A block counts only once it has been seen; unseen space is planned as
  * open floor at the body's height, and every tick's new view corrects the plan. A drop is
  * planned only onto floor the teacher has seen: it never steps down blind, since it may not
  * climb back.
@@ -60,13 +61,16 @@ public final class WalkGraph {
 	public record Ahead(Footing footing, int x, int z) {
 	}
 
-	/** A seen block in {@code (x, y, z)}; outside the arena counts as solid. */
+	/**
+	 * Whether a seen block keeps the body out of {@code (x, y, z)}: one there that it bumps
+	 * into, or a tall one below; outside the arena counts as solid.
+	 */
 	public boolean knownSolid(int x, int y, int z) {
 		if (x < 0 || z < 0 || x >= this.width || z >= this.length || y < 0) {
 			return true;
 		}
 
-		return y < this.height && this.seen.seen(x, y, z) && this.grid.solid(x, y, z);
+		return y < this.height && (this.seen.seen(x, y, z) && this.grid.collides(x, y, z) || y >= 1 && this.seen.seen(x, y - 1, z) && this.grid.tall(x, y - 1, z));
 	}
 
 	/** Whether the body could stand with its feet in {@code (x, y, z)}: no known block there or above, and no known gap below. */
@@ -75,12 +79,12 @@ public final class WalkGraph {
 			return false;
 		}
 
-		return !this.seen.seen(x, y - 1, z) || this.grid.solid(x, y - 1, z);
+		return !this.seen.seen(x, y - 1, z) || this.grid.collides(x, y - 1, z);
 	}
 
 	/** Whether the body could stand in {@code (x, y, z)} on floor the teacher has seen. */
 	public boolean standable(int x, int y, int z) {
-		return walkable(x, y, z) && this.seen.seen(x, y - 1, z) && this.grid.solid(x, y - 1, z);
+		return walkable(x, y, z) && this.seen.seen(x, y - 1, z) && this.grid.collides(x, y - 1, z);
 	}
 
 	/**
@@ -102,7 +106,7 @@ public final class WalkGraph {
 				return Footing.UNKNOWN;
 			}
 
-			if (this.grid.solid(x, feet - 1, z)) {
+			if (this.grid.collides(x, feet - 1, z)) {
 				return Footing.SAFE;
 			}
 		}

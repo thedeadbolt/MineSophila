@@ -120,6 +120,21 @@ class TrackBehaviourTest {
 	}
 
 	@Test
+	void goesRoundAFenceItCannotClimb() {
+		// Pilot m12-2b s000042-c00 and s000006-c00: a fence between the body and the honey,
+		// open at one end. A fence is 1.5 high, so the way is round it, not over it.
+		Grids grid = new Grids(25, 6, 25);
+		for (int x = 6; x <= 18; x++) {
+			grid.fence(x, 12);
+		}
+
+		int[] honey = {12, 1, 15};
+		grid.wall(honey[0], honey[2], 1);
+		boolean[] limits = {true};
+		assertTrue(run(grid, new CameraPose(12.5, 1.0, 9.5, 0.0f, 0.0f), honey, limits) > 0, "the tracker went round the fence");
+	}
+
+	@Test
 	void standsStillWithinReach() {
 		Grids grid = new Grids(17, 6, 17);
 		int[] honey = {8, 1, 10};

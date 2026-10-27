@@ -9,6 +9,10 @@ import java.util.Set;
 final class Grids implements SightGrid {
 	final BlockBox core;
 	private final Set<Long> blocks = new HashSet<>();
+	/** Blocks whose collision rises 1.5 high, such as fences. */
+	private final Set<Long> tall = new HashSet<>();
+	/** Blocks a body walks through, such as plants. */
+	private final Set<Long> open = new HashSet<>();
 
 	Grids(int width, int height, int length) {
 		this.core = new BlockBox(0, 0, 0, width - 1, height - 1, length - 1);
@@ -39,6 +43,20 @@ final class Grids implements SightGrid {
 		return this;
 	}
 
+	/** Adds a fence post at y = 1, 1.5 blocks high to a body. */
+	Grids fence(int x, int z) {
+		this.blocks.add(SeenMap.key(x, 1, z));
+		this.tall.add(SeenMap.key(x, 1, z));
+		return this;
+	}
+
+	/** Adds a plant at y = 1, which a body walks through. */
+	Grids plant(int x, int z) {
+		this.blocks.add(SeenMap.key(x, 1, z));
+		this.open.add(SeenMap.key(x, 1, z));
+		return this;
+	}
+
 	/** Removes any blocks above the floor in column {@code (x, z)}, for a start position. */
 	Grids clear(int x, int z) {
 		for (int y = 1; y < this.core.maxY() + 1; y++) {
@@ -51,6 +69,16 @@ final class Grids implements SightGrid {
 	@Override
 	public boolean solid(int x, int y, int z) {
 		return this.blocks.contains(SeenMap.key(x, y, z));
+	}
+
+	@Override
+	public boolean collides(int x, int y, int z) {
+		return solid(x, y, z) && !this.open.contains(SeenMap.key(x, y, z));
+	}
+
+	@Override
+	public boolean tall(int x, int y, int z) {
+		return this.tall.contains(SeenMap.key(x, y, z));
 	}
 
 	@Override

@@ -10,7 +10,9 @@ import io.github.thedeadbolt.honeyfactory.scene.SightGrid;
 /**
  * A kinematic body for closed-loop teacher tests: M11's turning limits, a fixed walking
  * speed, an automatic step up of one block, and blocks that stop it along one axis while it
- * slides along the other, as Minecraft's do. It falls straight onto whatever lies below.
+ * slides along the other, as Minecraft's do. A tall block (a fence) also fills the cell above
+ * it, so it is never stepped up; a body walks through blocks that do not collide. It falls
+ * straight onto whatever lies below.
  */
 final class BodySim {
 	/** Blocks per tick at full forward, about Minecraft's walking speed. */
@@ -60,7 +62,7 @@ final class BodySim {
 		double z = blocked(x, feet, targetZ) ? this.pose.z() : targetZ;
 		this.bumped = x != targetX || z != targetZ;
 
-		while (y > 1 && !this.grid.solid((int) Math.floor(x), (int) Math.floor(y) - 1, (int) Math.floor(z))) {
+		while (y > 1 && !this.grid.collides((int) Math.floor(x), (int) Math.floor(y) - 1, (int) Math.floor(z))) {
 			y -= 1;
 		}
 
@@ -73,7 +75,9 @@ final class BodySim {
 	private boolean blocked(double x, int y, double z) {
 		for (double dx : new double[] {-RADIUS, RADIUS}) {
 			for (double dz : new double[] {-RADIUS, RADIUS}) {
-				if (this.grid.solid((int) Math.floor(x + dx), y, (int) Math.floor(z + dz))) {
+				int cellX = (int) Math.floor(x + dx);
+				int cellZ = (int) Math.floor(z + dz);
+				if (this.grid.collides(cellX, y, cellZ) || this.grid.tall(cellX, y - 1, cellZ)) {
 					return true;
 				}
 			}
