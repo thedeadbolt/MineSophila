@@ -42,7 +42,8 @@ public class M12ReplayClipTest implements FabricClientGameTest {
 		  "quotas": {"accepted_scenes": 2, "scene_attempts_per_accepted_scene": 3},
 		  "target": {"present_fraction": 1.0},
 		  "splits": {"train": 0.5, "validation": 0.5, "test": 0.0},
-		  "clips": {"clips_per_scene": 2, "ticks": {"approach": 24, "pass_by": 12, "scan": 12, "occlusion": 16, "detour": 24, "no_honey": 12}},
+		  "clips": {"clips_per_scene": 2, "ticks": {"approach": 24, "pass_by": 12, "scan": 12, "occlusion": 16, "detour": 24, "search": 24, "no_honey": 12},
+		            "codec": {"name": "h264-lossless"}},
 		  "output": {"root": "%s"}
 		}
 		""";
