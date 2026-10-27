@@ -47,8 +47,9 @@ pilot's measurements, are in `packages/honey-factory/docs/m12-2-motion-clips.md`
   ticks, then follows the teacher. Detour starts hide the honey and need a walk at least 1.3
   times the straight distance; a scene without one falls back to approach and records the
   requested type. Level 1 has nothing to hide behind, so its occlusion and detour share goes
-  to approach and pass-by. Approach, detour and occlusion clips end 8 ticks after reaching
-  the honey. The default mix gives scripted clips 15% (scan and pass-by 7.5% each), approach
+  to approach and pass-by. Approach, detour and occlusion clips run up to 100 ticks and end
+  8 ticks after reaching the honey (occlusion had 32 until the second pilot showed its walk to
+  cover outlasting the clip). The default mix gives scripted clips 15% (scan and pass-by 7.5% each), approach
   35%, detour and occlusion 15% each, and no-honey the 20% of target-absent scenes.
 - **Who drove.** Every tick records its `driver`: `teacher`, `teacher_drift` or `script`;
   the teacher's command is recorded on every tick and is the policy's training target, never
@@ -65,11 +66,13 @@ pilot's measurements, are in `packages/honey-factory/docs/m12-2-motion-clips.md`
   (`hazard_fraction`, 0.3) pushes towards the nearest ledge or wall within 4 blocks
   (SAFE-GIL), so the data holds the teacher's recoveries near hazards rather than avoiding
   them. Pass-by clips take a line that stays on the floor.
-- **Falls and misses are measured.** A clip whose body still falls or leaves the arena is
+- **Falls and misses are measured.** A clip whose body still falls (one drop more than 3
+  blocks below where it last stood; walking downhill is not a fall) or leaves the arena is
   redrawn and counted in the manifest (`counts.clip_redraws`, by reason and clip type); the
   gate needs 0. A seeking clip that misses the honey records why, from the true layout:
-  `timeout` (it gained at least 2 cells of the true way), `unreachable`, or
-  `teacher_failure`, which the gate also needs at 0.
+  `timeout` (it gained at least 2 cells of the true way from where the teacher took over, or
+  a script drove every tick), `unreachable`, or `teacher_failure`, which the gate also needs
+  at 0.
 - **Validation of realizability.** Both validators check every tick: a `seen` belief needs
   the observed frame to show the threshold and names the scene's honey; `memory` names the
   last sighting; nothing is seen without honey. They also check every frame's mask against

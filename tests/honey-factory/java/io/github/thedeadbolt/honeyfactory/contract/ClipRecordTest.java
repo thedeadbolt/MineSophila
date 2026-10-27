@@ -60,6 +60,7 @@ class ClipRecordTest {
 		assertEquals(defaults, ClipSettings.fromJson(JsonFields.of(defaults.toJson())));
 		assertEquals(50, defaults.teacher().minVisiblePixels());
 		assertEquals(100, defaults.ticks(ClipType.DETOUR));
+		assertEquals(100, defaults.ticks(ClipType.OCCLUSION), "long enough to walk to cover and back to the honey");
 	}
 
 	@Test

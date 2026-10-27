@@ -592,6 +592,8 @@ public final class ClipGenerator implements Generator {
 		private java.util.Set<Long> reachable = java.util.Set.of();
 		private int frame;
 		private @Nullable FallCheck fall;
+		/** Where the teacher first drove, or null while a script drives. */
+		private @Nullable CameraPose takeover;
 
 		ClipRun(SceneClips scene, int index, int attempt, ClipType requested, ClipSeeds seeds, ClipStarts.Start start) {
 			this.scene = scene;
@@ -688,6 +690,9 @@ public final class ClipGenerator implements Generator {
 
 				this.driftTicks += drifting ? 1 : 0;
 				this.drivers.merge(driver, 1, Integer::sum);
+				if (this.takeover == null && driver != Driver.SCRIPT) {
+					this.takeover = input.pose();
+				}
 				if (ClipRecord.seeksHoney(this.type) && this.reachedTick < 0 && TrackBehaviour.reached(control.truth().pose(), this.scene.target, this.context)) {
 					this.reachedTick = tick;
 				}
@@ -747,7 +752,7 @@ public final class ClipGenerator implements Generator {
 			boolean reached = this.reachedTick >= 0;
 			boolean seeks = ClipRecord.seeksHoney(this.type);
 			ClipRecord.MissReason miss = seeks && !reached
-				? new MissReasons(this.scene.grid, ClipGenerator.this.arena.core()).of(this.start.pose(), this.last.truth().pose(), this.scene.target) : null;
+				? new MissReasons(this.scene.grid, ClipGenerator.this.arena.core()).of(this.start.pose(), this.takeover, this.last.truth().pose(), this.scene.target) : null;
 			ClipRecord.EndReason end = reached && this.ran < this.ticks ? ClipRecord.EndReason.REACHED : ClipRecord.EndReason.LENGTH;
 			return new ClipRecord(SchemaVersion.CURRENT, this.clipId, this.scene.descriptor.sceneId(), this.scene.descriptor.split(), this.index, this.requested, this.type, this.attempt,
 				this.seeds, this.start.pose(), this.framesPerTick, this.ran, ClipRecord.frameCount(this.ran, this.framesPerTick), end,

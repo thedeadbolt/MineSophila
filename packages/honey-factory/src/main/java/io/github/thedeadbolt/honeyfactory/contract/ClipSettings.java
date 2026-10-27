@@ -64,7 +64,7 @@ public record ClipSettings(
 	public static ClipSettings defaults() {
 		Map<ClipType, Integer> ticks = new EnumMap<>(ClipType.class);
 		for (ClipType type : ClipType.values()) {
-			ticks.put(type, type == ClipType.APPROACH || type == ClipType.DETOUR ? 100 : 32);
+			ticks.put(type, type == ClipType.APPROACH || type == ClipType.DETOUR || type == ClipType.OCCLUSION ? 100 : 32);
 		}
 
 		// Scripted clips (scan, pass-by) are 15% of a dataset with 20% target-absent scenes; M13 decides by ablation whether to keep them.

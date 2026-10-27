@@ -3,6 +3,7 @@ package io.github.thedeadbolt.honeyfactory.generation;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -16,6 +17,7 @@ import io.github.thedeadbolt.honeyfactory.contract.ClipSeeds;
 import io.github.thedeadbolt.honeyfactory.contract.ClipType;
 import io.github.thedeadbolt.honeyfactory.contract.DatasetKind;
 import io.github.thedeadbolt.honeyfactory.contract.DatasetManifest;
+import io.github.thedeadbolt.honeyfactory.contract.Driver;
 import io.github.thedeadbolt.honeyfactory.contract.FrameRecord;
 import io.github.thedeadbolt.honeyfactory.contract.JsonFields;
 import io.github.thedeadbolt.honeyfactory.dataset.ClipValidator;
@@ -173,6 +175,14 @@ class ClipGeneratorTest {
 			} else if (seeking) {
 				assertNotNull(clip.summary().missReason(), clip.clipId() + " names why it missed");
 			}
+		}
+
+		List<ClipRecord> scripted = clips(result).stream()
+			.filter(clip -> clip.summary().ticksByDriver().get(Driver.TEACHER) + clip.summary().ticksByDriver().get(Driver.TEACHER_DRIFT) == 0 && clip.summary().reached() != null)
+			.toList();
+		assertFalse(scripted.isEmpty(), "8-tick occlusion clips end before their walk to cover does");
+		for (ClipRecord clip : scripted) {
+			assertNotEquals(ClipRecord.MissReason.TEACHER_FAILURE, clip.summary().missReason(), clip.clipId() + ": the teacher never drove");
 		}
 	}
 
