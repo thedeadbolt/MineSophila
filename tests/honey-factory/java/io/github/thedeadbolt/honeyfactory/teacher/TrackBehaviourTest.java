@@ -102,6 +102,24 @@ class TrackBehaviourTest {
 	}
 
 	@Test
+	void reachesHoneyAtAnAlleyMouthFromTheDiagonal() {
+		// Pilot m12-2b s000041-c01: the honey fills the mouth of a one-wide alley; its sides
+		// are walls, a leaf block and the unseen alley behind it. Only the open diagonal
+		// cell, 1.41 from the honey's centre, is within reach.
+		Grids grid = new Grids(25, 6, 25);
+		for (int x = 12; x <= 16; x++) {
+			grid.wall(x, 10, 3).wall(x, 12, 3);
+		}
+
+		grid.wall(11, 11, 1).wall(11, 12, 1);
+		int[] honey = {12, 1, 11};
+		grid.wall(honey[0], honey[2], 1);
+		boolean[] limits = {true};
+		assertTrue(run(grid, new CameraPose(8.5, 1.0, 14.5, -90.0f, 0.0f), honey, limits) > 0, "the tracker stood within reach");
+		assertTrue(limits[0]);
+	}
+
+	@Test
 	void standsStillWithinReach() {
 		Grids grid = new Grids(17, 6, 17);
 		int[] honey = {8, 1, 10};

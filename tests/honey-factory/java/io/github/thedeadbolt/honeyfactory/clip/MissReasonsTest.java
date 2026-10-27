@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 
 /** Why a clip that sought the honey did not reach it, judged by the scene's true layout. */
 class MissReasonsTest {
-	private static final MissReasons REASONS = new MissReasons(EdgeGuardTest.PLATFORM, EdgeGuardTest.CORE);
+	private static final MissReasons REASONS = new MissReasons(EdgeGuardTest.PLATFORM, EdgeGuardTest.CORE, 1.5);
 	private static final CameraPose START = new CameraPose(15.5, 5.0, 10.5, 0.0f, 0.0f);
 
 	@Test

@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 /** Starts for clip types that need the scene's layout: blocked for detours, crossing a blocker for occlusions. */
 class ClipStartsTest {
 	private static final double EYE = 1.62;
+	private static final double REACH = 1.5;
 	private static final BlockBox CORE = new BlockBox(0, 0, 0, 31, 7, 31);
 
 	/** A floor at y = 0, a wall across x = 8..23 at z = 16 three blocks high, and the honey at (16, 1, 22). */
@@ -70,7 +71,7 @@ class ClipStartsTest {
 	@Test
 	void detourStartIsBlockedAndLonger() {
 		SightGrid grid = walled(true);
-		ClipStarts.Start start = ClipStarts.choose(ClipType.DETOUR, draws(1), 0, 60, grid, CORE, new int[] {16, 1, 22}, 9L, EYE);
+		ClipStarts.Start start = ClipStarts.choose(ClipType.DETOUR, draws(1), 0, 60, grid, CORE, new int[] {16, 1, 22}, 9L, EYE, REACH);
 		assertNotNull(start);
 		assertEquals(ClipType.DETOUR, start.type());
 		double[] eye = {start.pose().x(), start.pose().y() + EYE, start.pose().z()};
@@ -81,7 +82,7 @@ class ClipStartsTest {
 	@Test
 	void searchStartHidesTheHoneyWithAWayToIt() {
 		SightGrid grid = walled(true);
-		ClipStarts.Start start = ClipStarts.choose(ClipType.SEARCH, draws(1), 0, 60, grid, CORE, new int[] {16, 1, 22}, 9L, EYE);
+		ClipStarts.Start start = ClipStarts.choose(ClipType.SEARCH, draws(1), 0, 60, grid, CORE, new int[] {16, 1, 22}, 9L, EYE, REACH);
 		assertNotNull(start);
 		assertEquals(ClipType.SEARCH, start.type());
 		double[] eye = {start.pose().x(), start.pose().y() + EYE, start.pose().z()};
@@ -92,7 +93,7 @@ class ClipStartsTest {
 	@Test
 	void occlusionStartPassesBehindABlocker() {
 		SightGrid grid = walled(true);
-		ClipStarts.Start start = ClipStarts.choose(ClipType.OCCLUSION, draws(2), 0, 60, grid, CORE, new int[] {16, 1, 22}, 4L, EYE);
+		ClipStarts.Start start = ClipStarts.choose(ClipType.OCCLUSION, draws(2), 0, 60, grid, CORE, new int[] {16, 1, 22}, 4L, EYE, REACH);
 		assertNotNull(start);
 		assertEquals(ClipType.OCCLUSION, start.type());
 		assertNotNull(start.waypoint());
@@ -103,7 +104,7 @@ class ClipStartsTest {
 	void anEmptyPlatformFallsBackToApproach() {
 		SightGrid grid = walled(false);
 		for (ClipType requested : new ClipType[] {ClipType.DETOUR, ClipType.OCCLUSION, ClipType.SEARCH}) {
-			ClipStarts.Start start = ClipStarts.choose(requested, draws(3), 0, 30, grid, CORE, new int[] {16, 1, 22}, 1L, EYE);
+			ClipStarts.Start start = ClipStarts.choose(requested, draws(3), 0, 30, grid, CORE, new int[] {16, 1, 22}, 1L, EYE, REACH);
 			assertNotNull(start);
 			assertEquals(ClipType.APPROACH, start.type(), requested + " falls back");
 		}
@@ -112,9 +113,9 @@ class ClipStartsTest {
 	@Test
 	void scanAndNoHoneyStartsFaceARandomWay() {
 		SightGrid grid = walled(false);
-		ClipStarts.Start scan = ClipStarts.choose(ClipType.SCAN, draws(3), 0, 30, grid, CORE, new int[] {16, 1, 22}, 1L, EYE);
-		ClipStarts.Start again = ClipStarts.choose(ClipType.SCAN, draws(3), 0, 30, grid, CORE, new int[] {16, 1, 22}, 2L, EYE);
+		ClipStarts.Start scan = ClipStarts.choose(ClipType.SCAN, draws(3), 0, 30, grid, CORE, new int[] {16, 1, 22}, 1L, EYE, REACH);
+		ClipStarts.Start again = ClipStarts.choose(ClipType.SCAN, draws(3), 0, 30, grid, CORE, new int[] {16, 1, 22}, 2L, EYE, REACH);
 		assertTrue(scan.pose().yawDegrees() != again.pose().yawDegrees(), "the start seed turns the start");
-		assertEquals(ClipType.NO_HONEY, ClipStarts.choose(ClipType.NO_HONEY, draws(3), 0, 30, grid, CORE, null, 1L, EYE).type());
+		assertEquals(ClipType.NO_HONEY, ClipStarts.choose(ClipType.NO_HONEY, draws(3), 0, 30, grid, CORE, null, 1L, EYE, REACH).type());
 	}
 }

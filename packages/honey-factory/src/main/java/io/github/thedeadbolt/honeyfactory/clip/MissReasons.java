@@ -23,10 +23,13 @@ public final class MissReasons {
 
 	private final WalkGraph truth;
 	private final int[] origin;
+	private final double reach;
 
-	public MissReasons(SightGrid grid, BlockBox core) {
+	/** @param reach how near the teacher must come to the honey, in blocks */
+	public MissReasons(SightGrid grid, BlockBox core, double reach) {
 		this.truth = WalkGraph.of(grid, core, SeenMap.everything(core));
 		this.origin = core.min();
+		this.reach = reach;
 	}
 
 	/** As {@link #of(CameraPose, CameraPose, CameraPose, int[])} for a clip the teacher drove from its start. */
@@ -40,7 +43,7 @@ public final class MissReasons {
 	 */
 	public ClipRecord.MissReason of(CameraPose start, @Nullable CameraPose takeover, CameraPose end, int[] honey) {
 		int[] target = {honey[0] - this.origin[0], honey[1] - this.origin[1], honey[2] - this.origin[2]};
-		if (TrackBehaviour.pathBeside(this.truth, cell(start), target) == null) {
+		if (TrackBehaviour.pathBeside(this.truth, cell(start), target, this.reach) == null) {
 			return ClipRecord.MissReason.UNREACHABLE;
 		}
 
@@ -48,12 +51,12 @@ public final class MissReasons {
 			return ClipRecord.MissReason.TIMEOUT;
 		}
 
-		List<int[]> before = TrackBehaviour.pathBeside(this.truth, cell(takeover), target);
+		List<int[]> before = TrackBehaviour.pathBeside(this.truth, cell(takeover), target, this.reach);
 		if (before == null) {
 			return ClipRecord.MissReason.TEACHER_FAILURE;
 		}
 
-		List<int[]> after = TrackBehaviour.pathBeside(this.truth, cell(end), target);
+		List<int[]> after = TrackBehaviour.pathBeside(this.truth, cell(end), target, this.reach);
 		return after != null && after.size() <= before.size() - PROGRESS ? ClipRecord.MissReason.TIMEOUT : ClipRecord.MissReason.TEACHER_FAILURE;
 	}
 

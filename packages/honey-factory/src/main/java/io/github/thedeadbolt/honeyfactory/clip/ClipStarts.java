@@ -66,10 +66,11 @@ public final class ClipStarts {
 	 *
 	 * @param draws the placeable start of each draw index, or null when that draw is not placeable
 	 * @param honey the honey's absolute cell, or null without honey
+	 * @param reach how near the teacher must come to the honey, in blocks
 	 * @return the start, or null when no draw is placeable
 	 */
 	public static @Nullable Start choose(ClipType requested, IntFunction<@Nullable CameraPose> draws, int firstDraw, int maxDraws, SightGrid grid, BlockBox core, int @Nullable [] honey,
-		long startSeed, double eyeHeight) {
+		long startSeed, double eyeHeight, double reach) {
 		int first = -1;
 		CameraPose firstPose = null;
 		for (int draw = firstDraw; draw < firstDraw + maxDraws; draw++) {
@@ -84,8 +85,8 @@ public final class ClipStarts {
 			}
 
 			Start start = switch (requested) {
-				case DETOUR -> honey == null ? null : detour(pose, draw, grid, core, honey, eyeHeight);
-				case SEARCH -> honey == null ? null : search(pose, draw, grid, core, honey, eyeHeight);
+				case DETOUR -> honey == null ? null : detour(pose, draw, grid, core, honey, eyeHeight, reach);
+				case SEARCH -> honey == null ? null : search(pose, draw, grid, core, honey, eyeHeight, reach);
 				case OCCLUSION -> honey == null ? null : occlusion(pose, draw, grid, core, honey, startSeed, eyeHeight);
 				case SCAN, NO_HONEY -> new Start(requested, turned(pose, startSeed), draw, null, 0.0, 0);
 				case APPROACH, PASS_BY -> new Start(requested, pose, draw, null, 0.0, 0);
@@ -103,7 +104,7 @@ public final class ClipStarts {
 		return new CameraPose(pose.x(), pose.y(), pose.z(), yaw, pose.pitchDegrees());
 	}
 
-	private static @Nullable Start detour(CameraPose pose, int draw, SightGrid grid, BlockBox core, int[] honey, double eyeHeight) {
+	private static @Nullable Start detour(CameraPose pose, int draw, SightGrid grid, BlockBox core, int[] honey, double eyeHeight, double reach) {
 		int[] origin = core.min();
 		double[] eye = {pose.x() - origin[0], pose.y() + eyeHeight - origin[1], pose.z() - origin[2]};
 		int[] target = {honey[0] - origin[0], honey[1] - origin[1], honey[2] - origin[2]};
@@ -113,17 +114,19 @@ public final class ClipStarts {
 
 		WalkGraph graph = WalkGraph.of(grid, core, SeenMap.everything(core));
 		int[] feet = {(int) Math.floor(pose.x()) - origin[0], (int) Math.floor(pose.y()) - origin[1], (int) Math.floor(pose.z()) - origin[2]};
-		List<int[]> path = TrackBehaviour.pathBeside(graph, feet, target);
+		List<int[]> path = TrackBehaviour.pathBeside(graph, feet, target, reach);
 		double straight = Math.hypot(target[0] + 0.5 - eye[0], target[2] + 0.5 - eye[2]);
 		if (path == null || straight <= 0.0) {
 			return null;
 		}
 
-		double ratio = length(path) / straight;
+		// The walk ends within reach; its last leg to the honey makes it comparable to the straight line.
+		int[] end = path.getLast();
+		double ratio = (length(path) + Math.hypot(target[0] - end[0], target[2] - end[2])) / straight;
 		return ratio >= MIN_DETOUR_RATIO ? new Start(ClipType.DETOUR, pose, draw, null, ratio, 0) : null;
 	}
 
-	private static @Nullable Start search(CameraPose pose, int draw, SightGrid grid, BlockBox core, int[] honey, double eyeHeight) {
+	private static @Nullable Start search(CameraPose pose, int draw, SightGrid grid, BlockBox core, int[] honey, double eyeHeight, double reach) {
 		int[] origin = core.min();
 		double[] eye = {pose.x() - origin[0], pose.y() + eyeHeight - origin[1], pose.z() - origin[2]};
 		int[] target = {honey[0] - origin[0], honey[1] - origin[1], honey[2] - origin[2]};
@@ -133,7 +136,7 @@ public final class ClipStarts {
 
 		WalkGraph graph = WalkGraph.of(grid, core, SeenMap.everything(core));
 		int[] feet = {(int) Math.floor(pose.x()) - origin[0], (int) Math.floor(pose.y()) - origin[1], (int) Math.floor(pose.z()) - origin[2]};
-		return TrackBehaviour.pathBeside(graph, feet, target) == null ? null : new Start(ClipType.SEARCH, pose, draw, null, 0.0, 0);
+		return TrackBehaviour.pathBeside(graph, feet, target, reach) == null ? null : new Start(ClipType.SEARCH, pose, draw, null, 0.0, 0);
 	}
 
 	private static @Nullable Start occlusion(CameraPose pose, int draw, SightGrid grid, BlockBox core, int[] honey, long seed, double eyeHeight) {

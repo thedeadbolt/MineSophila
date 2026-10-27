@@ -542,7 +542,7 @@ public final class ClipGenerator implements Generator {
 					: ClipGenerator.this.generator.viewpoint(this.scene, index, draw)) instanceof ViewpointCandidate.Placeable placeable
 					? placeable.plan().pose(ClipGenerator.this.arena) : null,
 				attempt * perAttempt, perAttempt, this.grid, ClipGenerator.this.arena.core(), this.target, seeds.start(),
-				ClipGenerator.this.config.viewpoints().eyeHeightBlocks());
+				ClipGenerator.this.config.viewpoints().eyeHeightBlocks(), ClipGenerator.this.clips.teacher().reachDistanceBlocks());
 		}
 	}
 
@@ -762,7 +762,7 @@ public final class ClipGenerator implements Generator {
 			boolean reached = this.reachedTick >= 0;
 			boolean seeks = ClipRecord.seeksHoney(this.type);
 			ClipRecord.MissReason miss = seeks && !reached
-				? new MissReasons(this.scene.grid, ClipGenerator.this.arena.core()).of(this.start.pose(), this.takeover, this.last.truth().pose(), this.scene.target) : null;
+				? new MissReasons(this.scene.grid, ClipGenerator.this.arena.core(), ClipGenerator.this.clips.teacher().reachDistanceBlocks()).of(this.start.pose(), this.takeover, this.last.truth().pose(), this.scene.target) : null;
 			ClipRecord.EndReason end = reached && this.ran < this.ticks ? ClipRecord.EndReason.REACHED : ClipRecord.EndReason.LENGTH;
 			return new ClipRecord(SchemaVersion.CURRENT, this.clipId, this.scene.descriptor.sceneId(), this.scene.descriptor.split(), this.index, this.requested, this.type, this.attempt,
 				this.seeds, this.start.pose(), this.framesPerTick, this.ran, ClipRecord.frameCount(this.ran, this.framesPerTick), end,

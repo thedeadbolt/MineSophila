@@ -179,7 +179,7 @@ class ClipGeneratorTest {
 			{
 			  "dataset": {"name": "m12-clip-detours", "seed": 3, "difficulty": 3},
 			  "capture": {"width": 64, "height": 32, "cube_face_size": 16},
-			  "quotas": {"accepted_scenes": 4, "scene_attempts_per_accepted_scene": 3},
+			  "quotas": {"accepted_scenes": 8, "scene_attempts_per_accepted_scene": 3},
 			  "target": {"present_fraction": 1.0},
 			  "splits": {"train": 0.5, "validation": 0.5, "test": 0.0},
 			  "clips": {"clips_per_scene": 3, "frames_per_tick": 1,

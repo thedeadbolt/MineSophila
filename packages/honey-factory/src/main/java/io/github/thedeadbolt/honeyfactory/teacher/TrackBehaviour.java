@@ -4,12 +4,15 @@ import io.github.thedeadbolt.honeyfactory.contract.FrameRecord;
 import io.github.thedeadbolt.honeyfactory.contract.TeacherMode;
 import io.github.thedeadbolt.honeyfactory.control.MotorCommand;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
+import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Track: the honey is visible, so turn to it and approach it. When the straight way is
  * clear of blocks the teacher has seen, it steers at the honey itself; otherwise it follows
- * a path to the walkable cell beside the honey that is nearest, steering two cells ahead.
+ * a path to the nearest walkable cell within reach of the honey, steering two cells ahead,
+ * and once in that cell walks to its centre.
  * Within reach it stops and keeps the honey centred. With no known way to it (across a
  * gap, below a ledge) it turns to the honey and watches it instead of walking at it.
  */
@@ -53,11 +56,14 @@ public final class TrackBehaviour {
 		double[] aim = centre;
 		boolean walk = true;
 		if (!clear(graph, pose, origin, feet[1], centre)) {
-			List<int[]> path = pathBeside(graph, feet, target);
-			if (path != null && path.size() > 1) {
+			List<int[]> path = pathBeside(graph, feet, target, context.reachDistanceBlocks());
+			if (path == null) {
+				walk = false;
+			} else if (path.size() > 1) {
 				aim = ahead(graph, pose, origin, feet[1], path);
 			} else {
-				walk = false;
+				int[] cell = path.getFirst();
+				aim = new double[] {cell[0] + 0.5 + origin[0], cell[1] + origin[1], cell[2] + 0.5 + origin[2]};
 			}
 		}
 
@@ -84,26 +90,27 @@ public final class TrackBehaviour {
 		throw new IllegalStateException("a path of " + path.size() + " cells has no next cell");
 	}
 
-	/** The shortest known path to a walkable cell beside {@code target}, or null. */
-	public static List<int[]> pathBeside(WalkGraph graph, int[] feet, int[] target) {
-		List<int[]> best = null;
-		for (int[] side : new int[][] {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
-			for (int dy = 0; dy >= -1; dy--) {
-				int[] goal = {target[0] + side[0], target[1] + dy, target[2] + side[1]};
-				if (!graph.walkable(goal[0], goal[1], goal[2])) {
-					continue;
+	/**
+	 * The shortest known path to a walkable cell from whose centre the honey at {@code target}
+	 * is within {@code reach} horizontally, or null. Such a cell may stand level with the
+	 * honey, one block below it or one block up on a block beside it.
+	 */
+	public static @Nullable List<int[]> pathBeside(WalkGraph graph, int[] feet, int[] target, double reach) {
+		List<int[]> goals = new ArrayList<>();
+		int span = (int) Math.ceil(reach);
+		for (int dx = -span; dx <= span; dx++) {
+			for (int dz = -span; dz <= span; dz++) {
+				if ((dx != 0 || dz != 0) && Math.hypot(dx, dz) <= reach) {
+					for (int dy = -1; dy <= 1; dy++) {
+						if (graph.walkable(target[0] + dx, target[1] + dy, target[2] + dz)) {
+							goals.add(new int[] {target[0] + dx, target[1] + dy, target[2] + dz});
+						}
+					}
 				}
-
-				List<int[]> path = PathPlanner.path(graph, feet, goal);
-				if (path != null && (best == null || path.size() < best.size())) {
-					best = path;
-				}
-
-				break;
 			}
 		}
 
-		return best;
+		return PathPlanner.path(graph, feet, goals);
 	}
 
 	/**
