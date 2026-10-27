@@ -474,8 +474,8 @@ public final class ClipGenerator implements Generator {
 			ClipType type = type(index);
 			ClipStarts.Start start = start(index, attempt, type, seeds);
 			if (start == null) {
-				HoneyFactory.LOGGER.warn("Clip {} of {} has no placeable start", index, this.descriptor.sceneId());
-				return CompletableFuture.completedFuture(null);
+				HoneyFactory.LOGGER.info("Clip {} of {} has no placeable start in attempt {}", index, this.descriptor.sceneId(), attempt);
+				return attempt(index, attempt + 1);
 			}
 
 			return new ClipRun(this, index, attempt, type, seeds, start).run().handle((record, error) -> {
@@ -528,11 +528,15 @@ public final class ClipGenerator implements Generator {
 			return ClipSettings.PRESENT_TYPES.reversed().stream().filter(type -> mix.get(type) > 0.0).findFirst().orElseThrow();
 		}
 
-		/** The clip's start: see {@link ClipStarts}; draws run from {@code attempt} on. */
+		/**
+		 * The clip's start: see {@link ClipStarts}. Each attempt draws its own
+		 * {@code attempts_per_viewpoint} viewpoints, so a redraw starts somewhere new.
+		 */
 		private ClipStarts.@Nullable Start start(int index, int attempt, ClipType type, ClipSeeds seeds) {
+			int perAttempt = ClipGenerator.this.config.viewpoints().attemptsPerViewpoint();
 			return ClipStarts.choose(type, draw -> ClipGenerator.this.generator.viewpoint(this.scene, index, draw) instanceof ViewpointCandidate.Placeable placeable
 					? placeable.plan().pose(ClipGenerator.this.arena) : null,
-				attempt, ClipGenerator.this.config.viewpoints().attemptsPerViewpoint(), this.grid, ClipGenerator.this.arena.core(), this.target, seeds.start(),
+				attempt * perAttempt, perAttempt, this.grid, ClipGenerator.this.arena.core(), this.target, seeds.start(),
 				ClipGenerator.this.config.viewpoints().eyeHeightBlocks());
 		}
 	}

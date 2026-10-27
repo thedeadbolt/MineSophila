@@ -151,6 +151,28 @@ class ClipGeneratorTest {
 	}
 
 	@Test
+	void aClipWithNoPlaceableStartTriesItsOtherAttempts() throws IOException {
+		// One draw per attempt: many single draws on a level-3 scene fail its sight rule.
+		ResolvedConfig config = ConfigResolver.resolve(("""
+			{
+			  "dataset": {"name": "m12-clip-starts", "seed": 5, "difficulty": 3},
+			  "capture": {"width": 64, "height": 32, "cube_face_size": 16},
+			  "quotas": {"accepted_scenes": 3, "scene_attempts_per_accepted_scene": 3},
+			  "target": {"present_fraction": 1.0},
+			  "splits": {"train": 0.5, "validation": 0.5, "test": 0.0},
+			  "viewpoints": {"attempts_per_viewpoint": 1},
+			  "clips": {"clips_per_scene": 4, "frames_per_tick": 1, "attempts_per_clip": 60,
+			            "ticks": {"approach": 4, "pass_by": 4, "scan": 4, "occlusion": 4, "detour": 4, "no_honey": 4}},
+			  "output": {"root": "%s", "free_space_reserve_bytes": 1000000}
+			}
+			""").formatted(this.temp.resolve("starts").toString().replace("\\", "\\\\")));
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		DatasetGenerator.Result result = run(new ClipGenerator(config, environment, CLOCK, DISK), environment);
+		assertNull(result.failure(), () -> result.failure() + " " + result.validationErrors());
+		assertEquals(12, result.manifest().counts().acceptedClips(), "every clip found a start in its later attempts");
+	}
+
+	@Test
 	void everyClipIsAnnouncedBeforeItStarts() throws IOException {
 		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
 		DatasetGenerator.Result result = run(new ClipGenerator(allTypes(this.temp.resolve("j"), 1), environment, CLOCK, DISK), environment);
