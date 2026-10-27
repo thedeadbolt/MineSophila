@@ -17,6 +17,7 @@ def test_report_counts_the_fixture(contract_dir: Path, schemas: Schemas) -> None
     assert dataset["fallbacks"] == {}
     assert dataset["approach"] == {
         "clips": 2,
+        "reachable": 2,
         "reached": 0,
         "without_drift": 2,
         "reached_without_drift": 0,
@@ -55,7 +56,9 @@ def test_cli_writes_the_report(
     assert main(["clip-report", "--output", str(output), str(contract_dir / "clips")]) == 0
     written = json.loads(output.read_text(encoding="utf-8"))
     assert written["totals"]["clips"] == 4
-    assert "approach reached" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "approach reached" in out
+    assert "reach approach 0/2; misses timeout 2" in out
 
 
 def test_report_counts_ticks_by_driver(contract_dir: Path, schemas: Schemas) -> None:
@@ -82,8 +85,25 @@ def test_report_counts_reach_misses_and_falls(contract_dir: Path, schemas: Schem
 
     result = clip_report.report([contract_dir / "clips"], schemas)
     dataset = result["datasets"][0]
-    assert dataset["reach"] == {"approach": {"clips": 2, "reached": 0}}
+    assert dataset["reach"] == {"approach": {"clips": 2, "reachable": 2, "reached": 0}}
     assert dataset["miss_reasons"] == {"timeout": 2}
     assert dataset["falls"] == 0
     assert result["totals"]["teacher_failures"] == 0
     assert result["totals"]["falls"] == 0
+
+
+def test_reach_leaves_out_clips_with_no_way_to_the_honey(
+    contract_dir: Path, schemas: Schemas, tmp_path: Path
+) -> None:
+    import shutil
+
+    copy = tmp_path / "clips"
+    shutil.copytree(contract_dir / "clips", copy)
+    index = copy / "clips.jsonl"
+    clips = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines()]
+    first = next(clip for clip in clips if clip["clip_type"] == "approach")
+    first["summary"]["miss_reason"] = "unreachable"
+    index.write_text("".join(json.dumps(clip) + "\n" for clip in clips), encoding="utf-8")
+    dataset = report([copy], schemas)["datasets"][0]
+    assert dataset["approach"]["reachable"] == 1
+    assert dataset["reach"]["approach"] == {"clips": 2, "reachable": 1, "reached": 0}

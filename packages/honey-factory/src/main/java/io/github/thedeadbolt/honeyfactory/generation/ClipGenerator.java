@@ -548,7 +548,7 @@ public final class ClipGenerator implements Generator {
 
 	/**
 	 * The mix a scene's clips are drawn from. A level-1 platform has no blocks to hide behind,
-	 * so its occlusion and detour weights go to approach and pass-by, in proportion to theirs.
+	 * so its occlusion, detour and search weights go to approach and pass-by, in proportion to theirs.
 	 */
 	static Map<ClipType, Double> mix(ClipSettings clips, int difficulty) {
 		Map<ClipType, Double> mix = new EnumMap<>(clips.mix());
@@ -556,12 +556,13 @@ public final class ClipGenerator implements Generator {
 			return mix;
 		}
 
-		double moved = mix.get(ClipType.OCCLUSION) + mix.get(ClipType.DETOUR);
+		double moved = mix.get(ClipType.OCCLUSION) + mix.get(ClipType.DETOUR) + mix.get(ClipType.SEARCH);
 		double approach = mix.get(ClipType.APPROACH);
 		double passBy = mix.get(ClipType.PASS_BY);
 		double share = approach + passBy > 0.0 ? approach / (approach + passBy) : 1.0;
 		mix.put(ClipType.APPROACH, approach + moved * share);
 		mix.put(ClipType.PASS_BY, passBy + moved * (1.0 - share));
+		mix.put(ClipType.SEARCH, 0.0);
 		mix.put(ClipType.OCCLUSION, 0.0);
 		mix.put(ClipType.DETOUR, 0.0);
 		return mix;

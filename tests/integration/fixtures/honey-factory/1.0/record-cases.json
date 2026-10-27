@@ -128,6 +128,9 @@
     {"name": "a missed approach names why", "kind": "clip", "base": "valid/clip-approach.json", "expect": "semantic", "patch": [{"op": "set", "path": "/summary/miss_reason", "value": null}]},
     {"name": "a miss reason needs a miss", "kind": "clip", "base": "valid/clip-approach.json", "expect": "semantic", "patch": [{"op": "set", "path": "/summary/reached", "value": true}]},
     {"name": "miss reasons are known", "kind": "clip", "base": "valid/clip-approach.json", "expect": "schema", "patch": [{"op": "set", "path": "/summary/miss_reason", "value": "bad_luck"}]},
+    {"name": "a fallback from search to approach is valid", "kind": "clip", "base": "valid/clip-approach.json", "expect": "valid", "patch": [{"op": "set", "path": "/requested_type", "value": "search"}]},
+    {"name": "search clips record whether they reached the honey", "kind": "clip", "base": "valid/clip-approach.json", "expect": "valid", "patch": [{"op": "set", "path": "/clip_type", "value": "search"}, {"op": "set", "path": "/requested_type", "value": "search"}]},
+    {"name": "search clips must record whether they reached the honey", "kind": "clip", "base": "valid/clip-approach.json", "expect": "semantic", "patch": [{"op": "set", "path": "/clip_type", "value": "search"}, {"op": "set", "path": "/requested_type", "value": "search"}, {"op": "set", "path": "/summary/reached", "value": null}, {"op": "set", "path": "/end_reason", "value": "length"}]},
     {"name": "detour clips record whether they reached the honey", "kind": "clip", "base": "valid/clip-approach.json", "expect": "valid", "patch": [{"op": "set", "path": "/clip_type", "value": "detour"}, {"op": "set", "path": "/requested_type", "value": "detour"}]},
     {"name": "clip redraw counts are non-negative", "kind": "dataset", "base": "valid/dataset-clips-complete.json", "expect": "schema", "patch": [{"op": "set", "path": "/counts/clip_redraws/fall~1approach", "value": -1}]}
   ]

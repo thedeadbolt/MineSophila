@@ -7,6 +7,7 @@ public enum ClipType implements JsonEnum {
 	SCAN,
 	OCCLUSION,
 	DETOUR,
+	SEARCH,
 	NO_HONEY;
 
 	public static ClipType fromJson(String name) {

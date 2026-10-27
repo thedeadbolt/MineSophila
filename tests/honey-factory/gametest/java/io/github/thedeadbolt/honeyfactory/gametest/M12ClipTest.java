@@ -45,7 +45,7 @@ public class M12ClipTest implements FabricClientGameTest {
 		  "splits": {"train": 0.5, "validation": 0.5, "test": 0.0},
 		  "clips": {"clips_per_scene": 4, "frames_per_tick": 3,
 		            "ticks": {"pass_by": %d, "scan": %d},
-		            "mix": {"approach": 0, "pass_by": 1, "scan": 3, "occlusion": 0, "detour": 0}},
+		            "mix": {"approach": 0, "pass_by": 1, "scan": 3, "occlusion": 0, "detour": 0, "search": 0}},
 		  "output": {"root": "%s"}
 		}
 		""";

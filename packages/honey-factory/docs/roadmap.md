@@ -408,7 +408,7 @@ Delivered:
   FFV1 or lossy H.264 by choice), and labels on every frame from its own capture;
 - a realizable teacher (Track, Re-acquire, Search) that sees the honey only when the frame
   shows it, plans over what it has seen and searches frontiers;
-- six clip types (approach, pass-by, scan, occlusion, detour, no honey) with correlated
+- seven clip types (approach, pass-by, scan, occlusion, detour, search, no honey) with correlated
   drift, a `driver` on every tick (teacher, teacher with drift, or script), and 15%
   scripted clips by default;
 - an edge-aware teacher and an edge guard on the executed command, drift that pushes

@@ -27,7 +27,7 @@ public interface ClipDriver {
 
 	/**
 	 * The driver of a clip that starts at {@code start}: scan and pass-by follow their scripts;
-	 * approach, detour and no-honey execute the teacher's command with {@code drift}; occlusion
+	 * approach, detour, search and no-honey execute the teacher's command with {@code drift}; occlusion
 	 * walks to its waypoint with drift, then follows the teacher.
 	 *
 	 * @param honey the honey's absolute cell, or null in a scene without honey
@@ -37,7 +37,7 @@ public interface ClipDriver {
 		return switch (start.type()) {
 			case SCAN -> new ScanDriver(seed, limits);
 			case PASS_BY -> new PassByDriver(seed, start.pose(), honey, limits, guard, walk);
-			case APPROACH, DETOUR, NO_HONEY -> new TeacherDriver(drift);
+			case APPROACH, DETOUR, SEARCH, NO_HONEY -> new TeacherDriver(drift);
 			case OCCLUSION -> new OcclusionDriver(start.waypoint(), limits, eyeHeight, drift);
 		};
 	}
@@ -47,6 +47,7 @@ public interface ClipDriver {
 		return switch (type) {
 			case APPROACH -> "approach: the teacher goes to the honey";
 			case DETOUR -> "detour: the teacher goes around to the honey";
+			case SEARCH -> "search: the teacher looks for the honey, then goes to it";
 			case OCCLUSION -> "occlusion: a script walks behind cover, then the teacher finds the honey";
 			case PASS_BY -> "pass-by: a script walks past the honey";
 			case SCAN -> "scan: a script turns in place";

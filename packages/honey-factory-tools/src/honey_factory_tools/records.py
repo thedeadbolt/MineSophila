@@ -300,10 +300,10 @@ def _time(value: str) -> datetime:
     return datetime.fromisoformat(value)
 
 
-CLIP_TYPES = ("approach", "pass_by", "scan", "occlusion", "detour", "no_honey")
+CLIP_TYPES = ("approach", "pass_by", "scan", "occlusion", "detour", "search", "no_honey")
 CODECS = ("h264-lossless", "ffv1", "h264-lossy")
 # Clip types that seek the honey and record whether they reached it.
-SEEKING_TYPES = ("approach", "detour", "occlusion")
+SEEKING_TYPES = ("approach", "detour", "occlusion", "search")
 LOSSLESS_CODECS = ("h264-lossless", "ffv1")
 _STILL_STORAGE_INDEXES = {"scenes": "scenes.jsonl", "samples": "samples.jsonl"}
 
@@ -390,16 +390,18 @@ def clip_errors(clip: Record) -> list[str]:
     requested: str = clip["requested_type"]
     clip_type: str = clip["clip_type"]
     if requested != clip_type and not (
-        requested in ("occlusion", "detour") and clip_type == "approach"
+        requested in ("occlusion", "detour", "search") and clip_type == "approach"
     ):
         errors.append(
-            "/clip_type: may differ from requested_type only as an occlusion or detour "
-            "clip falling back to approach"
+            "/clip_type: may differ from requested_type only as an occlusion, detour or "
+            "search clip falling back to approach"
         )
     summary: Record = clip["summary"]
     reached: bool | None = summary["reached"]
     if (clip_type in SEEKING_TYPES) != (reached is not None):
-        errors.append("/summary/reached: is recorded for approach, detour and occlusion clips only")
+        errors.append(
+            "/summary/reached: is recorded for approach, detour, occlusion and search clips only"
+        )
     if clip["end_reason"] == "reached" and reached is not True:
         errors.append("/end_reason: a reached end needs a clip that reached the honey")
     if (reached is False) != (summary["miss_reason"] is not None):

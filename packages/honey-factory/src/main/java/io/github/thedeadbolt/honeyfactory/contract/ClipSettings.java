@@ -30,7 +30,10 @@ public record ClipSettings(
 	ClipCodec codec
 ) {
 	/** Clip types a target-present scene draws from, in mix order. */
-	public static final List<ClipType> PRESENT_TYPES = List.of(ClipType.APPROACH, ClipType.PASS_BY, ClipType.SCAN, ClipType.OCCLUSION, ClipType.DETOUR);
+	public static final List<ClipType> PRESENT_TYPES = List.of(ClipType.APPROACH, ClipType.PASS_BY, ClipType.SCAN, ClipType.OCCLUSION, ClipType.DETOUR, ClipType.SEARCH);
+
+	/** A search's default length: time to find the honey, then walk to it. */
+	static final int SEARCH_TICKS = 200;
 
 	public ClipSettings {
 		ticks = Map.copyOf(ticks);
@@ -64,16 +67,17 @@ public record ClipSettings(
 	public static ClipSettings defaults() {
 		Map<ClipType, Integer> ticks = new EnumMap<>(ClipType.class);
 		for (ClipType type : ClipType.values()) {
-			ticks.put(type, type == ClipType.APPROACH || type == ClipType.DETOUR || type == ClipType.OCCLUSION ? 100 : 32);
+			ticks.put(type, type == ClipType.SEARCH ? SEARCH_TICKS : type == ClipType.APPROACH || type == ClipType.DETOUR || type == ClipType.OCCLUSION ? 100 : 32);
 		}
 
 		// Scripted clips (scan, pass-by) are 15% of a dataset with 20% target-absent scenes; M13 decides by ablation whether to keep them.
 		Map<ClipType, Double> mix = new EnumMap<>(ClipType.class);
-		mix.put(ClipType.APPROACH, 0.35);
+		mix.put(ClipType.APPROACH, 0.30);
 		mix.put(ClipType.PASS_BY, 0.075);
 		mix.put(ClipType.SCAN, 0.075);
-		mix.put(ClipType.OCCLUSION, 0.15);
+		mix.put(ClipType.OCCLUSION, 0.10);
 		mix.put(ClipType.DETOUR, 0.15);
+		mix.put(ClipType.SEARCH, 0.15);
 		return new ClipSettings(3, 4, 20, ticks, 8, mix, new Drift(0.10, 6.0, 6.0, 0.5, 0.3), new Teacher(50, 60, 1.5), MotorLimits.DEFAULT, new ClipCodec.H264Lossless());
 	}
 
@@ -131,14 +135,15 @@ public record ClipSettings(
 		JsonFields ticksFields = clips.object("ticks");
 		Map<ClipType, Integer> ticks = new EnumMap<>(ClipType.class);
 		for (ClipType type : ClipType.values()) {
-			ticks.put(type, ticksFields.integer32(type.jsonName(), 1, 100_000));
+			// Search came after the first clip datasets; theirs leave it out.
+			ticks.put(type, type == ClipType.SEARCH && !ticksFields.has(type.jsonName()) ? SEARCH_TICKS : ticksFields.integer32(type.jsonName(), 1, 100_000));
 		}
 
 		JsonFields mixFields = clips.object("mix");
 		Map<ClipType, Double> mix = new EnumMap<>(ClipType.class);
 		double total = 0.0;
 		for (ClipType type : PRESENT_TYPES) {
-			double weight = mixFields.decimal(type.jsonName(), 0.0, 1.0e6);
+			double weight = type == ClipType.SEARCH && !mixFields.has(type.jsonName()) ? 0.0 : mixFields.decimal(type.jsonName(), 0.0, 1.0e6);
 			mix.put(type, weight);
 			total += weight;
 		}

@@ -21,13 +21,15 @@ import org.jspecify.annotations.Nullable;
  * <ul>
  *   <li><b>Detour</b>: the honey fully hidden from the start, and the shortest walk to it at
  *       least {@value #MIN_DETOUR_RATIO} times the straight distance;
+ *   <li><b>Search</b>: the honey fully hidden from the start, with a walkable way to it;
  *   <li><b>Occlusion</b>: the honey visible from the start, and a straight walk to a waypoint
  *       that hides it for at least {@value #MIN_HIDDEN_TICKS} ticks;
  *   <li><b>Scan</b> and <b>no honey</b>: facing a random way;
  *   <li>otherwise the first placeable draw.
  * </ul>
  *
- * A detour or occlusion with no qualifying start in its draws falls back to approach.
+ * A detour, search or occlusion with no qualifying start in its draws falls back to approach.
+ * Detour and search draws skip the level's sight rule (see {@link #hidesHoney}).
  */
 public final class ClipStarts {
 	public static final double MIN_DETOUR_RATIO = 1.3;
@@ -56,7 +58,7 @@ public final class ClipStarts {
 
 	/** Whether {@code type} starts with the honey fully hidden, so its draws must not require a view of it. */
 	public static boolean hidesHoney(ClipType type) {
-		return type == ClipType.DETOUR;
+		return type == ClipType.DETOUR || type == ClipType.SEARCH;
 	}
 
 	/**
@@ -83,6 +85,7 @@ public final class ClipStarts {
 
 			Start start = switch (requested) {
 				case DETOUR -> honey == null ? null : detour(pose, draw, grid, core, honey, eyeHeight);
+				case SEARCH -> honey == null ? null : search(pose, draw, grid, core, honey, eyeHeight);
 				case OCCLUSION -> honey == null ? null : occlusion(pose, draw, grid, core, honey, startSeed, eyeHeight);
 				case SCAN, NO_HONEY -> new Start(requested, turned(pose, startSeed), draw, null, 0.0, 0);
 				case APPROACH, PASS_BY -> new Start(requested, pose, draw, null, 0.0, 0);
@@ -118,6 +121,19 @@ public final class ClipStarts {
 
 		double ratio = length(path) / straight;
 		return ratio >= MIN_DETOUR_RATIO ? new Start(ClipType.DETOUR, pose, draw, null, ratio, 0) : null;
+	}
+
+	private static @Nullable Start search(CameraPose pose, int draw, SightGrid grid, BlockBox core, int[] honey, double eyeHeight) {
+		int[] origin = core.min();
+		double[] eye = {pose.x() - origin[0], pose.y() + eyeHeight - origin[1], pose.z() - origin[2]};
+		int[] target = {honey[0] - origin[0], honey[1] - origin[1], honey[2] - origin[2]};
+		if (SightLines.clearFraction(grid, eye, target) > 0.0) {
+			return null;
+		}
+
+		WalkGraph graph = WalkGraph.of(grid, core, SeenMap.everything(core));
+		int[] feet = {(int) Math.floor(pose.x()) - origin[0], (int) Math.floor(pose.y()) - origin[1], (int) Math.floor(pose.z()) - origin[2]};
+		return TrackBehaviour.pathBeside(graph, feet, target) == null ? null : new Start(ClipType.SEARCH, pose, draw, null, 0.0, 0);
 	}
 
 	private static @Nullable Start occlusion(CameraPose pose, int draw, SightGrid grid, BlockBox core, int[] honey, long seed, double eyeHeight) {

@@ -41,17 +41,21 @@ pilot's measurements, are in `packages/honey-factory/docs/m12-2-motion-clips.md`
     then search the frontiers within 6 blocks of it;
   - **Search**: walk to the frontier that best trades path length against unseen cells
     nearby, and on arrival turn towards the most unseen space.
-- **Clip types and drift.** Approach, detour and no-honey clips execute the teacher's
-  command with DART-style correlated drift (half-sine bumps on about 10% of ticks); scan and
-  pass-by are scripted; occlusion walks to a waypoint whose way hides the honey for at least 6
-  ticks, then follows the teacher. Detour starts hide the honey and need a walk at least 1.3
-  times the straight distance; their draws skip the level's sight rule, which keeps only views
-  that show the honey (the second pilot had no detour on any level until then); a scene without one falls back to approach and records the
-  requested type. Level 1 has nothing to hide behind, so its occlusion and detour share goes
-  to approach and pass-by. Approach, detour and occlusion clips run up to 100 ticks and end
-  8 ticks after reaching the honey (occlusion had 32 until the second pilot showed its walk to
-  cover outlasting the clip). The default mix gives scripted clips 15% (scan and pass-by 7.5% each), approach
-  35%, detour and occlusion 15% each, and no-honey the 20% of target-absent scenes.
+- **Clip types and drift.** Approach, detour, search and no-honey clips execute the
+  teacher's command with DART-style correlated drift (half-sine bumps on about 10% of ticks);
+  scan and pass-by are scripted; occlusion walks to a waypoint whose way hides the honey for
+  at least 6 ticks, then follows the teacher. Detour starts hide the honey and need a walk at
+  least 1.3 times the straight distance. Search starts hide the honey with a walkable way to
+  it, so the teacher searches, finds it and walks to it: the only clips in which a policy that
+  sees only pixels learns to look for honey it has not seen. Detour and search draws skip the
+  level's sight rule, which keeps only views that show the honey (the second pilot had no
+  detour on any level until then). A type without a qualifying start falls back to approach
+  and records the requested type. Level 1 has nothing to hide behind, so its occlusion, detour
+  and search share goes to approach and pass-by. Approach, detour and occlusion clips run up
+  to 100 ticks and search up to 200, and all of them end 8 ticks after reaching the honey
+  (occlusion had 32 until the second pilot showed its walk to cover outlasting the clip). The
+  default mix gives scripted clips 15% (scan and pass-by 7.5% each), approach 30%, detour and
+  search 15% each, occlusion 10%, and no-honey the 20% of target-absent scenes.
 - **Who drove.** Every tick records its `driver`: `teacher`, `teacher_drift` or `script`;
   the teacher's command is recorded on every tick and is the policy's training target, never
   a script's executed command. Scripted clips stay for the vision they show (the honey

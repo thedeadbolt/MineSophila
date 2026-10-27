@@ -56,7 +56,7 @@ class ClipGeneratorTest {
 			  "splits": {"train": 0.5, "validation": 0.5, "test": 0.0},
 			  "clips": {"clips_per_scene": 2, "frames_per_tick": 3,
 			            "ticks": {"approach": %d, "pass_by": %d, "scan": %d, "occlusion": %d, "detour": %d, "no_honey": %d},
-			            "mix": {"approach": 0, "pass_by": 1, "scan": 1, "occlusion": 0, "detour": 0}},
+			            "mix": {"approach": 0, "pass_by": 1, "scan": 1, "occlusion": 0, "detour": 0, "search": 0}},
 			  "output": {"root": "%s", "free_space_reserve_bytes": 1000000}
 			}
 			""").formatted(TICKS, TICKS, TICKS, TICKS, TICKS, TICKS, root.toString().replace("\\", "\\\\")));
@@ -184,7 +184,7 @@ class ClipGeneratorTest {
 			  "splits": {"train": 0.5, "validation": 0.5, "test": 0.0},
 			  "clips": {"clips_per_scene": 3, "frames_per_tick": 1,
 			            "ticks": {"approach": 4, "pass_by": 4, "scan": 4, "occlusion": 4, "detour": 4, "no_honey": 4},
-			            "mix": {"approach": 0, "pass_by": 0, "scan": 0, "occlusion": 0, "detour": 1}},
+			            "mix": {"approach": 0, "pass_by": 0, "scan": 0, "occlusion": 0, "detour": 1, "search": 0}},
 			  "output": {"root": "%s", "free_space_reserve_bytes": 1000000}
 			}
 			""").formatted(this.temp.resolve("detours").toString().replace("\\", "\\\\")));
@@ -192,6 +192,37 @@ class ClipGeneratorTest {
 		DatasetGenerator.Result result = run(new ClipGenerator(config, environment, CLOCK, DISK), environment);
 		assertNull(result.failure(), () -> result.failure() + " " + result.validationErrors());
 		assertTrue(clips(result).stream().anyMatch(clip -> clip.clipType() == ClipType.DETOUR), "some detour qualifies instead of every one falling back");
+	}
+
+	@Test
+	void searchClipsStartWithTheHoneyHiddenAndTheTeacherDriving() throws IOException {
+		ResolvedConfig config = ConfigResolver.resolve(("""
+			{
+			  "dataset": {"name": "m12-clip-searches", "seed": 3, "difficulty": 3},
+			  "capture": {"width": 64, "height": 32, "cube_face_size": 16},
+			  "quotas": {"accepted_scenes": 4, "scene_attempts_per_accepted_scene": 3},
+			  "target": {"present_fraction": 1.0},
+			  "splits": {"train": 0.5, "validation": 0.5, "test": 0.0},
+			  "clips": {"clips_per_scene": 3, "frames_per_tick": 1,
+			            "ticks": {"approach": 4, "pass_by": 4, "scan": 4, "occlusion": 4, "detour": 4, "search": 6, "no_honey": 4},
+			            "mix": {"approach": 0, "pass_by": 0, "scan": 0, "occlusion": 0, "detour": 0, "search": 1},
+			            "teacher": {"min_visible_pixels": 1}},
+			  "output": {"root": "%s", "free_space_reserve_bytes": 1000000}
+			}
+			""").formatted(this.temp.resolve("searches").toString().replace("\\", "\\\\")));
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		DatasetGenerator.Result result = run(new ClipGenerator(config, environment, CLOCK, DISK), environment);
+		assertNull(result.failure(), () -> result.failure() + " " + result.validationErrors());
+		List<ClipRecord> searches = clips(result).stream().filter(clip -> clip.clipType() == ClipType.SEARCH).toList();
+		assertFalse(searches.isEmpty(), "some search start qualifies");
+		for (ClipRecord clip : searches) {
+			assertEquals(6, clip.tickCount(), clip.clipId());
+			assertNotNull(clip.summary().reached(), "a search seeks the honey: " + clip.clipId());
+			assertEquals(0, clip.summary().ticksByDriver().get(Driver.SCRIPT), "the teacher drives a search throughout");
+		}
+
+		assertTrue(environment.announcements.stream().anyMatch(message -> message.endsWith(ClipDriver.describe(ClipType.SEARCH))));
+		assertEquals(List.of(), ClipValidator.validate(result.directory()).errors());
 	}
 
 	@Test
@@ -211,7 +242,7 @@ class ClipGeneratorTest {
 		DatasetGenerator.Result result = run(new ClipGenerator(allTypes(this.temp.resolve("i"), 3), environment, CLOCK, DISK), environment);
 		assertNull(result.failure(), () -> result.failure() + " " + result.validationErrors());
 		for (ClipRecord clip : clips(result)) {
-			boolean seeking = clip.clipType() == ClipType.APPROACH || clip.clipType() == ClipType.DETOUR || clip.clipType() == ClipType.OCCLUSION;
+			boolean seeking = ClipRecord.seeksHoney(clip.clipType());
 			assertEquals(seeking, clip.summary().reached() != null, clip.clipId() + " " + clip.clipType());
 			if (Boolean.TRUE.equals(clip.summary().reached())) {
 				assertEquals(ClipRecord.EndReason.REACHED, clip.endReason(), clip.clipId());
@@ -220,7 +251,26 @@ class ClipGeneratorTest {
 				assertNotNull(clip.summary().missReason(), clip.clipId() + " names why it missed");
 			}
 		}
+	}
 
+	@Test
+	void aMissTheTeacherNeverDroveIsNotItsFailure() throws IOException {
+		ResolvedConfig config = ConfigResolver.resolve(("""
+			{
+			  "dataset": {"name": "m12-clip-occlusions", "seed": 11, "difficulty": 3},
+			  "capture": {"width": 64, "height": 32, "cube_face_size": 16},
+			  "quotas": {"accepted_scenes": 4, "scene_attempts_per_accepted_scene": 3},
+			  "target": {"present_fraction": 1.0},
+			  "splits": {"train": 0.5, "validation": 0.5, "test": 0.0},
+			  "clips": {"clips_per_scene": 3, "frames_per_tick": 1,
+			            "ticks": {"approach": 8, "pass_by": 8, "scan": 8, "occlusion": 8, "detour": 8, "search": 8, "no_honey": 8},
+			            "mix": {"approach": 0, "pass_by": 0, "scan": 0, "occlusion": 1, "detour": 0, "search": 0}},
+			  "output": {"root": "%s", "free_space_reserve_bytes": 1000000}
+			}
+			""").formatted(this.temp.resolve("occlusions").toString().replace("\\", "\\\\")));
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		DatasetGenerator.Result result = run(new ClipGenerator(config, environment, CLOCK, DISK), environment);
+		assertNull(result.failure(), () -> result.failure() + " " + result.validationErrors());
 		List<ClipRecord> scripted = clips(result).stream()
 			.filter(clip -> clip.summary().ticksByDriver().get(Driver.TEACHER) + clip.summary().ticksByDriver().get(Driver.TEACHER_DRIFT) == 0 && clip.summary().reached() != null)
 			.toList();

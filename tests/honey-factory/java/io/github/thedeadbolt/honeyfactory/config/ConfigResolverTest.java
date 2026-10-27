@@ -92,7 +92,7 @@ class ConfigResolverTest {
 		assertThrows(ContractException.class, () -> ConfigResolver.resolve(with("clips", "{\"fps\": 60}")));
 		assertThrows(ContractException.class, () -> ConfigResolver.resolve(with("clips", "{\"ticks\": {\"dance\": 3}}")));
 		assertThrows(ContractException.class, () -> ConfigResolver.resolve(with("clips", "{\"codec\": {\"name\": \"gif\"}}")));
-		assertThrows(ContractException.class, () -> ConfigResolver.resolve(with("clips", "{\"mix\": {\"approach\": 0, \"pass_by\": 0, \"scan\": 0, \"occlusion\": 0, \"detour\": 0}}")));
+		assertThrows(ContractException.class, () -> ConfigResolver.resolve(with("clips", "{\"mix\": {\"approach\": 0, \"pass_by\": 0, \"scan\": 0, \"occlusion\": 0, \"detour\": 0, \"search\": 0}}")));
 	}
 
 	@Test

@@ -2,9 +2,10 @@
 
 Per dataset, and in total:
 
-- clip types, and fallbacks (a detour or occlusion clip that became an approach);
-- approach clips that reached the honey, all of them and those without drift; reach by
-  type for approach, detour and occlusion, and why the others missed (timeout,
+- clip types, and fallbacks (a detour, search or occlusion clip that became an approach);
+- approach clips that reached the honey, of those with a way to it (an `unreachable` miss
+  is the start's fault, not the teacher's), and of those without drift; reach by
+  type for approach, detour, occlusion and search, and why the others missed (timeout,
   unreachable, teacher_failure: the last must stay at 0);
 - falls: clip attempts redrawn because the body fell or walked out of the arena (from the
   manifest's ``counts.clip_redraws``), which must stay at 0;
@@ -77,7 +78,7 @@ def _dataset(path: Path, schemas: Schemas) -> Record:
     types: Counter[str] = Counter()
     fallbacks: Counter[str] = Counter()
     approach: Counter[str] = Counter(
-        {"clips": 0, "reached": 0, "without_drift": 0, "reached_without_drift": 0}
+        {"clips": 0, "reachable": 0, "reached": 0, "without_drift": 0, "reached_without_drift": 0}
     )
     statuses: Counter[str] = Counter()
     modes: Counter[str] = Counter()
@@ -108,8 +109,11 @@ def _dataset(path: Path, schemas: Schemas) -> Record:
         )
         guarded += clip["summary"]["guarded_ticks"]
         if clip["summary"]["reached"] is not None:
-            tally = reach.setdefault(clip["clip_type"], Counter({"clips": 0, "reached": 0}))
+            tally = reach.setdefault(
+                clip["clip_type"], Counter({"clips": 0, "reachable": 0, "reached": 0})
+            )
             tally["clips"] += 1
+            tally["reachable"] += clip["summary"]["miss_reason"] != "unreachable"
             tally["reached"] += clip["summary"]["reached"] is True
         if clip["summary"]["miss_reason"] is not None:
             misses[clip["summary"]["miss_reason"]] += 1
@@ -117,6 +121,7 @@ def _dataset(path: Path, schemas: Schemas) -> Record:
             reached = clip["summary"]["reached"] is True
             calm = clip["summary"]["drift_ticks"] == 0
             approach["clips"] += 1
+            approach["reachable"] += clip["summary"]["miss_reason"] != "unreachable"
             approach["reached"] += reached
             approach["without_drift"] += calm
             approach["reached_without_drift"] += reached and calm
@@ -193,7 +198,7 @@ def table(result: Record) -> str:
                 str(entry["dataset"]),
                 str(entry["level"]),
                 str(entry["clips"]),
-                f"{approach['reached']}/{approach['clips']}",
+                f"{approach['reached']}/{approach['reachable']}",
                 f"{approach['reached_without_drift']}/{approach['without_drift']}",
                 str(entry["realizability_violations"]),
                 "" if coverage is None else f"{coverage:.2f}",
@@ -209,6 +214,15 @@ def table(result: Record) -> str:
         )
         for row in rows
     ]
+    for entry in result["datasets"]:
+        reach = ", ".join(
+            f"{kind} {tally['reached']}/{tally['reachable']}"
+            for kind, tally in entry["reach"].items()
+        )
+        misses = ", ".join(
+            f"{reason} {count}" for reason, count in sorted(entry["miss_reasons"].items())
+        )
+        lines.append(f"{entry['dataset']}: reach {reach or '-'}; misses {misses or '-'}")
     totals = result["totals"]
     lines.append(
         f"total: {totals['clips']} clips, {totals['realizability_violations']} realizability "

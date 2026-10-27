@@ -52,7 +52,7 @@ async function startClips(dataset) {
   const form = $("clip-filters");
   form.hidden = false;
   fill(form.split, dataset.options.splits);
-  fill(form.type, ["approach", "pass_by", "scan", "occlusion", "detour", "no_honey"]);
+  fill(form.type, ["approach", "pass_by", "scan", "occlusion", "detour", "search", "no_honey"]);
   $("timeline-legend").replaceChildren(
     ...Object.entries(STATUS_COLOURS).map(([name, colour]) => legend(humane(name), colour)),
     ...Object.entries(MODE_COLOURS).map(([name, colour]) => legend(name, colour)),

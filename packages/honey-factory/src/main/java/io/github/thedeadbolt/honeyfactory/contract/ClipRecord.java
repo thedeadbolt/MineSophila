@@ -61,7 +61,7 @@ public record ClipRecord(
 		}
 	}
 
-	/** Why a clip that sought the honey (approach, detour, occlusion) ended without reaching it. */
+	/** Why a clip that sought the honey (approach, detour, occlusion, search) ended without reaching it. */
 	public enum MissReason implements JsonEnum {
 		/** The body got at least 2 blocks closer by the true shortest way, but the clip ran out of ticks. */
 		TIMEOUT,
@@ -82,7 +82,7 @@ public record ClipRecord(
 	}
 
 	/**
-	 * @param reached whether an approach, detour or occlusion clip reached the honey; null for other types
+	 * @param reached whether an approach, detour, occlusion or search clip reached the honey; null for other types
 	 * @param coverageFinal the share of reachable cells the teacher had seen at the end
 	 * @param ticksByDriver ticks by who chose the executed command (see {@link Driver})
 	 * @param guardedTicks ticks whose executed command the edge guard stopped short of a ledge
@@ -212,8 +212,8 @@ public record ClipRecord(
 
 		ClipType requested = fields.enumValue("requested_type", ClipType::fromJson);
 		ClipType clipType = fields.enumValue("clip_type", ClipType::fromJson);
-		if (requested != clipType && !((requested == ClipType.OCCLUSION || requested == ClipType.DETOUR) && clipType == ClipType.APPROACH)) {
-			throw fields.error("clip_type", "may differ from requested_type only as an occlusion or detour clip falling back to approach");
+		if (requested != clipType && !((requested == ClipType.OCCLUSION || requested == ClipType.DETOUR || requested == ClipType.SEARCH) && clipType == ClipType.APPROACH)) {
+			throw fields.error("clip_type", "may differ from requested_type only as an occlusion, detour or search clip falling back to approach");
 		}
 
 		int attempt = fields.integer32("attempt", 0, ClipSeeds.MAX_ATTEMPTS - 1);
@@ -262,7 +262,7 @@ public record ClipRecord(
 		int driftTicks = summary.integer32("drift_ticks", 0, ticks);
 		Boolean reached = summary.isNull("reached") ? null : summary.bool("reached");
 		if (seeksHoney(clipType) != (reached != null)) {
-			throw summary.error("reached", "is recorded for approach, detour and occlusion clips only");
+			throw summary.error("reached", "is recorded for approach, detour, occlusion and search clips only");
 		}
 
 		if (endReason == EndReason.REACHED && !Boolean.TRUE.equals(reached)) {
@@ -312,7 +312,7 @@ public record ClipRecord(
 
 	/** Whether clips of {@code type} seek the honey, and so record whether they reached it. */
 	public static boolean seeksHoney(ClipType type) {
-		return type == ClipType.APPROACH || type == ClipType.DETOUR || type == ClipType.OCCLUSION;
+		return type == ClipType.APPROACH || type == ClipType.DETOUR || type == ClipType.OCCLUSION || type == ClipType.SEARCH;
 	}
 
 	private static VideoFile video(JsonFields files, String name, String path, int frameCount) {

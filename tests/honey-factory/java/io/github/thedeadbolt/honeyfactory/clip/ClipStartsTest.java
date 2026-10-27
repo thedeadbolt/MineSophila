@@ -79,6 +79,17 @@ class ClipStartsTest {
 	}
 
 	@Test
+	void searchStartHidesTheHoneyWithAWayToIt() {
+		SightGrid grid = walled(true);
+		ClipStarts.Start start = ClipStarts.choose(ClipType.SEARCH, draws(1), 0, 60, grid, CORE, new int[] {16, 1, 22}, 9L, EYE);
+		assertNotNull(start);
+		assertEquals(ClipType.SEARCH, start.type());
+		double[] eye = {start.pose().x(), start.pose().y() + EYE, start.pose().z()};
+		assertEquals(0.0, SightLines.clearFraction(grid, eye, new int[] {16, 1, 22}), "the honey is hidden from a search's start");
+		assertTrue(ClipStarts.hidesHoney(ClipType.SEARCH));
+	}
+
+	@Test
 	void occlusionStartPassesBehindABlocker() {
 		SightGrid grid = walled(true);
 		ClipStarts.Start start = ClipStarts.choose(ClipType.OCCLUSION, draws(2), 0, 60, grid, CORE, new int[] {16, 1, 22}, 4L, EYE);
@@ -91,7 +102,7 @@ class ClipStartsTest {
 	@Test
 	void anEmptyPlatformFallsBackToApproach() {
 		SightGrid grid = walled(false);
-		for (ClipType requested : new ClipType[] {ClipType.DETOUR, ClipType.OCCLUSION}) {
+		for (ClipType requested : new ClipType[] {ClipType.DETOUR, ClipType.OCCLUSION, ClipType.SEARCH}) {
 			ClipStarts.Start start = ClipStarts.choose(requested, draws(3), 0, 30, grid, CORE, new int[] {16, 1, 22}, 1L, EYE);
 			assertNotNull(start);
 			assertEquals(ClipType.APPROACH, start.type(), requested + " falls back");
