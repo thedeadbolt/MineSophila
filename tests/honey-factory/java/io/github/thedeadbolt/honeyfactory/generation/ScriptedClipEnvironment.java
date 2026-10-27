@@ -27,6 +27,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiPredicate;
+import java.util.function.ToDoubleBiFunction;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -59,6 +60,13 @@ public final class ScriptedClipEnvironment implements ClipEnvironment {
 	private MotorCommand last = MotorCommand.IDLE;
 	/** Steps (reset number counted from 1, tick) that fail as if the body left the arena. */
 	BiPredicate<Integer, Integer> leaveArena = (reset, tick) -> false;
+	/** Blocks each step (reset number counted from 1, tick) moves the body up; negative walks it down. */
+	ToDoubleBiFunction<Integer, Integer> climb = (reset, tick) -> 0.0;
+	/** Steps after which the body is in the air rather than standing. */
+	BiPredicate<Integer, Integer> airborne = (reset, tick) -> false;
+	private boolean onGround = true;
+	/** How far the body has climbed since its reset. */
+	private double climbed;
 	/** Executed commands, in order, across every clip. */
 	final List<MotorCommand> executed = new ArrayList<>();
 	boolean ended;
@@ -112,6 +120,8 @@ public final class ScriptedClipEnvironment implements ClipEnvironment {
 			this.seed = seed;
 			this.tick = 0;
 			this.pose = start;
+			this.onGround = true;
+			this.climbed = 0.0;
 			this.motor = MotorState.ZERO;
 			this.last = MotorCommand.IDLE;
 			CapturedImages images = render(start);
@@ -136,12 +146,16 @@ public final class ScriptedClipEnvironment implements ClipEnvironment {
 			double yaw = Math.toRadians(achieved.yaw());
 			double[] velocity = {-Math.sin(yaw) * executed.forward() * WALK, 0.0, Math.cos(yaw) * executed.forward() * WALK};
 			CameraPose from = this.pose;
-			CameraPose to = new CameraPose(from.x() + velocity[0], from.y(), from.z() + velocity[2], achieved.yaw(), achieved.pitch());
+			double rise = this.climb.applyAsDouble(this.resets, this.tick);
+			CameraPose to = new CameraPose(from.x() + velocity[0], from.y() + rise, from.z() + velocity[2], achieved.yaw(), achieved.pitch());
+			this.onGround = !this.airborne.test(this.resets, this.tick);
 			BlockBox volume = this.arena.resetVolume();
-			if (!volume.contains((int) Math.floor(to.x()), (int) Math.floor(to.y()), (int) Math.floor(to.z()))) {
+			// Only walking out counts: a climb or drop is the fall check's to judge.
+			if (!volume.contains((int) Math.floor(to.x()), (int) Math.floor(from.y() - this.climbed), (int) Math.floor(to.z()))) {
 				throw new EnvironmentException(EnvironmentException.Reason.OUT_OF_ARENA, "scripted: walked out of the arena to " + to);
 			}
 
+			this.climbed += rise;
 			this.motor = achieved.state();
 			this.pose = to;
 			this.serverTick++;
@@ -166,7 +180,7 @@ public final class ScriptedClipEnvironment implements ClipEnvironment {
 		CameraFrame camera = CameraFrame.of(this.pose, ScriptedEnvironment.EYE_HEIGHT);
 		SampleRecord.Target target = SampleRecord.Target.of(box != null, box != null && this.projection.intersects(camera, box),
 			MaskStatistics.of(images.visibleMask(), images.width(), images.height()), images.unoccludedPixels(), box == null ? null : camera.distanceTo(box.center()));
-		BodySenses senses = BodySenses.of(this.pose, velocity, achieved, true, false, false, this.last);
+		BodySenses senses = BodySenses.of(this.pose, velocity, achieved, this.onGround, false, false, this.last);
 		TrueState truth = new TrueState(this.pose, velocity, this.layout, this.seed, this.serverTick, target, box != null && images.unoccludedTouchesEdge());
 		return new ControlStep(index, student, teacher, ControlStep.Executed.STUDENT, achieved, senses, truth);
 	}

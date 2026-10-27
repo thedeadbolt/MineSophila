@@ -96,8 +96,6 @@ public final class ClipGenerator implements Generator {
 	public static final String CHECK_THREAD = "honey-factory-clip-checks";
 	/** Blocks per tick at full forward, about Minecraft's walking speed: how far a scripted walk goes. */
 	static final double WALK_BLOCKS_PER_TICK = 0.2158;
-	/** How far below its start the body may drop before a clip is redrawn. */
-	static final double MAX_FALL_BLOCKS = 3.0;
 
 	/** Ends the run deliberately; the message is the recorded failure. */
 	private static final class Stop extends RuntimeException {
@@ -593,6 +591,7 @@ public final class ClipGenerator implements Generator {
 		/** Cells the body could reach from its start, by the true scene: the measure of search coverage, never the teacher's knowledge. */
 		private java.util.Set<Long> reachable = java.util.Set.of();
 		private int frame;
+		private @Nullable FallCheck fall;
 
 		ClipRun(SceneClips scene, int index, int attempt, ClipType requested, ClipSeeds seeds, ClipStarts.Start start) {
 			this.scene = scene;
@@ -617,6 +616,7 @@ public final class ClipGenerator implements Generator {
 			this.teacher.reset(this.context);
 			int[] origin = ClipGenerator.this.arena.core().min();
 			CameraPose start = this.start.pose();
+			this.fall = new FallCheck(start.y());
 			this.reachable = SeenMap.reachable(this.scene.grid, ClipGenerator.this.arena.core(),
 				new int[] {(int) Math.floor(start.x()) - origin[0], (int) Math.floor(start.y()) - origin[1], (int) Math.floor(start.z()) - origin[2]});
 			ClipGenerator.this.environment.announce(this.clipId + " · " + ClipDriver.describe(this.type));
@@ -669,7 +669,7 @@ public final class ClipGenerator implements Generator {
 			boolean guarded = command != meant;
 			return request(GenerationTimings.Phase.OBSERVE, () -> ClipGenerator.this.environment.step(command, decision.command())).thenCompose(step -> {
 				ControlStep control = step.step();
-				if (control.truth().pose().y() < this.start.pose().y() - MAX_FALL_BLOCKS) {
+				if (this.fall.fell(control.truth().pose().y(), control.senses().onGround())) {
 					throw new Redraw("the body fell to " + control.truth().pose());
 				}
 

@@ -128,6 +128,27 @@ class ClipGeneratorTest {
 	}
 
 	@Test
+	void walkingDownhillIsNotAFall() throws IOException {
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		environment.climb = (reset, tick) -> -1.0;
+		DatasetGenerator.Result result = run(new ClipGenerator(config(this.temp.resolve("downhill")), environment, CLOCK, DISK), environment);
+		assertNull(result.failure(), () -> result.failure() + " " + result.validationErrors());
+		assertEquals(Map.of(), result.manifest().counts().clipRedraws(), "standing one block lower each tick is walking, not falling");
+		assertEquals(4, result.manifest().counts().acceptedClips());
+	}
+
+	@Test
+	void oneDeepDropIsAFall() throws IOException {
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		environment.climb = (reset, tick) -> reset == 1 ? -1.0 : 0.0;
+		environment.airborne = (reset, tick) -> reset == 1;
+		DatasetGenerator.Result result = run(new ClipGenerator(config(this.temp.resolve("drop")), environment, CLOCK, DISK), environment);
+		assertNull(result.failure(), () -> result.failure() + " " + result.validationErrors());
+		ClipRecord first = ClipRecord.fromJson(JsonFields.parseObject(lines(result.directory().resolve(DatasetWriter.CLIPS)).getFirst()));
+		assertEquals(Map.of("fall/" + first.clipType().jsonName(), 1), result.manifest().counts().clipRedraws());
+	}
+
+	@Test
 	void everyClipIsAnnouncedBeforeItStarts() throws IOException {
 		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
 		DatasetGenerator.Result result = run(new ClipGenerator(allTypes(this.temp.resolve("j"), 1), environment, CLOCK, DISK), environment);
