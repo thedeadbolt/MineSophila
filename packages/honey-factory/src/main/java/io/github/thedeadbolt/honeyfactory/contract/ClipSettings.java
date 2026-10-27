@@ -40,6 +40,11 @@ public record ClipSettings(
 
 	/** A search's default length: time to find the honey, then walk to it. */
 	static final int SEARCH_TICKS = 200;
+	/**
+	 * An occlusion's default length: the walk to cover takes about 50 ticks, and the third
+	 * pilot's teacher still needed up to 50 more after 100 to walk back to the honey.
+	 */
+	static final int OCCLUSION_TICKS = 160;
 
 	public ClipSettings {
 		ticks = Map.copyOf(ticks);
@@ -73,7 +78,12 @@ public record ClipSettings(
 	public static ClipSettings defaults() {
 		Map<ClipType, Integer> ticks = new EnumMap<>(ClipType.class);
 		for (ClipType type : ClipType.values()) {
-			ticks.put(type, type == ClipType.SEARCH ? SEARCH_TICKS : type == ClipType.APPROACH || type == ClipType.DETOUR || type == ClipType.OCCLUSION ? 100 : 32);
+			ticks.put(type, switch (type) {
+				case SEARCH -> SEARCH_TICKS;
+				case OCCLUSION -> OCCLUSION_TICKS;
+				case APPROACH, DETOUR -> 100;
+				default -> 32;
+			});
 		}
 
 		// Scripted clips (scan, pass-by) are 15% of a dataset with 20% target-absent scenes; M13 decides by ablation whether to keep them.
