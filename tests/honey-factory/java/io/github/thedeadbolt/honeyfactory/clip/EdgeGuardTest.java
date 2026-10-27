@@ -50,6 +50,15 @@ class EdgeGuardTest {
 	}
 
 	@Test
+	void walksAlongTheVeryEdge() {
+		// The body's centre 0.2 inside the -z edge, walking along it (+x) and slightly towards it:
+		// part of its width hangs over the drop, but Minecraft holds a body while any of it stands on a block.
+		EdgeGuard guard = new EdgeGuard(PLATFORM, CORE);
+		assertSame(WALK, guard.apply(WALK, new CameraPose(15.5, 5.0, 8.2, -90.0f, 0.0f)));
+		assertSame(WALK, guard.apply(WALK, new CameraPose(15.5, 5.0, 8.6, -80.0f, 0.0f)));
+	}
+
+	@Test
 	void driftedWalksNeverLeaveThePlatform() {
 		EdgeGuard guard = new EdgeGuard(PLATFORM, CORE);
 		SplittableRandom random = new SplittableRandom(9);

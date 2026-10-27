@@ -10,15 +10,17 @@ import io.github.thedeadbolt.honeyfactory.teacher.WalkGraph;
 /**
  * Keeps the executed command on the platform (M12-2). Drift and scripts may take the body
  * close to a ledge, so the data holds near-edge states and the teacher's recoveries from
- * them, but never over it: when the ground just ahead, by the scene's true layout, is a
- * ledge or the arena's edge, the executed command stops walking and keeps turning. The
+ * them, but never over it: when the ground just ahead of the body's centre, by the scene's
+ * true layout, is a ledge or the arena's edge, the executed command stops walking and keeps
+ * turning. Minecraft holds a body while any of its width stands on a block, so a strip along
+ * a ledge stays walkable. The
  * teacher's command, the label, is never changed. Scripts may know the scene; the teacher
  * may not, and has its own brake.
  */
 public final class EdgeGuard {
 	/** Distances along the walking direction it checks, in blocks: past a stride and the slide after stopping. */
 	static final double[] AHEAD = {0.45, 0.9};
-	/** Half the body's width. */
+	/** Half the body's width, kept on the floor when measuring a run for a script. */
 	static final double RADIUS = 0.3;
 	private static final double RUN_STEP = 0.25;
 	/** How far drift looks for a hazard to push towards, in blocks. */
@@ -43,7 +45,7 @@ public final class EdgeGuard {
 		double sign = Math.signum(command.forward());
 		double[] distances = {sign * AHEAD[0], sign * AHEAD[1]};
 		int feet = (int) Math.floor(pose.y()) - this.origin[1];
-		if (this.truth.firstUnsafe(pose.x(), pose.z(), feet, this.origin, pose.yawDegrees() + command.turnRate(), distances, RADIUS) == null) {
+		if (this.truth.firstUnsafe(pose.x(), pose.z(), feet, this.origin, pose.yawDegrees() + command.turnRate(), distances, 0.0) == null) {
 			return command;
 		}
 
