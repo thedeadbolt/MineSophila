@@ -902,7 +902,8 @@ M12-2, ADR 0020:
   only onto floor it has seen and never walks off a ledge; drift and scripts are kept on
   the floor by an edge guard that knows the true layout, and some drift pushes towards
   ledges and walls so the data holds recoveries there.
-- RGB is stored as lossless video by default; masks are always lossless.
+- RGB is stored as lossy H.264 at CRF 18 by default (visually lossless, 24–47 times smaller
+  than lossless); masks are always lossless.
 - A clip replays from its scene seeds and executed commands: poses, labels and masks
   exactly, and RGB unless the codec is lossy or the scene animates.
 

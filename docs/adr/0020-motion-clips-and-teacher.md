@@ -26,9 +26,12 @@ pilot's measurements, are in `packages/honey-factory/docs/m12-2-motion-clips.md`
   capture and pose: mask statistics, status, bearing, whether the honey touches the edge;
   each tick also records the senses, both commands, the teacher's mode and belief, drift and
   search coverage.
-- **Lossless video, by a codec strategy.** `ClipCodec` has one implementation per
-  compression, chosen by `clips.codec`: lossless H.264 (default), FFV1, or lossy H.264 at a
-  CRF. Masks always use a lossless codec. ffmpeg runs as a subprocess; its version is
+- **Video by a codec strategy.** `ClipCodec` has one implementation per compression, chosen
+  by `clips.codec`: lossy H.264 at CRF 18 (the default since the second pilot), lossless
+  H.264, or FFV1. Masks always use a lossless codec, so labels stay exact. The second pilot
+  stored lossless RGB at 25–52 MB per clip on levels 1–4 and 248 MB on level 5's natural
+  terrain; re-encoding its clips at CRF 18 kept them above 46 dB PSNR (no visible change) and
+  24–47 times smaller. One codec on every level, so compression is never a cue to the level. ffmpeg runs as a subprocess; its version is
   recorded in the manifest's `software`.
 - **A realizable teacher.** `Perception` is the only code that reads the honey's true
   position: it passes it on only when the observed frame (the previous tick's last) shows

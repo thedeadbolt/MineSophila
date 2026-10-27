@@ -59,6 +59,7 @@ class ClipRecordTest {
 		ClipSettings defaults = ClipSettings.defaults();
 		assertEquals(defaults, ClipSettings.fromJson(JsonFields.of(defaults.toJson())));
 		assertEquals(50, defaults.teacher().minVisiblePixels());
+		assertEquals(new ClipCodec.H264Lossy(18), defaults.codec(), "lossy RGB at near-lossless quality; masks stay lossless");
 		assertEquals(100, defaults.ticks(ClipType.DETOUR));
 		assertEquals(100, defaults.ticks(ClipType.OCCLUSION), "long enough to walk to cover and back to the honey");
 		assertEquals(200, defaults.ticks(ClipType.SEARCH), "long enough to find the honey and walk to it");

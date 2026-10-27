@@ -32,6 +32,12 @@ public record ClipSettings(
 	/** Clip types a target-present scene draws from, in mix order. */
 	public static final List<ClipType> PRESENT_TYPES = List.of(ClipType.APPROACH, ClipType.PASS_BY, ClipType.SCAN, ClipType.OCCLUSION, ClipType.DETOUR, ClipType.SEARCH);
 
+	/**
+	 * The default RGB quality: lossy H.264 at CRF 18 kept the second pilot's frames above 46 dB
+	 * PSNR while storing them 24–47 times smaller than lossless. Masks are always lossless.
+	 */
+	static final int DEFAULT_CRF = 18;
+
 	/** A search's default length: time to find the honey, then walk to it. */
 	static final int SEARCH_TICKS = 200;
 
@@ -78,7 +84,7 @@ public record ClipSettings(
 		mix.put(ClipType.OCCLUSION, 0.10);
 		mix.put(ClipType.DETOUR, 0.15);
 		mix.put(ClipType.SEARCH, 0.15);
-		return new ClipSettings(3, 4, 20, ticks, 8, mix, new Drift(0.10, 6.0, 6.0, 0.5, 0.3), new Teacher(50, 60, 1.5), MotorLimits.DEFAULT, new ClipCodec.H264Lossless());
+		return new ClipSettings(3, 4, 20, ticks, 8, mix, new Drift(0.10, 6.0, 6.0, 0.5, 0.3), new Teacher(50, 60, 1.5), MotorLimits.DEFAULT, new ClipCodec.H264Lossy(DEFAULT_CRF));
 	}
 
 	/** The ticks a clip of {@code type} may run. */

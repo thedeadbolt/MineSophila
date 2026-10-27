@@ -104,9 +104,9 @@ Codecs:
 
 | Name | Meaning |
 |---|---|
-| `h264-lossless` | lossless H.264 (`libx264rgb -qp 0`), predicting frames from earlier ones; the default |
+| `h264-lossless` | lossless H.264 (`libx264rgb -qp 0`), predicting frames from earlier ones |
 | `ffv1` | FFV1, lossless and intra-only |
-| `h264-lossy` | lossy H.264 at `crf`; RGB only |
+| `h264-lossy` | lossy H.264 at `crf`; RGB only; the default, at `crf` 18 |
 
 Masks always use a lossless codec: `ffv1` beside `ffv1`, otherwise `h264-lossless`. A video
 holds every frame of its clip in order: the reset frame, then `frames_per_tick` frames per
