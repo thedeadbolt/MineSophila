@@ -45,7 +45,8 @@ pilot's measurements, are in `packages/honey-factory/docs/m12-2-motion-clips.md`
   command with DART-style correlated drift (half-sine bumps on about 10% of ticks); scan and
   pass-by are scripted; occlusion walks to a waypoint whose way hides the honey for at least 6
   ticks, then follows the teacher. Detour starts hide the honey and need a walk at least 1.3
-  times the straight distance; a scene without one falls back to approach and records the
+  times the straight distance; their draws skip the level's sight rule, which keeps only views
+  that show the honey (the second pilot had no detour on any level until then); a scene without one falls back to approach and records the
   requested type. Level 1 has nothing to hide behind, so its occlusion and detour share goes
   to approach and pass-by. Approach, detour and occlusion clips run up to 100 ticks and end
   8 ticks after reaching the honey (occlusion had 32 until the second pilot showed its walk to

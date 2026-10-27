@@ -173,6 +173,28 @@ class ClipGeneratorTest {
 	}
 
 	@Test
+	void detourStartsMayHideTheHoneyWhateverTheLevelsSightRule() throws IOException {
+		// Level 3 keeps only views with the honey partly hidden; a detour needs it fully hidden.
+		ResolvedConfig config = ConfigResolver.resolve(("""
+			{
+			  "dataset": {"name": "m12-clip-detours", "seed": 3, "difficulty": 3},
+			  "capture": {"width": 64, "height": 32, "cube_face_size": 16},
+			  "quotas": {"accepted_scenes": 4, "scene_attempts_per_accepted_scene": 3},
+			  "target": {"present_fraction": 1.0},
+			  "splits": {"train": 0.5, "validation": 0.5, "test": 0.0},
+			  "clips": {"clips_per_scene": 3, "frames_per_tick": 1,
+			            "ticks": {"approach": 4, "pass_by": 4, "scan": 4, "occlusion": 4, "detour": 4, "no_honey": 4},
+			            "mix": {"approach": 0, "pass_by": 0, "scan": 0, "occlusion": 0, "detour": 1}},
+			  "output": {"root": "%s", "free_space_reserve_bytes": 1000000}
+			}
+			""").formatted(this.temp.resolve("detours").toString().replace("\\", "\\\\")));
+		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
+		DatasetGenerator.Result result = run(new ClipGenerator(config, environment, CLOCK, DISK), environment);
+		assertNull(result.failure(), () -> result.failure() + " " + result.validationErrors());
+		assertTrue(clips(result).stream().anyMatch(clip -> clip.clipType() == ClipType.DETOUR), "some detour qualifies instead of every one falling back");
+	}
+
+	@Test
 	void everyClipIsAnnouncedBeforeItStarts() throws IOException {
 		ScriptedClipEnvironment environment = new ScriptedClipEnvironment();
 		DatasetGenerator.Result result = run(new ClipGenerator(allTypes(this.temp.resolve("j"), 1), environment, CLOCK, DISK), environment);

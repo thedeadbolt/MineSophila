@@ -42,6 +42,7 @@ import io.github.thedeadbolt.honeyfactory.scene.SceneBase;
 import io.github.thedeadbolt.honeyfactory.scene.SceneGenerator;
 import io.github.thedeadbolt.honeyfactory.scene.SceneGenerators;
 import io.github.thedeadbolt.honeyfactory.scene.SightGrid;
+import io.github.thedeadbolt.honeyfactory.scene.SightRule;
 import io.github.thedeadbolt.honeyfactory.scene.SolidGrid;
 import io.github.thedeadbolt.honeyfactory.scene.ViewpointCandidate;
 import io.github.thedeadbolt.honeyfactory.teacher.HoneyMemory;
@@ -530,11 +531,15 @@ public final class ClipGenerator implements Generator {
 
 		/**
 		 * The clip's start: see {@link ClipStarts}. Each attempt draws its own
-		 * {@code attempts_per_viewpoint} viewpoints, so a redraw starts somewhere new.
+		 * {@code attempts_per_viewpoint} viewpoints, so a redraw starts somewhere new. Types
+		 * that start with the honey hidden skip the level's sight rule, which keeps only views
+		 * that show it.
 		 */
 		private ClipStarts.@Nullable Start start(int index, int attempt, ClipType type, ClipSeeds seeds) {
 			int perAttempt = ClipGenerator.this.config.viewpoints().attemptsPerViewpoint();
-			return ClipStarts.choose(type, draw -> ClipGenerator.this.generator.viewpoint(this.scene, index, draw) instanceof ViewpointCandidate.Placeable placeable
+			boolean hidden = ClipStarts.hidesHoney(type);
+			return ClipStarts.choose(type, draw -> (hidden ? ClipGenerator.this.generator.viewpoint(this.scene, index, draw, SightRule.ANY)
+					: ClipGenerator.this.generator.viewpoint(this.scene, index, draw)) instanceof ViewpointCandidate.Placeable placeable
 					? placeable.plan().pose(ClipGenerator.this.arena) : null,
 				attempt * perAttempt, perAttempt, this.grid, ClipGenerator.this.arena.core(), this.target, seeds.start(),
 				ClipGenerator.this.config.viewpoints().eyeHeightBlocks());

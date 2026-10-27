@@ -54,6 +54,11 @@ public final class ClipStarts {
 	private ClipStarts() {
 	}
 
+	/** Whether {@code type} starts with the honey fully hidden, so its draws must not require a view of it. */
+	public static boolean hidesHoney(ClipType type) {
+		return type == ClipType.DETOUR;
+	}
+
 	/**
 	 * Chooses a start for a clip of {@code requested} type.
 	 *

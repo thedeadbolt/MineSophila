@@ -121,6 +121,11 @@ public final class NaturalGenerator implements SceneGenerator {
 
 	@Override
 	public ViewpointCandidate viewpoint(GeneratedScene scene, int viewpointIndex, int attemptIndex) {
+		return viewpoint(scene, viewpointIndex, attemptIndex, this.spec.sight());
+	}
+
+	@Override
+	public ViewpointCandidate viewpoint(GeneratedScene scene, int viewpointIndex, int attemptIndex, SightRule sight) {
 		PatchTerrain terrain = scene.terrain();
 		if (terrain == null) {
 			throw new IllegalArgumentException("A natural scene carries its patch's terrain");
@@ -173,9 +178,9 @@ public final class NaturalGenerator implements SceneGenerator {
 			}
 		}
 
-		String sight = this.spec.sight().check(terrain, new double[] {x, eyeY, z}, aim);
-		if (sight != null) {
-			return new ViewpointCandidate.Rejected(sight);
+		String unseen = sight.check(terrain, new double[] {x, eyeY, z}, aim);
+		if (unseen != null) {
+			return new ViewpointCandidate.Rejected(unseen);
 		}
 
 		return ViewpointAims.orient(settings, this.projection, random, x, feet, z, aim, yawJitter, pitchJitter);
