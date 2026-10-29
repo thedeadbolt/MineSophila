@@ -45,6 +45,8 @@ public record ClipSettings(
 	 * pilot's teacher still needed up to 50 more after 100 to walk back to the honey.
 	 */
 	static final int OCCLUSION_TICKS = 160;
+	/** An approach's or detour's default length: the fourth pilot had five of their timeouts within 60 ticks of the honey at 100. */
+	static final int APPROACH_TICKS = 160;
 
 	public ClipSettings {
 		ticks = Map.copyOf(ticks);
@@ -68,7 +70,7 @@ public record ClipSettings(
 
 	/**
 	 * @param minVisiblePixels the visible target pixels at or above which the teacher sees the honey
-	 * @param reacquireTicks how long after losing the honey the teacher re-acquires before it searches
+	 * @param reacquireTicks how long the teacher searches around the last sighting once back there (or, with no known way back, after losing the honey) before it searches everywhere
 	 * @param reachDistanceBlocks how close, horizontally from the eye, counts as reaching the honey
 	 */
 	public record Teacher(int minVisiblePixels, int reacquireTicks, double reachDistanceBlocks) {
@@ -81,7 +83,7 @@ public record ClipSettings(
 			ticks.put(type, switch (type) {
 				case SEARCH -> SEARCH_TICKS;
 				case OCCLUSION -> OCCLUSION_TICKS;
-				case APPROACH, DETOUR -> 100;
+				case APPROACH, DETOUR -> APPROACH_TICKS;
 				default -> 32;
 			});
 		}
