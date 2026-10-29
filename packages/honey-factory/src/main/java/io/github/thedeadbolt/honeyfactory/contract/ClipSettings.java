@@ -45,8 +45,11 @@ public record ClipSettings(
 	 * pilot's teacher still needed up to 50 more after 100 to walk back to the honey.
 	 */
 	static final int OCCLUSION_TICKS = 160;
-	/** An approach's or detour's default length: the fourth pilot had five of their timeouts within 60 ticks of the honey at 100. */
-	static final int APPROACH_TICKS = 160;
+	/**
+	 * An approach's or detour's default length: at 100 the fourth pilot had five timeouts within
+	 * 60 ticks of the honey, and at 160 the fifth still had four closing in, one round a building.
+	 */
+	static final int APPROACH_TICKS = 200;
 
 	public ClipSettings {
 		ticks = Map.copyOf(ticks);

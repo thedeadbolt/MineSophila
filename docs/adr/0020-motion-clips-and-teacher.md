@@ -56,11 +56,12 @@ pilot's measurements, are in `packages/honey-factory/docs/m12-2-motion-clips.md`
   level's sight rule, which keeps only views that show the honey (the second pilot had no
   detour on any level until then). A type without a qualifying start falls back to approach
   and records the requested type. Level 1 has nothing to hide behind, so its occlusion, detour
-  and search share goes to approach and pass-by. Approach, detour and occlusion clips run up to 160
-  ticks and search up to 200, and all of them end 8 ticks after reaching the honey
+  and search share goes to approach and pass-by. Approach, detour and search clips run up to 200
+  ticks and occlusion up to 160, and all of them end 8 ticks after reaching the honey
   (occlusion had 32 until the second pilot showed its walk to cover outlasting the clip, then
   100 until the third showed the teacher still walking back when it ended; approach and detour
-  had 100 until the fourth showed five of their timeouts within 60 ticks of the honey). The
+  had 100 until the fourth showed five of their timeouts within 60 ticks of the honey, then
+  160 until the fifth showed four still closing in, one going round a building to its door). The
   default mix gives scripted clips 15% (scan and pass-by 7.5% each), approach 30%, detour and
   search 15% each, occlusion 10%, and no-honey the 20% of target-absent scenes.
 - **Who drove.** Every tick records its `driver`: `teacher`, `teacher_drift` or `script`;
