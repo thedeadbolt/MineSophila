@@ -107,3 +107,71 @@ What changed (each with a test that failed first):
 
 Left open: level-4 approach getting stuck near the honey (to watch in the inspector), and
 level-5 storage. A short pilot of levels 2–5 checks the fixes.
+
+## Third pilot (2026-10-27, 16:22–17:34, commit `a13f474`, levels 2–5)
+
+100 clips per level on 2 instances, lossy H.264 at CRF 18: 0 falls, 0 realizability
+violations, 0 validator errors, 1.75 GB in all (1.0, 1.4, 2.4 and 12.7 MB per clip for levels
+2–5).
+
+| Level | Approach | Detour | Occlusion | Search | Misses |
+|---|---|---|---|---|---|
+| 2 | 56/56 | 1/1 | 1/5 | 2/2 | 4 timeout |
+| 3 | 36/36 | 6/7 | 0/5 | 12/12 | 3 teacher failure, 3 timeout |
+| 4 | 18/27 | 7/13 | 2/8 | 11/13 | 2 teacher failure, 21 timeout, 4 unreachable |
+| 5 | 38/45 | 0/2 | 0/2 | 7/10 | 5 teacher failure, 9 timeout, 9 unreachable |
+
+- **Search works** (32/37) and **detour now appears** (14 clips).
+- **Occlusion was still too short.** The walk to cover takes about 50 of its 100 ticks, then
+  the teacher, 14–19 blocks off, walks back at about 0.2 blocks a tick.
+- **Level 4 stuck** (watched in the inspector by the user): the teacher stopped beside fences,
+  between a fence post and a slab, on a slab, at a doorway on the arena's edge, and at an
+  alley mouth. Causes: every occupied cell was planned as a full block (fences can be
+  stepped on, plants block); goals were only the four cells beside the honey, so a diagonal
+  cell within reach was never chosen; the edge brake and guard wanted floor under the
+  body's whole width, which Minecraft does not need, so the one-block strip along an edge was
+  shut.
+
+What changed: goals are any cell within reach and the teacher walks to the goal's centre;
+edges are judged by the body's centre; fences and walls count 1.5 high and plants are walked
+through (`SightGrid.collides` and `tall`); occlusion runs up to 160 ticks.
+
+## Fourth pilot (2026-10-29, 20:04–20:38, commit `e1569dc`, levels 3–4)
+
+Same seeds. Level 4: approach 21/31, detour 6/12, occlusion 8/9, search 11/13, 14 timeouts,
+1 teacher failure; level 3 occlusion 3/5. Watched in the inspector by the user, with layouts
+rebuilt from the seeds:
+
+- **Stuck on a wall top** (s000015-c03): the teacher climbed onto a 2-high courtyard wall
+  and saw the honey inside, but drops were planned only onto seen floor, and the floor at the
+  wall's foot is out of view from the wall's middle. It watched the honey for 150 ticks.
+- **Re-acquiring ran out while a script drove** (level 3 s000005-c03): its 60 ticks counted
+  from the loss, and the occlusion script's walk used 40 of them.
+- **Out of time**: five timeouts were within 60 ticks of the honey at their pace.
+
+What changed: drops onto floor not seen yet are planned as level steps already were, and the
+brake walks to within 0.3 blocks of unseen floor, then looks down at it; re-acquiring walks
+back while it knows a way, then searches around the sighting for `reacquire_ticks`;
+approach and detour run up to 160 ticks.
+
+## Fifth pilot (2026-10-29, 21:58–22:35, commit `cadedc1`, levels 3–4)
+
+Same seeds: 199 clips, 0 falls, 0 realizability violations, 0 teacher failures, 0 validator
+errors, 0.42 GB.
+
+| Level | Approach | Detour | Occlusion | Search | Misses |
+|---|---|---|---|---|---|
+| 3 | 37/37 | 5/6 | 5/5 | 12/12 | 1 timeout |
+| 4 | 26/31 | 10/12 | 8/9 | 12/13 | 5 timeout, 4 unreachable |
+
+Every clip named above now reaches the honey. Of the level-4 timeouts, four were still closing
+in on a right route: s000022-c02 climbed into a courtyard by its one slab and was walking to
+the honey; s000007-c00 saw the honey through a room's window, tried the west side (unseen
+space is planned as open), found it closed and was 3 blocks from the door on the east side.
+Approach and detour now run up to 200 ticks, like search; this has not been piloted.
+
+Left open:
+
+- **Level 5** has not been piloted since the third pilot; its 5 teacher failures there were
+  not examined.
+- **Slabs and stairs** are still planned as full steps.
