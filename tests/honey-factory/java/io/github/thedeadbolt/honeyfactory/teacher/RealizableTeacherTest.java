@@ -10,12 +10,13 @@ import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.contract.CaptureMode;
 import io.github.thedeadbolt.honeyfactory.contract.FrameRecord;
 import io.github.thedeadbolt.honeyfactory.contract.TeacherMode;
+import io.github.thedeadbolt.honeyfactory.control.MotorCommand;
 import io.github.thedeadbolt.honeyfactory.control.MotorLimits;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import java.util.SplittableRandom;
 import org.junit.jupiter.api.Test;
 
-/** The full teacher: Track while the honey is seen, Re-acquire from memory for a while, then Search. */
+/** The full teacher: Track while the honey is seen, Re-acquire from memory (back there, then around it), then Search. */
 class RealizableTeacherTest {
 	private static final CaptureProjection PANORAMA = CaptureProjection.of(CaptureMode.PANORAMA_310, 248, 128, 64);
 	private static final int REACQUIRE_TICKS = 60;
@@ -61,10 +62,16 @@ class RealizableTeacherTest {
 		BodySim body = new BodySim(grid, new CameraPose(16.5, 1.0, 6.5, 0.0f, 0.0f));
 		SeenMap seen = new SeenMap(grid.core);
 		HoneyMemory memory = new HoneyMemory();
-		for (int tick = 1; tick <= 90; tick++) {
+		int arrived = -1;
+		for (int tick = 1; tick <= 200; tick++) {
 			int visible = tick <= 10 ? 1000 : 0;
-			Teacher.Decision decision = teacher.decide(Perception.perceive(tick, body.pose(), body.senses(), honey, visible, context, seen, memory));
-			TeacherMode expected = tick <= 10 ? TeacherMode.TRACK : tick <= 10 + REACQUIRE_TICKS ? TeacherMode.REACQUIRE : TeacherMode.SEARCH;
+			TeacherInput input = Perception.perceive(tick, body.pose(), body.senses(), honey, visible, context, seen, memory);
+			if (tick > 10 && arrived < 0 && TrackBehaviour.reached(input.pose(), honey, context)) {
+				arrived = tick;
+			}
+
+			Teacher.Decision decision = teacher.decide(input);
+			TeacherMode expected = tick <= 10 ? TeacherMode.TRACK : arrived < 0 || tick <= arrived + REACQUIRE_TICKS ? TeacherMode.REACQUIRE : TeacherMode.SEARCH;
 			assertEquals(expected, decision.mode(), "tick " + tick);
 			assertEquals(tick - 1, decision.belief().observedTick());
 			switch (decision.mode()) {
@@ -82,6 +89,8 @@ class RealizableTeacherTest {
 			MotorLimits.DEFAULT.check(decision.command());
 			body.step(decision.command());
 		}
+
+		assertTrue(arrived > 0, "re-acquiring reached the last sighting");
 	}
 
 	@Test
@@ -117,6 +126,35 @@ class RealizableTeacherTest {
 		int[] honey = {12, 1, 17};
 		grid.wall(honey[0], honey[2], 1);
 		assertTrue(reaches(grid, new CameraPose(12.5, 3.0, 12.5, 0.0f, 0.0f), honey, 120), "the teacher got down off the wall to the honey");
+	}
+
+	@Test
+	void reacquireGoesBackAfterBeingLedAway() {
+		// Pilot m12-2d level 3 s000005-c03: an occlusion clip's script hid the honey and walked
+		// the body 9 blocks off for 40 ticks. Going back must not have been used up meanwhile:
+		// the teacher searches elsewhere only after it has been back where it saw the honey.
+		Grids grid = new Grids(33, 6, 33);
+		int[] honey = {16, 1, 12};
+		TeacherContext context = context(grid);
+		RealizableTeacher teacher = new RealizableTeacher(REACQUIRE_TICKS);
+		teacher.reset(context);
+		BodySim body = new BodySim(grid, new CameraPose(16.5, 1.0, 9.5, 180.0f, 0.0f));
+		SeenMap seen = new SeenMap(grid.core);
+		HoneyMemory memory = new HoneyMemory();
+		boolean back = false;
+		for (int tick = 1; tick <= 200; tick++) {
+			TeacherInput input = Perception.perceive(tick, body.pose(), body.senses(), honey, tick == 1 ? 1000 : 0, context, seen, memory);
+			back |= TrackBehaviour.reached(input.pose(), honey, context);
+			Teacher.Decision decision = teacher.decide(input);
+			if (decision.mode() == TeacherMode.SEARCH) {
+				assertTrue(back, "tick " + tick + ": searched elsewhere before going back, at " + body.pose());
+				return;
+			}
+
+			body.step(tick <= 40 ? new MotorCommand(1.0, 0.0, 0.0, 0.0, false, 0) : decision.command());
+		}
+
+		assertTrue(back, "never went back");
 	}
 
 	/** Runs the teacher with the honey in view; whether the body reached it within {@code ticks}. */

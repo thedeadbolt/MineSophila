@@ -40,8 +40,10 @@ pilot's measurements, are in `packages/honey-factory/docs/m12-2-motion-clips.md`
   cell's centre, or for a block to a face's centre). Its modes:
   - **Track**: steer at the honey when the way is clear of seen blocks, otherwise along an A*
     path over seen cells (unseen space planned as open), keeping a margin from walls;
-  - **Re-acquire**, for `reacquire_ticks` (60) after losing it: walk to the last sighting,
-    then search the frontiers within 6 blocks of it;
+  - **Re-acquire** after losing it: walk to the last sighting while a way there is known,
+    then search the frontiers within 6 blocks of it for `reacquire_ticks` (60). With no
+    known way it gives up 60 ticks after losing the honey. The walk back was timed from the
+    loss until the fourth pilot, where an occlusion script used up most of it;
   - **Search**: walk to the frontier that best trades path length against unseen cells
     nearby, and on arrival turn towards the most unseen space.
 - **Clip types and drift.** Approach, detour, search and no-honey clips execute the

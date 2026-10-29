@@ -11,8 +11,9 @@ import org.jspecify.annotations.Nullable;
  * <ul>
  *   <li><b>Track</b> while the honey is seen: turn to it and approach it, around seen
  *       obstacles;
- *   <li><b>Re-acquire</b> for {@code reacquireTicks} after losing it: go to where it was last
- *       seen, then search the area around that spot;
+ *   <li><b>Re-acquire</b> after losing it: go to where it was last seen, for as long as it
+ *       knows a way there, then search the area around that spot for {@code reacquireTicks};
+ *       with no known way it gives up {@code reacquireTicks} after losing it;
  *   <li><b>Search</b> after that, or if it was never seen: systematic frontier coverage.
  * </ul>
  *
@@ -28,8 +29,10 @@ public final class RealizableTeacher implements Teacher {
 	private final SearchBehaviour search = new SearchBehaviour();
 	private final SearchBehaviour local = new SearchBehaviour();
 	private @Nullable TeacherContext context;
-	/** Whether re-acquiring reached the last sighting and now searches around it. */
-	private boolean arrived;
+	/** The tick re-acquiring reached the last sighting and began searching around it, or -1. */
+	private int arrivedTick = -1;
+	/** Whether re-acquiring gave up on the last sighting, until the honey is seen again. */
+	private boolean gaveUp;
 
 	public RealizableTeacher(int reacquireTicks) {
 		this.reacquireTicks = reacquireTicks;
@@ -40,7 +43,8 @@ public final class RealizableTeacher implements Teacher {
 		this.context = context;
 		this.search.reset();
 		this.local.reset();
-		this.arrived = false;
+		this.arrivedTick = -1;
+		this.gaveUp = false;
 	}
 
 	@Override
@@ -57,19 +61,16 @@ public final class RealizableTeacher implements Teacher {
 	private Decision unbraked(TeacherInput input, TeacherContext context) {
 		int observed = input.tick() - 1;
 		if (input.honeySeen() != null) {
-			this.arrived = false;
+			this.arrivedTick = -1;
+			this.gaveUp = false;
 			this.local.reset();
 			return TrackBehaviour.decide(input, context);
 		}
 
 		int[] last = input.memory().lastSeen();
-		if (last != null && input.memory().ticksSinceSeen(input.tick()) <= this.reacquireTicks) {
+		if (last != null && reacquiring(input, last, context)) {
 			MotorCommand command;
-			if (!this.arrived && TrackBehaviour.reached(input.pose(), last, context)) {
-				this.arrived = true;
-			}
-
-			if (this.arrived) {
+			if (this.arrivedTick >= 0) {
 				int[] origin = context.walkable().min();
 				command = this.local.decide(input, context, new int[] {last[0] - origin[0], last[1] - origin[1], last[2] - origin[2]}, REACQUIRE_RADIUS);
 			} else {
@@ -80,5 +81,26 @@ public final class RealizableTeacher implements Teacher {
 		}
 
 		return new Decision(this.search.decide(input, context, null, 0.0), TeacherMode.SEARCH, new FrameRecord.Belief(FrameRecord.Belief.Source.NONE, null, observed));
+	}
+
+	/**
+	 * Whether to keep re-acquiring the sighting at {@code last}: on the way there while a way
+	 * is known (or within {@code reacquireTicks} of losing the honey), then for
+	 * {@code reacquireTicks} after arriving. Going back is not timed, as a clip's script may
+	 * have led the body far off meanwhile.
+	 */
+	private boolean reacquiring(TeacherInput input, int[] last, TeacherContext context) {
+		if (this.gaveUp) {
+			return false;
+		}
+
+		if (this.arrivedTick < 0 && TrackBehaviour.reached(input.pose(), last, context)) {
+			this.arrivedTick = input.tick();
+		}
+
+		boolean keep = this.arrivedTick >= 0 ? input.tick() - this.arrivedTick <= this.reacquireTicks
+			: input.memory().ticksSinceSeen(input.tick()) <= this.reacquireTicks || TrackBehaviour.knownWay(input, last, context);
+		this.gaveUp = !keep;
+		return keep;
 	}
 }
