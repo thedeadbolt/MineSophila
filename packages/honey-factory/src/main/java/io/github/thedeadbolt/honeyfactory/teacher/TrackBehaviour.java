@@ -72,19 +72,36 @@ public final class TrackBehaviour {
 		return new MotorCommand(steer.forward(), steer.strafe(), steer.turnRate(), look.pitchRate(), false, 0);
 	}
 
-	/** Whether the teacher is within reach of the honey at absolute cell {@code honey} or knows a way there. */
-	static boolean knownWay(TeacherInput input, int[] honey, TeacherContext context) {
+	/**
+	 * How far the teacher knows it must walk to come within reach of the honey at absolute cell
+	 * {@code honey}, in blocks: 0 within reach, the straight distance when the way is clear,
+	 * otherwise the planned path's length; infinite with no known way.
+	 */
+	static double wayLength(TeacherInput input, int[] honey, TeacherContext context) {
 		CameraPose pose = input.pose();
 		if (reached(pose, honey, context)) {
-			return true;
+			return 0.0;
 		}
 
 		WalkGraph graph = WalkGraph.of(context.grid(), context.walkable(), input.seen());
 		int[] origin = context.walkable().min();
 		int[] feet = {(int) Math.floor(pose.x()) - origin[0], (int) Math.floor(pose.y()) - origin[1], (int) Math.floor(pose.z()) - origin[2]};
 		double[] centre = {honey[0] + 0.5, honey[1] + 0.5, honey[2] + 0.5};
-		return clear(graph, pose, origin, feet[1], centre)
-			|| pathBeside(graph, feet, new int[] {honey[0] - origin[0], honey[1] - origin[1], honey[2] - origin[2]}, context.reachDistanceBlocks()) != null;
+		if (clear(graph, pose, origin, feet[1], centre)) {
+			return Math.hypot(centre[0] - pose.x(), centre[2] - pose.z());
+		}
+
+		List<int[]> path = pathBeside(graph, feet, new int[] {honey[0] - origin[0], honey[1] - origin[1], honey[2] - origin[2]}, context.reachDistanceBlocks());
+		if (path == null) {
+			return Double.POSITIVE_INFINITY;
+		}
+
+		double length = 0.0;
+		for (int i = 1; i < path.size(); i++) {
+			length += Math.hypot(path.get(i)[0] - path.get(i - 1)[0], path.get(i)[2] - path.get(i - 1)[2]);
+		}
+
+		return length;
 	}
 
 	/**

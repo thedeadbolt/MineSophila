@@ -114,6 +114,29 @@ class RealizableTeacherTest {
 	}
 
 	@Test
+	void givesUpTheWayBackWhenItGetsNoNearer() {
+		// The body is held where it stands (wedged, or held by a guard), so the known way back
+		// never shortens: re-acquiring must give up rather than last the whole clip.
+		Grids grid = new Grids(33, 6, 33);
+		int[] honey = {16, 1, 26};
+		TeacherContext context = context(grid);
+		RealizableTeacher teacher = new RealizableTeacher(REACQUIRE_TICKS);
+		teacher.reset(context);
+		CameraPose pose = new CameraPose(16.5, 1.0, 6.5, 0.0f, 0.0f);
+		BodySim body = new BodySim(grid, pose);
+		SeenMap seen = new SeenMap(grid.core);
+		HoneyMemory memory = new HoneyMemory();
+		for (int tick = 1; tick <= 1 + 3 * REACQUIRE_TICKS; tick++) {
+			if (teacher.decide(Perception.perceive(tick, pose, body.senses(), honey, tick == 1 ? 1000 : 0, context, seen, memory)).mode() == TeacherMode.SEARCH) {
+				assertTrue(tick <= 2 + 2 * REACQUIRE_TICKS, "gave up at tick " + tick);
+				return;
+			}
+		}
+
+		throw new AssertionError("still re-acquiring after " + 3 * REACQUIRE_TICKS + " ticks without getting nearer");
+	}
+
+	@Test
 	void dropsFromAWallTopToHoneyBelowIt() {
 		// Pilot m12-2d s000015-c03: the body climbed onto a 2-high courtyard wall and saw the
 		// honey inside. The floor at the wall's foot lies below the camera's view, so no seen

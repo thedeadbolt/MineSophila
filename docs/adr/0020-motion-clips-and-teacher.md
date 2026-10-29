@@ -42,7 +42,9 @@ pilot's measurements, are in `packages/honey-factory/docs/m12-2-motion-clips.md`
     path over seen cells (unseen space planned as open), keeping a margin from walls;
   - **Re-acquire** after losing it: walk to the last sighting while a way there is known,
     then search the frontiers within 6 blocks of it for `reacquire_ticks` (60). With no
-    known way it gives up 60 ticks after losing the honey. The walk back was timed from the
+    known way it gives up 60 ticks after losing the honey, and on the way it gives up when
+    the way back has not got 0.5 blocks shorter (or longer, as when a script leads it off)
+    for 60 ticks, so a wedged body does not re-acquire for the rest of the clip. The walk back was timed from the
     loss until the fourth pilot, where an occlusion script used up most of it;
   - **Search**: walk to the frontier that best trades path length against unseen cells
     nearby, and on arrival turn towards the most unseen space.
