@@ -91,17 +91,20 @@ public final class ClipWriter {
 			throw new IllegalArgumentException("expected frame " + this.count + ", got " + record.frame());
 		}
 
+		if (this.written.isCompletedExceptionally()) {
+			throw new IOException("encoding clip " + this.directory + " failed", this.written.exceptionNow());
+		}
+
 		this.queued.acquireUninterruptibly();
+		// Released on completion, not in the task: after a failure later tasks are skipped, never run.
 		this.written = this.written.thenRunAsync(() -> {
 			try {
 				this.rgb.write(images.rgb());
 				this.mask.write(images.visibleMask());
 			} catch (IOException e) {
 				throw new UncheckedIOException(e);
-			} finally {
-				this.queued.release();
 			}
-		}, this.encoder);
+		}, this.encoder).whenComplete((done, failure) -> this.queued.release());
 		this.frames.append(Jsonl.line(record.toJson()));
 		this.count++;
 	}
