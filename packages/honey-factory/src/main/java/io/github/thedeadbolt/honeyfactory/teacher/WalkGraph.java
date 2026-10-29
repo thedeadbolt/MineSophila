@@ -146,7 +146,8 @@ public final class WalkGraph {
 	/**
 	 * Steps from {@code cell} to each side and diagonal neighbour: level when the neighbour
 	 * is walkable there, up one block (auto-jump) with head room, or down up to
-	 * {@value SeenMap#MAX_DROP} onto seen floor. A diagonal needs both sides it passes clear.
+	 * {@value SeenMap#MAX_DROP} onto seen floor or floor not seen yet. A diagonal needs both
+	 * sides it passes clear.
 	 */
 	public List<Edge> edges(int[] cell) {
 		List<Edge> edges = new ArrayList<>(8);
@@ -173,7 +174,16 @@ public final class WalkGraph {
 						break;
 					}
 
-					if (knownSolid(nx, y - drop, nz) || !this.seen.seen(nx, y - drop - 1, nz)) {
+					if (knownSolid(nx, y - drop, nz)) {
+						break;
+					}
+
+					if (!this.seen.seen(nx, y - drop - 1, nz)) {
+						// Floor not seen yet counts as there, as for a level step: the brake stops at the edge to look first.
+						if (walkable(nx, y - drop, nz)) {
+							edges.add(new Edge(new int[] {nx, y - drop, nz}, base + DROP_COST * drop + nearWall(nx, y - drop, nz)));
+						}
+
 						break;
 					}
 				}

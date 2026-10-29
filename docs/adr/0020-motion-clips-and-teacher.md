@@ -65,11 +65,12 @@ pilot's measurements, are in `packages/honey-factory/docs/m12-2-motion-clips.md`
   a script's executed command. Scripted clips stay for the vision they show (the honey
   sliding through the frame) and for the teacher's labels in states it would not choose;
   M13 decides by ablation whether they stay in the final volume.
-- **Edges.** The pilot showed bodies walking off the platform. The teacher plans drops only
-  onto floor it has seen, steers straight only over seen floor under its whole width,
-  watches honey it has no known way to instead of walking at it, and passes every command
-  through an edge brake that stops at a ledge, or stops and looks down where the floor ahead
-  is unseen. The arena's edge counts as a ledge. The executed command passes an edge guard
+- **Edges.** The pilot showed bodies walking off the platform. The teacher plans drops onto
+  seen floor, or onto floor not seen yet as it plans level steps, steers straight only over
+  seen floor under its whole width, watches honey it has no known way to instead of walking
+  at it, and passes every command through an edge brake that stops at a ledge, or, where the
+  floor ahead is unseen, walks to within 0.3 blocks of it, stops and looks down at it (from a
+  wall top, its foot is only seen from the edge). The arena's edge counts as a ledge. The executed command passes an edge guard
   that uses the true layout (scripts may know it): drift and scripts take the body close to
   ledges, never over, and the tick is recorded as `guarded`. A share of drift episodes
   (`hazard_fraction`, 0.3) pushes towards the nearest ledge or wall within 4 blocks

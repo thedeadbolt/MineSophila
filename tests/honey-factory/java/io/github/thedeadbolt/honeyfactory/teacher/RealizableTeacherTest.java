@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.contract.CaptureMode;
@@ -101,5 +102,40 @@ class RealizableTeacherTest {
 
 		double after = Math.hypot(body.pose().x() - 16.5, body.pose().z() - 26.5);
 		assertEquals(true, after < start - 4.0, "re-acquiring closed on the last sighting: " + start + " -> " + after);
+	}
+
+	@Test
+	void dropsFromAWallTopToHoneyBelowIt() {
+		// Pilot m12-2d s000015-c03: the body climbed onto a 2-high courtyard wall and saw the
+		// honey inside. The floor at the wall's foot lies below the camera's view, so no seen
+		// floor offers a drop; the teacher must walk to the edge and look down, not watch.
+		Grids grid = new Grids(25, 6, 25);
+		for (int x = 4; x <= 20; x++) {
+			grid.wall(x, 12, 2);
+		}
+
+		int[] honey = {12, 1, 17};
+		grid.wall(honey[0], honey[2], 1);
+		assertTrue(reaches(grid, new CameraPose(12.5, 3.0, 12.5, 0.0f, 0.0f), honey, 120), "the teacher got down off the wall to the honey");
+	}
+
+	/** Runs the teacher with the honey in view; whether the body reached it within {@code ticks}. */
+	private static boolean reaches(Grids grid, CameraPose start, int[] honey, int ticks) {
+		TeacherContext context = context(grid);
+		RealizableTeacher teacher = new RealizableTeacher(REACQUIRE_TICKS);
+		teacher.reset(context);
+		BodySim body = new BodySim(grid, start);
+		SeenMap seen = new SeenMap(grid.core);
+		HoneyMemory memory = new HoneyMemory();
+		for (int tick = 1; tick <= ticks; tick++) {
+			TeacherInput input = Perception.perceive(tick, body.pose(), body.senses(), honey, 1000, context, seen, memory);
+			if (TrackBehaviour.reached(input.pose(), honey, context)) {
+				return true;
+			}
+
+			body.step(teacher.decide(input).command());
+		}
+
+		return false;
 	}
 }
