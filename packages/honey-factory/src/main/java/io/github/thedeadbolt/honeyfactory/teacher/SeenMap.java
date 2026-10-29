@@ -128,16 +128,16 @@ public final class SeenMap {
 	}
 
 	/**
-	 * Seen cells the body could stand in that border unseen space: the edge between what has
-	 * been in view and what has not. Whether an unseen cell is walkable is unknown, so any
-	 * unseen neighbour counts.
+	 * Seen cells the body could stand in, by what has been seen ({@code graph} is built on this
+	 * map), that border unseen space: the edge between what has been in view and what has not.
+	 * Whether an unseen cell is walkable is unknown, so any unseen neighbour counts.
 	 */
-	public List<int[]> frontiers(SightGrid grid) {
+	public List<int[]> frontiers(WalkGraph graph) {
 		List<int[]> frontiers = new ArrayList<>();
 		for (int y = 0; y < this.height; y++) {
 			for (int z = 0; z < this.length; z++) {
 				for (int x = 0; x < this.width; x++) {
-					if (!this.seen[index(x, y, z)] || !walkable(grid, x, y, z)) {
+					if (!this.seen[index(x, y, z)] || !graph.walkable(x, y, z)) {
 						continue;
 					}
 

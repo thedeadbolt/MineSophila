@@ -110,7 +110,7 @@ public final class SearchBehaviour {
 	/** The path to the best frontier, or null when there is none worth going to. */
 	private @Nullable List<int[]> choose(TeacherInput input, TeacherContext context, WalkGraph graph, int[] feet, int @Nullable [] focus, double radius) {
 		List<int[]> frontiers = new ArrayList<>();
-		for (int[] frontier : input.seen().frontiers(context.grid())) {
+		for (int[] frontier : input.seen().frontiers(graph)) {
 			if (arrived(feet, frontier) || this.abandoned.contains(SeenMap.key(frontier[0], frontier[1], frontier[2]))) {
 				continue;
 			}

@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.contract.CaptureMode;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
+import io.github.thedeadbolt.honeyfactory.scene.SightGrid;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -61,15 +63,39 @@ class SeenMapTest {
 	}
 
 	@Test
+	void frontiersDependOnlyOnWhatWasSeen() {
+		// Unseen blocks above or floor below a seen cell cannot change where the teacher searches.
+		Grids grid = walled();
+		SeenMap seen = new SeenMap(grid.core);
+		seen.observe(new CameraPose(8.5, 1.0, 2.5, 0.0f, 30.0f), EYE, PERSPECTIVE, grid);
+		SightGrid altered = new SightGrid() {
+			@Override
+			public boolean solid(int x, int y, int z) {
+				boolean unseen = !seen.seen(x, y, z);
+				return y == 0 ? !unseen && grid.solid(x, y, z) : unseen && y == 2 || grid.solid(x, y, z);
+			}
+
+			@Override
+			public boolean blocks(int x, int y, int z, double[] from, double[] to) {
+				return solid(x, y, z);
+			}
+		};
+		List<String> expected = seen.frontiers(WalkGraph.of(grid, grid.core, seen)).stream().map(Arrays::toString).toList();
+		assertFalse(expected.isEmpty());
+		assertEquals(expected, seen.frontiers(WalkGraph.of(altered, grid.core, seen)).stream().map(Arrays::toString).toList());
+	}
+
+	@Test
 	void frontiersLieOnTheSeenEdge() {
 		Grids grid = walled();
 		SeenMap seen = new SeenMap(grid.core);
 		seen.observe(POSE, EYE, PERSPECTIVE, grid);
-		List<int[]> frontiers = seen.frontiers(grid);
+		WalkGraph graph = WalkGraph.of(grid, grid.core, seen);
+		List<int[]> frontiers = seen.frontiers(graph);
 		assertFalse(frontiers.isEmpty());
 		for (int[] cell : frontiers) {
 			assertTrue(seen.seen(cell[0], cell[1], cell[2]), "a frontier is seen");
-			assertTrue(SeenMap.walkable(grid, cell[0], cell[1], cell[2]), "a frontier is somewhere to stand");
+			assertTrue(graph.walkable(cell[0], cell[1], cell[2]), "a frontier is somewhere to stand, as far as has been seen");
 			boolean unseenNeighbour = false;
 			for (int[] step : new int[][] {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
 				int x = cell[0] + step[0];
