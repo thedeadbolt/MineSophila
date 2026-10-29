@@ -3,10 +3,11 @@
 Per dataset, and in total:
 
 - clip types, and fallbacks (a detour, search or occlusion clip that became an approach);
-- approach clips that reached the honey, of those with a way to it (an `unreachable` miss
-  is the start's fault, not the teacher's), and of those without drift; reach by
-  type for approach, detour, occlusion and search, and why the others missed (timeout,
-  unreachable, teacher_failure: the last must stay at 0);
+- planned approach clips (not fallbacks, whose start may hide the honey) that reached the
+  honey, of those with a way to it (an `unreachable` miss is the start's fault, not the
+  teacher's), and of those without drift; reach by type, fallbacks included, for approach,
+  detour, occlusion and search, and why the others missed (timeout, unreachable,
+  teacher_failure: the last must stay at 0);
 - falls: clip attempts redrawn because the body fell or walked out of the arena (from the
   manifest's ``counts.clip_redraws``), which must stay at 0;
 - search coverage: the mean share of reachable cells seen by ticks 4, 8, 16 and 32 in
@@ -117,7 +118,7 @@ def _dataset(path: Path, schemas: Schemas) -> Record:
             tally["reached"] += clip["summary"]["reached"] is True
         if clip["summary"]["miss_reason"] is not None:
             misses[clip["summary"]["miss_reason"]] += 1
-        if clip["clip_type"] == "approach":
+        if clip["clip_type"] == "approach" and clip["requested_type"] == "approach":
             reached = clip["summary"]["reached"] is True
             calm = clip["summary"]["drift_ticks"] == 0
             approach["clips"] += 1

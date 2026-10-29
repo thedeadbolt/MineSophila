@@ -107,3 +107,23 @@ def test_reach_leaves_out_clips_with_no_way_to_the_honey(
     dataset = report([copy], schemas)["datasets"][0]
     assert dataset["approach"]["reachable"] == 1
     assert dataset["reach"]["approach"] == {"clips": 2, "reachable": 1, "reached": 0}
+
+
+def test_gate_reach_leaves_out_fallbacks(
+    contract_dir: Path, schemas: Schemas, tmp_path: Path
+) -> None:
+    # A detour or search with no qualifying start falls back to approach from a draw that may
+    # hide the honey, so the teacher searches first: not the planned approach the gate measures.
+    import shutil
+
+    copy = tmp_path / "clips"
+    shutil.copytree(contract_dir / "clips", copy)
+    index = copy / "clips.jsonl"
+    clips = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines()]
+    first = next(clip for clip in clips if clip["clip_type"] == "approach")
+    first["requested_type"] = "detour"
+    index.write_text("".join(json.dumps(clip) + "\n" for clip in clips), encoding="utf-8")
+    dataset = report([copy], schemas)["datasets"][0]
+    assert dataset["fallbacks"] == {"detour->approach": 1}
+    assert dataset["approach"]["clips"] == 1
+    assert dataset["reach"]["approach"]["clips"] == 2
