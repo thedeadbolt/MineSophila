@@ -10,9 +10,9 @@ import org.jspecify.annotations.Nullable;
  * Where the body could stand and step, as far as the teacher knows. Cells are
  * arena-relative. Blocks count as the body meets them: plants not at all, a fence or wall as
  * 1.5 high, closing the cell above it. A block counts only once it has been seen; unseen space is planned as
- * open floor at the body's height, and every tick's new view corrects the plan. A drop is
- * planned only onto floor the teacher has seen: it never steps down blind, since it may not
- * climb back.
+ * open floor at the body's height, and every tick's new view corrects the plan. A drop may
+ * be planned onto floor not seen yet; the {@link EdgeBrake} stops at its edge and looks
+ * before stepping down, since the body may not climb back.
  */
 public final class WalkGraph {
 	/** A side step, its cost and whether it is diagonal. */

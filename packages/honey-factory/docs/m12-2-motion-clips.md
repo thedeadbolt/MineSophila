@@ -175,3 +175,8 @@ Left open:
 - **Level 5** has not been piloted since the third pilot; its 5 teacher failures there were
   not examined.
 - **Slabs and stairs** are still planned as full steps.
+- **Pilot datasets are not all readable by this code.** The first pilot's clips predate
+  per-tick `driver` and `guarded`, `hazard_fraction` and the clip summary's miss fields, so
+  they fail validation and `clip-report`; only `search` was made optional. Clip datasets
+  have not been released, so the 1.0 schemas carry no compatibility for them; regenerate a
+  pilot rather than read an old one.

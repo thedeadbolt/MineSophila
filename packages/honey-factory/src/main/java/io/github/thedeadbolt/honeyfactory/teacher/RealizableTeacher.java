@@ -19,7 +19,8 @@ import org.jspecify.annotations.Nullable;
  * </ul>
  *
  * Every command passes the {@link EdgeBrake} before it is given, so the teacher never walks
- * off a ledge it has seen nor onto floor it has not. Its decisions depend only on its
+ * off a ledge it has seen, and walks no nearer than {@value EdgeBrake#PEEK} blocks to floor
+ * it has not seen until it has looked. Its decisions depend only on its
  * inputs, so a teacher replays exactly.
  */
 public final class RealizableTeacher implements Teacher {
