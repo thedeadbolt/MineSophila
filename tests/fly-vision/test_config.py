@@ -15,3 +15,8 @@ def test_config_defaults() -> None:
 def test_config_hash_stable_and_sensitive() -> None:
     assert config_hash(FlyVisionConfig()) == config_hash(FlyVisionConfig())
     assert config_hash(FlyVisionConfig()) != config_hash(FlyVisionConfig(acceptance_fwhm_deg=4.0))
+
+
+def test_spectral_default_and_hash() -> None:
+    assert FlyVisionConfig().spectral == "remapped"
+    assert config_hash(FlyVisionConfig()) != config_hash(FlyVisionConfig(spectral="physical"))

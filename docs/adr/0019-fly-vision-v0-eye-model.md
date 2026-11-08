@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-25
+- **Amended by:** [0021](0021-spectral-remap.md) (the default pigment axis is now remapped)
 
 ## Context
 
