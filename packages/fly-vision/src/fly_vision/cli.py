@@ -185,7 +185,9 @@ def _convert(args: argparse.Namespace) -> int:
         if labels_path is not None:
             print(labels_path)
         if args.plot:
-            fig = plot_hex(lattice, frame.activations[:, 0], frame.valid, f"{args.frame_id}: R1_6")
+            fig = plot_hex(
+                lattice, frame.activations[:, 0], frame.valid, f"{args.frame_id}: R1_6", "R1_6"
+            )
             png = args.out / f"{args.frame_id}.png"
             try:
                 fig.savefig(png, dpi=120)  # pyright: ignore[reportUnknownMemberType]
