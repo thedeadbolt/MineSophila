@@ -15,7 +15,12 @@ from fly_vision.frame import FlyFrame, FlyLabels, SourceRef, load_mask, load_pan
 from fly_vision.lattice import Lattice, lattice_hash
 from fly_vision.projection import Projection
 from fly_vision.sampler import SamplingMatrix, apply_sampling, build_sampling_matrix, load_or_build
-from fly_vision.spectral import SpectralModel, build_spectral_model, srgb_to_linear
+from fly_vision.spectral import (
+    SPECTRAL_MODES,
+    SpectralModel,
+    build_spectral_model,
+    srgb_to_linear,
+)
 
 __all__ = ["FlyEye", "linearise", "load_mask", "load_panorama"]
 
@@ -46,12 +51,24 @@ class FlyEye:
         self.lattice = lattice
         self.projection = projection
         self.cfg = cfg or FlyVisionConfig()
+        if self.cfg.spectral not in SPECTRAL_MODES:
+            raise ValueError(
+                f"unknown spectral mode {self.cfg.spectral!r}; expected one of "
+                f"{sorted(SPECTRAL_MODES)}"
+            )
+        pigments = SPECTRAL_MODES[self.cfg.spectral]
+        if spectral is not None and spectral.pigments != pigments:
+            # Checked before the sampling matrix is built, so a mismatch fails at once.
+            raise ValueError(
+                f"spectral model pigments {spectral.pigments.describe()} do not match "
+                f"cfg.spectral={self.cfg.spectral!r}; the frame would be mislabelled (ADR 0021)"
+            )
+        self.spectral: SpectralModel = spectral or build_spectral_model(pigments=pigments)
         self.sm: SamplingMatrix = (
             build_sampling_matrix(lattice, projection, self.cfg)
             if cache_dir is None
             else load_or_build(lattice, projection, self.cfg, cache_dir)
         )
-        self.spectral: SpectralModel = spectral or build_spectral_model()
         self._lattice_hash = lattice_hash(lattice)
 
     def reset(self) -> None:
@@ -89,6 +106,7 @@ class FlyEye:
             "projection": self.projection.describe(),
             "placement": None if placement is None else dict(placement),
             "spectral_hash": self.spectral.hash,
+            "spectral": self.spectral.describe(),
             "config_hash": config_hash(self.cfg),
             "adaptation": self.cfg.adaptation,
             "uv_modelled": False,

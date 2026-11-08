@@ -1,7 +1,9 @@
-"""Reports on the fixed sensor model: coverage, indistinguishable colours, R7 sensitivity.
+"""Reports on the fixed sensor model: coverage, indistinguishable colours, R7 sensitivity
+and R7 independence.
 
 These are reports for humans, not part of the per-frame output. Receptor values come from
-`SpectralModel.receptors`; nothing spectral is computed here.
+`SpectralModel.receptors`, and `r7_independence` reads the model's catch matrix; no spectra
+are integrated here.
 """
 
 from dataclasses import replace
@@ -13,6 +15,7 @@ from numpy.typing import NDArray
 from fly_vision.lattice import SUBTYPES, Lattice
 from fly_vision.sampler import SamplingMatrix
 from fly_vision.spectral import (
+    SPECTRAL_MODES,
     PrimaryConfig,
     SpectralModel,
     build_spectral_model,
@@ -81,7 +84,8 @@ def r7_blue_sensitivity(
     """R7/R8 for white on a pale ommatidium, per shift of the blue primary's peak (nm).
 
     Only the blue peak moves; the model is rebuilt for each shift. R8 is regularised as
-    `R7 / (R8 + eps)`, with `eps` applied only here.
+    `R7 / (R8 + eps)`, with `eps` applied only here. This measures the physical R7 tail,
+    so it always uses physical pigments, whatever the default mode (ADR 0021).
     """
     base = PrimaryConfig()
     white = np.ones((1, 3))
@@ -90,7 +94,25 @@ def r7_blue_sensitivity(
     for shift in shifts_nm:
         peaks = list(base.peaks_nm)
         peaks[_BLUE] += shift
-        cfg = replace(base, peaks_nm=(peaks[0], peaks[1], peaks[2]))
-        _, r7, r8 = build_spectral_model(cfg).receptors(white, pale)[0]
+        cfg = replace(base, peaks_nm=tuple(peaks))
+        model = build_spectral_model(cfg, SPECTRAL_MODES["physical"])
+        _, r7, r8 = model.receptors(white, pale)[0]
         out[shift] = float(r7 / (r8 + eps))
+    return out
+
+
+def r7_independence(model: SpectralModel) -> dict[str, float]:
+    """How far R7 lies outside what R1_6 and R8 already carry, per main-retina subtype.
+
+    The relative least-squares residual `|r7 - A x| / |r7|` of the R7 catch row against
+    span(R1_6 row, R8 row): pale is Rh3 against Rh1 and Rh5, yellow is Rh4 against Rh1 and
+    Rh6. Near 0 means R7 is predictable from the other two channels (ADR 0021, D7).
+    """
+    c: NDArray[np.float64] = np.asarray(model.catch_matrix, dtype=np.float64)
+    out: dict[str, float] = {}
+    for name, r7_row, r8_row in (("pale", 1, 3), ("yellow", 2, 4)):  # Rh1, Rh3, Rh4, Rh5, Rh6
+        r7: NDArray[np.float64] = c[r7_row]
+        a: NDArray[np.float64] = c[[0, r8_row]].T
+        x = np.linalg.lstsq(a, r7, rcond=None)[0]
+        out[name] = float(np.linalg.norm(r7 - a @ x) / np.linalg.norm(r7))
     return out

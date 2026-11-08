@@ -35,11 +35,12 @@ are proposed.
 | Placement (`placement.py`) | field of view from object size and distance; the assumed default field of view |
 | `Lattice` (`lattice.py`) | generated ommatidium directions, eye and subtype (`pale`, `yellow`, `dorsal_yellow`, `dra`), stored as package data |
 | Sampling matrix (`sampler.py`) | sparse Gaussian weights in direction space, cached by key; the same matrix serves colours and mask |
-| Spectral model (`spectral.py`) | linear RGB to Rh1/Rh3/Rh4/Rh5/Rh6 catches and then to channels; R7 from the visible curve tails |
+| Spectral model (`spectral.py`) | linear light bands → Rh catches (physical or remapped pigment axis, remapped by default; ADR 0021) → channels |
 | `adapt` (`adaptation.py`) | off by default; `frame_mean` is experimental |
-| `frame.py`, `diagnostics.py`, `plot.py`, `cli.py` | `.npz` files, coverage and metamer checks, hex plots, `fly-vision convert` |
+| `frame.py`, `diagnostics.py`, `plot.py`, `cli.py` | `.npz` files, coverage, metamer and R7 checks, hex plots with one colour map per channel, `fly-vision convert` |
 
-The decisions are in [ADR 0019](adr/0019-fly-vision-v0-eye-model.md). The input contract for
+The decisions are in [ADR 0019](adr/0019-fly-vision-v0-eye-model.md), amended by
+[ADR 0021](adr/0021-spectral-remap.md) (spectral remap). The input contract for
 honey-factory is in the [interface note](../packages/fly-vision/docs/interface.md).
 
 **Design rule for other image types.** The lattice is the fly and is fixed. An adapter for
