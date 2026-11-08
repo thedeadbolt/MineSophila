@@ -85,7 +85,7 @@ Per frame, written to a chosen directory with `fly-vision convert`:
 |---|---|
 | `<frame_id>.fly.npz` | model input: `activations`, `valid`, `meta` |
 | `<frame_id>.labels.npz` | `honey_coverage`, `meta` (only when a mask is given) |
-| `<frame_id>.R1_6.png`, `<frame_id>.R7.png`, `<frame_id>.R8.png` | optional debug hex plots, one per channel, each on its own colour scale (`--plot`) |
+| `<frame_id>.R1_6.png`, `<frame_id>.R7.png`, `<frame_id>.R8.png` | optional debug hex plots, one per channel, each on its own scale: black (no response) to bright, R1_6 grey, R7 violet, R8 green; uncovered ommatidia as outlines (`--plot`) |
 
 Inputs and labels are in separate files on purpose. Arrays are indexed by ommatidium in the
 lattice order (default lattice: 863 per eye).

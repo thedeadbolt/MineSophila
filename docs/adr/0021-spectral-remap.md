@@ -1,7 +1,8 @@
 # 0021: Spectral remap of the fly's pigments into the visible
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-08
+- **Amends:** [0019](0019-fly-vision-v0-eye-model.md)
 
 ## Context
 

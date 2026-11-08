@@ -19,7 +19,9 @@ uv run fly-vision convert --image p.png --mask m.png \
 ```
 
 This writes `frame-0001.fly.npz`, `frame-0001.labels.npz` and, with `--plot`, one hex
-plot per channel: `frame-0001.R1_6.png`, `frame-0001.R7.png` and `frame-0001.R8.png`. The mask is optional (`--panorama` is a hidden alias of `--image`).
+plot per channel: `frame-0001.R1_6.png`, `frame-0001.R7.png` and `frame-0001.R8.png`. Each
+channel has its own colour map, from black (no response) to bright: R1_6 grey, R7 violet,
+R8 green. The mask is optional (`--panorama` is a hidden alias of `--image`).
 `--projection` is `panorama` (default; when it is omitted, any `--fov-h`/`--fov-v` selects
 `equirect` instead, and an explicit `--projection panorama` rejects `--fov-*` and
 `--center-*`; an image whose aspect ratio is not 310/160 within 1% is

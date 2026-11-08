@@ -2,7 +2,8 @@
 and R7 independence.
 
 These are reports for humans, not part of the per-frame output. Receptor values come from
-`SpectralModel.receptors`; nothing spectral is computed here.
+`SpectralModel.receptors`, and `r7_independence` reads the model's catch matrix; no spectra
+are integrated here.
 """
 
 from dataclasses import replace

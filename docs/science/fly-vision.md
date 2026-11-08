@@ -35,6 +35,10 @@ beside the implementation.
 
 - Minecraft renders RGB. Any UV response inferred from frames or block metadata will
   depend on synthetic modelling assumptions; the model and its validation are still open.
+- By default fly-vision warps the rhodopsin curves from 300–600 nm onto 420–650 nm so that R7
+  carries some signal from RGB ([ADR 0021](../adr/0021-spectral-remap.md)). That is a modelling
+  stand-in, not biology: remapped R7 mostly encodes blue, not UV, and the remapped fly is
+  red-sensitive. Use `--spectral physical` for the measured pigments.
 - Sky and sun metadata are planned inputs to a polarisation model. Honey-factory does not
   export them yet. Define the model before treating its output as a biological signal.
 
