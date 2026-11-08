@@ -104,10 +104,11 @@ lattice order (default lattice: 863 per eye).
 | `matrix_key` | identifies the sampling matrix (lattice, projection, acceptance settings) |
 | `projection` | the projection as a JSON dict: `type` plus every field (equirect: `width`, `height`, `fov_h_deg`, `fov_v_deg`, `center_az_deg`, `center_el_deg`; perspective: `width`, `height`, `fov_h_deg`, `center_az_deg`, `center_el_deg`) |
 | `placement` | how the image was placed, or `null` when the caller gave none. `method` is `honey_factory_contract` (panorama), `fov` (equirect), `fov_h`, `object`, `fov_h+object` or `default` (perspective); `assumed` is `true` only for `default` (60°). `object` and `fov_h+object` add `object_width_px`, `object_size_m`, `distance_m`; `fov_h+object` also `object_fov_h_deg` |
-| `spectral_hash` | hash of the spectral model (rhodopsin peaks, RGB primaries) |
+| `spectral_hash` | hash of the spectral model (catch matrix and `spectral`: pigment map, bands) |
+| `spectral` | the pigment map and input bands: `{"pigment_map": {"kind", "source_nm", "target_nm"}, "bands", "peaks_nm", "fwhm_nm"}`. `kind` is `affine` for the default `remapped` mode (ADR 0021: the pigment axis is warped into the visible, so the fly described doesn't exist) and `physical` for the Salcedo-peak model. Frames without this key are pre-remap physical frames |
 | `config_hash` | hash of the run configuration and package version |
 | `adaptation` | `none` (default) or `frame_mean` (experimental) |
-| `uv_modelled` | always `false`: RGB has no UV; R7 comes from the visible tails of Rh3/Rh4 |
+| `uv_modelled` | always `false`, in both spectral modes: RGB has no UV. Physical R7 comes from the visible tails of Rh3/Rh4; remapped R7 from the warped curves, mostly over blue |
 | `channels` | `["R1_6", "R7", "R8"]` |
 | `input_dtype` | `uint8` or `uint16` |
 | `input_levels` | number of distinct values in each colour channel |

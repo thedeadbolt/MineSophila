@@ -24,6 +24,7 @@ class FlyVisionConfig:
     valid_coverage_min: float = 0.5
     low_bit_depth_levels: int = 32
     adaptation: Literal["none", "frame_mean"] = "none"
+    spectral: SpectralMode = DEFAULT_SPECTRAL_MODE  # pigment axis (ADR 0021)
 
 
 def config_hash(cfg: FlyVisionConfig) -> str:

@@ -7,15 +7,18 @@ import pytest
 from numpy.typing import NDArray
 from PIL import Image
 
+from fly_vision.config import FlyVisionConfig
 from fly_vision.eye import FlyEye, linearise, load_mask, load_panorama
 from fly_vision.frame import SourceRef, load_frame, load_labels, save_frame
 from fly_vision.lattice import default_lattice, generate_hex_lattice
 from fly_vision.projection import PerspectiveSpec, honey_factory_panorama, pixel_directions, to_unit
 from fly_vision.sampler import apply_sampling
-from fly_vision.spectral import srgb_to_linear
+from fly_vision.spectral import SPECTRAL_MODES, build_spectral_model, srgb_to_linear
 
 S = honey_factory_panorama(width=620, height=320)
-EYE = FlyEye(generate_hex_lattice(), S)
+EYE = FlyEye(generate_hex_lattice(), S)  # default config: remapped pigments (ADR 0021)
+PHYS_EYE = FlyEye(EYE.lattice, S, FlyVisionConfig(spectral="physical"))
+REMAP_EYE = EYE
 REF = SourceRef(scene_id="s1", frame_id="f1", capture_meta={"weather": "snow"})
 
 
@@ -36,6 +39,7 @@ def test_shapes_types_meta() -> None:
     assert f.activations.dtype == np.float32
     assert lab is None
     assert f.meta["uv_modelled"] is False
+    assert isinstance(f.meta["spectral"], dict)
     assert f.meta["source"]["capture_meta"]["weather"] == "snow"
     for k in [
         "lattice_hash",
@@ -218,7 +222,7 @@ def test_source_file_sha256_is_null_without_a_path() -> None:
 def test_meta_records_projection() -> None:
     f, _ = EYE.sample(img(), None, REF)
     assert f.meta["projection"] == S.describe()
-    assert len(f.meta) == 17
+    assert len(f.meta) == 18
 
 
 def test_perspective_dot_reaches_expected_ommatidium() -> None:
@@ -249,4 +253,43 @@ def test_placement_recorded() -> None:
     f, _ = EYE.sample(img(), placement=placement)
     assert f.meta["placement"] == placement
     assert f.meta["placement"] is not placement
-    assert len(f.meta) == 17
+    assert len(f.meta) == 18
+
+
+def test_default_eye_is_remapped() -> None:
+    f, _ = EYE.sample(img(), None, REF)
+    assert f.meta["spectral"]["pigment_map"]["kind"] == "affine"
+
+
+def test_modes_are_distinguishable_in_meta() -> None:
+    a, _ = PHYS_EYE.sample(img(), None, REF)
+    b, _ = REMAP_EYE.sample(img(), None, REF)
+    assert a.meta["spectral"]["pigment_map"]["kind"] == "physical"
+    assert b.meta["spectral"]["pigment_map"]["kind"] == "affine"
+    assert a.meta["spectral_hash"] != b.meta["spectral_hash"]
+    assert a.meta["config_hash"] != b.meta["config_hash"]
+    assert a.meta["uv_modelled"] is False
+    assert b.meta["uv_modelled"] is False
+
+
+def test_spectral_mode_keeps_matrix_key() -> None:
+    assert PHYS_EYE.sm.key == REMAP_EYE.sm.key
+
+
+def test_remapped_r7_carries_signal() -> None:
+    b, _ = REMAP_EYE.sample(img(), None, REF)
+    a, _ = PHYS_EYE.sample(img(), None, REF)
+    v = b.valid
+    assert np.median(b.activations[v, 1]) > 100 * np.median(a.activations[v, 1])
+
+
+def test_explicit_spectral_must_match_config() -> None:
+    physical = build_spectral_model(pigments=SPECTRAL_MODES["physical"])
+    with pytest.raises(ValueError, match="spectral"):
+        FlyEye(EYE.lattice, S, FlyVisionConfig(), spectral=physical)
+
+
+def test_unknown_spectral_mode_raises() -> None:
+    bad = FlyVisionConfig(spectral="remap")  # pyright: ignore[reportArgumentType]
+    with pytest.raises(ValueError, match="unknown spectral mode"):
+        FlyEye(EYE.lattice, S, bad)
