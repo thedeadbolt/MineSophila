@@ -11,6 +11,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
+from fly_vision.config import DEFAULT_SPECTRAL_MODE, FlyVisionConfig
 from fly_vision.eye import FlyEye
 from fly_vision.frame import SourceRef, load_mask, load_panorama, save_frame
 from fly_vision.lattice import default_lattice, load_lattice
@@ -67,6 +68,12 @@ def _build_parser() -> argparse.ArgumentParser:
     c.add_argument("--frame-id", required=True, help="names the output files")
     c.add_argument("--out", required=True, type=Path, help="output directory")
     c.add_argument("--cache", type=Path, help="directory for cached sampling matrices")
+    c.add_argument(
+        "--spectral",
+        choices=("physical", "remapped"),
+        default=DEFAULT_SPECTRAL_MODE,
+        help=f"pigment axis (default: {DEFAULT_SPECTRAL_MODE}; ADR 0021)",
+    )
     c.add_argument("--plot", action="store_true", help="also write <frame_id>.png (R1_6 hex plot)")
     return parser
 
@@ -170,7 +177,14 @@ def _convert(args: argparse.Namespace) -> int:
         h, w = pano.shape[:2]
         projection, placement = _resolve(args, w, h)
         lattice = default_lattice() if args.lattice is None else load_lattice(args.lattice)
-        eye = FlyEye(lattice, projection, cache_dir=args.cache)
+        if args.spectral == "physical":
+            print(
+                "fly-vision: note: physical pigments; R7 is almost redundant with R1_6 and R8 "
+                "(ADR 0021)",
+                file=sys.stderr,
+            )
+        cfg = FlyVisionConfig(spectral=args.spectral)
+        eye = FlyEye(lattice, projection, cfg, cache_dir=args.cache)
         source = SourceRef(
             scene_id=args.scene_id, frame_id=args.frame_id, image_path=str(args.image)
         )

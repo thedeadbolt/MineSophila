@@ -35,7 +35,7 @@ are proposed.
 | Placement (`placement.py`) | field of view from object size and distance; the assumed default field of view |
 | `Lattice` (`lattice.py`) | generated ommatidium directions, eye and subtype (`pale`, `yellow`, `dorsal_yellow`, `dra`), stored as package data |
 | Sampling matrix (`sampler.py`) | sparse Gaussian weights in direction space, cached by key; the same matrix serves colours and mask |
-| Spectral model (`spectral.py`) | linear RGB to Rh1/Rh3/Rh4/Rh5/Rh6 catches and then to channels; R7 from the visible curve tails |
+| Spectral model (`spectral.py`) | linear light bands → Rh catches (physical or remapped pigment axis, remapped by default; ADR 0021) → channels |
 | `adapt` (`adaptation.py`) | off by default; `frame_mean` is experimental |
 | `frame.py`, `diagnostics.py`, `plot.py`, `cli.py` | `.npz` files, coverage and metamer checks, hex plots, `fly-vision convert` |
 

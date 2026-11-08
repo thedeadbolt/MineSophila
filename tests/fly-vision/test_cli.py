@@ -344,3 +344,38 @@ def test_image_nobody_sees_prints_a_note(
     assert len(err.strip().splitlines()) == 1
     assert main(_persp(tmp_path, "--fov-h", "90")) == 0
     assert "no ommatidium" not in capsys.readouterr().err
+
+
+def _convert_args(tmp_path: Path, *extra: str) -> list[str]:
+    return [
+        "convert",
+        "--image",
+        str(tmp_path / "p.png"),
+        "--scene-id",
+        "s",
+        "--frame-id",
+        "f",
+        "--out",
+        str(tmp_path / "out"),
+        *extra,
+    ]
+
+
+def _pigment_kind(tmp_path: Path) -> str:
+    return load_frame(tmp_path / "out" / "f.fly.npz").meta["spectral"]["pigment_map"]["kind"]
+
+
+def test_convert_spectral_physical(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_inputs(tmp_path)
+    assert main(_convert_args(tmp_path, "--spectral", "physical")) == 0
+    assert "physical pigments" in capsys.readouterr().err
+    assert _pigment_kind(tmp_path) == "physical"
+
+
+def test_convert_spectral_default_is_remapped(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_inputs(tmp_path)
+    assert main(_convert_args(tmp_path)) == 0
+    assert "physical pigments" not in capsys.readouterr().err
+    assert _pigment_kind(tmp_path) == "affine"

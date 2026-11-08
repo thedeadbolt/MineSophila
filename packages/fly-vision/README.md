@@ -28,6 +28,17 @@ or `perspective`. `--lattice` selects a lattice file (validated on load) and `--
 directory for sampling matrices. Images and masks are read upright: the EXIF Orientation tag
 is applied on load.
 
+Receptors use the `remapped` pigments by default: the rhodopsin curves are warped from
+300–600 nm onto 420–650 nm, so R7 is no longer redundant with R1_6 and R8. The fly this
+describes doesn't exist (it is clearly red-sensitive, and R7 still mostly encodes blue). See
+[ADR 0021](../../docs/adr/0021-spectral-remap.md). `--spectral physical` selects the measured
+pigments instead and prints a note that R7 is then almost redundant:
+
+```sh
+uv run fly-vision convert --image p.png --spectral physical \
+    --scene-id scene-0001 --frame-id frame-0001 --out out/
+```
+
 Equirectangular images other than the honey-factory capture:
 
 ```sh
