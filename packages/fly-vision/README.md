@@ -18,8 +18,8 @@ uv run fly-vision convert --image p.png --mask m.png \
     --scene-id scene-0001 --frame-id frame-0001 --out out/ --plot
 ```
 
-This writes `frame-0001.fly.npz`, `frame-0001.labels.npz` and, with `--plot`,
-`frame-0001.png`. The mask is optional (`--panorama` is a hidden alias of `--image`).
+This writes `frame-0001.fly.npz`, `frame-0001.labels.npz` and, with `--plot`, one hex
+plot per channel: `frame-0001.R1_6.png`, `frame-0001.R7.png` and `frame-0001.R8.png`. The mask is optional (`--panorama` is a hidden alias of `--image`).
 `--projection` is `panorama` (default; when it is omitted, any `--fov-h`/`--fov-v` selects
 `equirect` instead, and an explicit `--projection panorama` rejects `--fov-*` and
 `--center-*`; an image whose aspect ratio is not 310/160 within 1% is

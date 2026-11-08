@@ -40,8 +40,9 @@ def test_convert(tmp_path: Path) -> None:
         ]
     )
     assert rc == 0
-    for n in ["f.fly.npz", "f.labels.npz", "f.png"]:
+    for n in ["f.fly.npz", "f.labels.npz", "f.R1_6.png", "f.R7.png", "f.R8.png"]:
         assert (tmp_path / "out" / n).exists()
+    assert not (tmp_path / "out" / "f.png").exists()
 
 
 def test_convert_without_mask(tmp_path: Path) -> None:
@@ -62,7 +63,7 @@ def test_convert_without_mask(tmp_path: Path) -> None:
     assert rc == 0
     assert (tmp_path / "out" / "f.fly.npz").exists()
     assert not (tmp_path / "out" / "f.labels.npz").exists()
-    assert not (tmp_path / "out" / "f.png").exists()
+    assert not list((tmp_path / "out").glob("*.png"))
 
 
 def test_convert_explicit_fov(tmp_path: Path) -> None:
@@ -379,3 +380,11 @@ def test_convert_spectral_default_is_remapped(
     assert main(_convert_args(tmp_path)) == 0
     assert "physical pigments" not in capsys.readouterr().err
     assert _pigment_kind(tmp_path) == "affine"
+
+
+def test_plot_paths_are_printed(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_inputs(tmp_path)
+    assert main(_convert_args(tmp_path, "--plot")) == 0
+    printed = capsys.readouterr().out.split()
+    for channel in ("R1_6", "R7", "R8"):
+        assert str(tmp_path / "out" / f"f.{channel}.png") in printed
