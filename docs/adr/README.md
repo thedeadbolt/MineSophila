@@ -26,3 +26,4 @@ Preserve accepted decisions. To change one, write a new ADR that supersedes it.
 | [0018](0018-lock-step-motor-control.md) | Lock-step motor control | Accepted |
 | [0019](0019-fly-vision-v0-eye-model.md) | fly-vision v0 eye model | Accepted |
 | [0020](0020-image-placement.md) | Image placement in the fly's visual field | Accepted |
+| [0021](0021-spectral-remap.md) | Spectral remap of the fly's pigments into the visible | Proposed |
