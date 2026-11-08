@@ -9,6 +9,11 @@ from fly_vision import __version__
 
 FWHM_PER_SIGMA = 2.3548  # FWHM = 2 sqrt(2 ln 2) sigma
 
+SpectralMode = Literal["physical", "remapped"]
+# The pigment axis frames use unless asked otherwise (ADR 0021). Read by `spectral.py`,
+# `FlyVisionConfig` and the CLI, so the default lives in one place.
+DEFAULT_SPECTRAL_MODE: SpectralMode = "remapped"
+
 
 @dataclass(frozen=True)
 class FlyVisionConfig:
