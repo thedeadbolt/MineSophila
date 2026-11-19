@@ -79,6 +79,7 @@ class TrainingResult:
 class LinearLocalizationModel:
     input_width: int
     site_count: int
+    predict_coverage: bool = True
 
     def __post_init__(self) -> None:
         if self.input_width < 1 or self.site_count < 1:
@@ -86,7 +87,7 @@ class LinearLocalizationModel:
 
     @property
     def output_width(self) -> int:
-        return 4 + self.site_count
+        return 4 + self.site_count if self.predict_coverage else 4
 
     def initialize(self, seed: int) -> LinearParameters:
         key = jax.random.key(seed)
@@ -97,13 +98,18 @@ class LinearLocalizationModel:
         self, parameters: LinearParameters, observation: ObservationSequence
     ) -> HoneyLocalizationPrediction:
         features = encode_observation(observation)
+        return self.predict_features(parameters, features)
+
+    def predict_features(
+        self, parameters: LinearParameters, features: NDArray[np.float32]
+    ) -> HoneyLocalizationPrediction:
         if features.shape[1] != self.input_width:
-            raise ValueError("observation feature width does not match the linear model")
+            raise ValueError("feature width does not match the linear model")
         outputs = _apply(parameters, jnp.asarray(features))
         return HoneyLocalizationPrediction(
             presence_probability=np.asarray(jax.device_get(outputs[0])),
             direction=np.asarray(jax.device_get(outputs[1])),
-            coverage=np.asarray(jax.device_get(outputs[2])),
+            coverage=(None if outputs[2] is None else np.asarray(jax.device_get(outputs[2]))),
         )
 
 
@@ -191,13 +197,13 @@ def _to_jax(batch: LocalizationBatch) -> _JaxBatch:
 
 def _apply(
     parameters: LinearParameters, features: jax.Array
-) -> tuple[jax.Array, jax.Array, jax.Array]:
+) -> tuple[jax.Array, jax.Array, jax.Array | None]:
     raw = features @ parameters.weights + parameters.bias
     presence = jax.nn.sigmoid(raw[:, 0])
     direction_raw = raw[:, 1:4]
     norms = jnp.linalg.norm(direction_raw, axis=1, keepdims=True)
     direction = jnp.where(norms > 1e-6, direction_raw / jnp.maximum(norms, 1e-6), 0.0)
-    coverage = jax.nn.sigmoid(raw[:, 4:])
+    coverage = jax.nn.sigmoid(raw[:, 4:]) if raw.shape[1] > 4 else None
     return presence, direction, coverage
 
 
@@ -217,7 +223,7 @@ def _loss(parameters: LinearParameters, batch: _JaxBatch) -> jax.Array:
         (1.0 - jnp.sum(direction * batch.direction, axis=1)) * positive
     ) / jnp.maximum(jnp.sum(positive), 1.0)
     coverage_loss = 0.0
-    if batch.coverage is not None:
+    if batch.coverage is not None and raw.shape[1] > 4:
         coverage_error = jax.nn.sigmoid(raw[:, 4:]) - batch.coverage
         coverage_loss = jnp.sum(jnp.square(coverage_error) * valid[:, None]) / (
             denominator * batch.coverage.shape[1]

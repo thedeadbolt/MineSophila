@@ -81,3 +81,14 @@ def test_invalid_receptors_are_zeroed_but_their_mask_remains_visible(
 
     assert np.count_nonzero(batch.features[0, :receptor_width]) == 6
     assert batch.features[0, receptor_width:].tolist() == [1.0, 0.0, 1.0, 0.0]
+
+
+def test_linear_baseline_can_omit_large_coverage_head(sensor_layout: SensorLayout) -> None:
+    item = example(1.0, True, sensor_layout, 0)
+    batch = prepare_localization_batch([item])
+    model = LinearLocalizationModel(batch.input_width, batch.site_count, predict_coverage=False)
+
+    prediction = model.predict(model.initialize(seed=0), item.observation)
+
+    assert model.output_width == 4
+    assert prediction.coverage is None

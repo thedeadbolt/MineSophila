@@ -12,6 +12,9 @@ dependencies = [
     "numpy>=2.5.4",
 ]
 
+[project.scripts]
+fly-brain = "fly_brain.cli:main"
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
