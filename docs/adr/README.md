@@ -30,3 +30,4 @@ Preserve accepted decisions. To change one, write a new ADR that supersedes it.
 | [0022](0022-fast-parallel-generation.md) | Fast and parallel generation | Accepted |
 | [0023](0023-motion-clips-and-teacher.md) | Motion clips and the first teacher | Accepted |
 | [0024](0024-fly-brain-package-and-experiment-boundaries.md) | fly-brain package and experiment boundaries | Accepted |
+| [0025](0025-local-dataset-and-artifact-storage.md) | Local dataset and large-artifact storage | Accepted |
