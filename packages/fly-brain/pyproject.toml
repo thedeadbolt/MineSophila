@@ -10,6 +10,7 @@ dependencies = [
     "fly-vision>=0.0.1",
     "jax>=0.11.1",
     "numpy>=2.5.4",
+    "pyarrow>=22.0.0",
 ]
 
 [project.scripts]
@@ -17,6 +18,7 @@ fly-brain = "fly_brain.cli:main"
 
 [dependency-groups]
 dev = [
+    "pyarrow-stubs>=20.0.0.20260819",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
 ]

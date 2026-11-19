@@ -9,6 +9,7 @@ from fly_brain.connectome.components import (
 )
 from fly_brain.connectome.graph import ConnectomeGraph, ConnectomeSummary
 from fly_brain.connectome.loaders import ConnectomeLoader
+from fly_brain.connectome.male_cns import MALE_CNS_V1_RELEASE, MaleCNSLoader
 from fly_brain.connectome.network import (
     BrainNetwork,
     ComponentConnectivity,
@@ -28,6 +29,7 @@ from fly_brain.connectome.selectors import (
 from fly_brain.connectome.tables import NeuronTable, SynapseTable
 
 __all__ = [
+    "MALE_CNS_V1_RELEASE",
     "AnnotationEquals",
     "BiologicalStatus",
     "BrainNetwork",
@@ -44,6 +46,7 @@ __all__ = [
     "Exclude",
     "ExplicitIds",
     "Intersection",
+    "MaleCNSLoader",
     "NetworkComponent",
     "NetworkDescription",
     "NeuronSelector",
