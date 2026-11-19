@@ -9,6 +9,13 @@ from fly_brain.connectome.components import (
 )
 from fly_brain.connectome.graph import ConnectomeGraph, ConnectomeSummary
 from fly_brain.connectome.loaders import ConnectomeLoader
+from fly_brain.connectome.network import (
+    BrainNetwork,
+    ComponentConnectivity,
+    ComponentOverlap,
+    EdgePolicy,
+    NetworkDescription,
+)
 from fly_brain.connectome.release import ConnectomeRelease
 from fly_brain.connectome.selectors import (
     AnnotationEquals,
@@ -23,6 +30,9 @@ from fly_brain.connectome.tables import NeuronTable, SynapseTable
 __all__ = [
     "AnnotationEquals",
     "BiologicalStatus",
+    "BrainNetwork",
+    "ComponentConnectivity",
+    "ComponentOverlap",
     "ComponentResolver",
     "ComponentRole",
     "ComponentSpec",
@@ -30,10 +40,12 @@ __all__ = [
     "ConnectomeLoader",
     "ConnectomeRelease",
     "ConnectomeSummary",
+    "EdgePolicy",
     "Exclude",
     "ExplicitIds",
     "Intersection",
     "NetworkComponent",
+    "NetworkDescription",
     "NeuronSelector",
     "NeuronTable",
     "SynapseTable",
