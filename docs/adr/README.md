@@ -31,3 +31,4 @@ Preserve accepted decisions. To change one, write a new ADR that supersedes it.
 | [0023](0023-motion-clips-and-teacher.md) | Motion clips and the first teacher | Accepted |
 | [0024](0024-fly-brain-package-and-experiment-boundaries.md) | fly-brain package and experiment boundaries | Accepted |
 | [0025](0025-local-dataset-and-artifact-storage.md) | Local dataset and large-artifact storage | Accepted |
+| [0026](0026-jax-first-learning-backend.md) | JAX as the first learning backend | Accepted |

@@ -8,6 +8,7 @@ license = "MIT"
 authors = [{ name = "João Moutinho" }]
 dependencies = [
     "fly-vision>=0.0.1",
+    "jax>=0.11.1",
     "numpy>=2.5.4",
 ]
 
