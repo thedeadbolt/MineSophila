@@ -87,7 +87,7 @@ def evaluate_localization(
     return LocalizationMetrics(
         sample_count=sample_count,
         positive_count=positive_count,
-        presence_accuracy=np.count_nonzero(predicted == truth) / sample_count,
+        presence_accuracy=float(np.count_nonzero(predicted == truth) / sample_count),
         presence_precision=precision,
         presence_recall=recall,
         mean_bearing_error_deg=bearing_error,
