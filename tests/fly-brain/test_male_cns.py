@@ -54,3 +54,11 @@ def test_male_cns_loader_joins_annotations_and_restricts_graph(tmp_path: Path) -
     assert graph.synapses.source_ids.tolist() == [10]
     assert graph.synapses.target_ids.tolist() == [20]
     assert graph.synapses.counts.tolist() == [8]
+
+
+def test_male_cns_annotation_selection_precedes_edge_materialization(tmp_path: Path) -> None:
+    write_release(tmp_path)
+    loader = MaleCNSLoader(tmp_path, verify_checksums=False)
+
+    assert loader.annotation_ids(cell_types=("photoreceptor",)) == (10,)
+    assert loader.annotation_ids(superclasses=("visual_projection",)) == (20,)

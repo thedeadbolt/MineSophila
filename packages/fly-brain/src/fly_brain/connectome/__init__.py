@@ -27,6 +27,7 @@ from fly_brain.connectome.selectors import (
     Union,
 )
 from fly_brain.connectome.tables import NeuronTable, SynapseTable
+from fly_brain.connectome.visual import first_visual_component_specs
 
 __all__ = [
     "MALE_CNS_V1_RELEASE",
@@ -53,4 +54,5 @@ __all__ = [
     "NeuronTable",
     "SynapseTable",
     "Union",
+    "first_visual_component_specs",
 ]

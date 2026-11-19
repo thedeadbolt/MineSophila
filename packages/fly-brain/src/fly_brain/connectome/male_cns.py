@@ -52,6 +52,25 @@ class MaleCNSLoader:
         if self.minimum_synapse_count < 1:
             raise ValueError("minimum_synapse_count must be positive")
 
+    def annotation_ids(
+        self,
+        *,
+        cell_types: tuple[str, ...] = (),
+        superclasses: tuple[str, ...] = (),
+    ) -> tuple[int, ...]:
+        path = self.root / _FILES["annotations"][0]
+        annotations = feather.read_table(
+            path, columns=["bodyId", "type", "superclass"], memory_map=True
+        )
+        mask = np.zeros(annotations.num_rows, dtype=np.bool_)
+        if cell_types:
+            mask |= np.isin(_strings(annotations["type"]), cell_types)
+        if superclasses:
+            mask |= np.isin(_strings(annotations["superclass"]), superclasses)
+        if not mask.any():
+            raise ValueError("MaleCNS annotation selection resolved to no neurons")
+        return tuple(np.asarray(annotations["bodyId"], dtype=np.int64)[mask].tolist())
+
     def load(self, release: ConnectomeRelease = MALE_CNS_V1_RELEASE) -> ConnectomeGraph:
         if release != MALE_CNS_V1_RELEASE:
             raise ValueError("MaleCNSLoader only supports the pinned MaleCNS v1.0 release")
