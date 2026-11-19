@@ -1,0 +1,7 @@
+{
+  "format": "fly-brain-still-label-audit-config-v1",
+  "sample_count": 64,
+  "seed": 0,
+  "value_tolerance": 0.000001,
+  "centroid_tolerance_deg": 10.0
+}

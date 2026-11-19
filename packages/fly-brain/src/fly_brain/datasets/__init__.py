@@ -1,9 +1,21 @@
 """Local, reproducible dataset preprocessing."""
 
+from fly_brain.datasets.audit import (
+    StillLabelAuditConfig,
+    StillLabelAuditReport,
+    audit_still_labels,
+)
 from fly_brain.datasets.stills import (
     CachedStillDataset,
     combine_batches,
     convert_honey_factory_dataset,
 )
 
-__all__ = ["CachedStillDataset", "combine_batches", "convert_honey_factory_dataset"]
+__all__ = [
+    "CachedStillDataset",
+    "StillLabelAuditConfig",
+    "StillLabelAuditReport",
+    "audit_still_labels",
+    "combine_batches",
+    "convert_honey_factory_dataset",
+]

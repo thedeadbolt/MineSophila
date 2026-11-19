@@ -22,3 +22,30 @@ graph checksums and induced subgraphs, and reports annotation gaps and in-memory
 
 Connectome loading, training frameworks and executable models follow in later slices of the
 [foundation plan](../../docs/superpowers/plans/2026-11-19-fly-brain-foundation.md).
+
+## Spatial coverage experiment
+
+The topology-aware baseline predicts honey coverage at every ommatidium, then derives presence
+and direction from that spatial prediction. Model, topology, loss, optimizer, early-stopping and
+threshold-selection settings live in a versioned JSON experiment config rather than the command.
+
+```bash
+uv run fly-brain train-spatial /path/to/*.fly-brain.npz \
+  --config packages/fly-brain/configs/spatial-coverage-v1.json \
+  --report /path/to/spatial-report.json \
+  --checkpoint /path/to/spatial-checkpoint.npz
+```
+
+Copy the supplied config to create a tuned run while retaining the complete settings in its
+checkpoint manifest and report.
+
+Before training, audit each raw-dataset/cache pair. This rechecks source hashes and split
+isolation, reproduces configured random rows from their RGB images and masks, and compares mask
+visibility, cached coverage and coverage-weighted direction.
+
+```bash
+uv run fly-brain audit-stills /path/to/dataset /path/to/dataset.fly-brain.npz \
+  --config packages/fly-brain/configs/still-label-audit-v1.json \
+  --matrix-cache /path/to/fly-vision-cache \
+  --report /path/to/label-audit.json
+```

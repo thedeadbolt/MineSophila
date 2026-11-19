@@ -9,6 +9,17 @@ from fly_brain.models.linear import (
     train_linear,
 )
 from fly_brain.models.mlp import MLPLocalizationModel, MLPParameters, MLPTrainingResult, train_mlp
+from fly_brain.models.spatial import (
+    SpatialBatch,
+    SpatialLocalizationModel,
+    SpatialModelConfig,
+    SpatialParameters,
+    SpatialTopology,
+    SpatialTrainingConfig,
+    SpatialTrainingResult,
+    build_angular_topology,
+    train_spatial,
+)
 
 __all__ = [
     "LinearLocalizationModel",
@@ -17,8 +28,17 @@ __all__ = [
     "MLPLocalizationModel",
     "MLPParameters",
     "MLPTrainingResult",
+    "SpatialBatch",
+    "SpatialLocalizationModel",
+    "SpatialModelConfig",
+    "SpatialParameters",
+    "SpatialTopology",
+    "SpatialTrainingConfig",
+    "SpatialTrainingResult",
     "TrainingResult",
+    "build_angular_topology",
     "prepare_localization_batch",
     "train_linear",
     "train_mlp",
+    "train_spatial",
 ]

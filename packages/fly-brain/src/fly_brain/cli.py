@@ -6,21 +6,37 @@ import subprocess
 import sys
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 
 from fly_brain.contracts import BrainTargets
-from fly_brain.datasets import CachedStillDataset, combine_batches, convert_honey_factory_dataset
+from fly_brain.datasets import (
+    CachedStillDataset,
+    StillLabelAuditConfig,
+    audit_still_labels,
+    combine_batches,
+    convert_honey_factory_dataset,
+)
 from fly_brain.experiments import save_checkpoint
 from fly_brain.models import (
     LinearLocalizationModel,
     LocalizationBatch,
     MLPLocalizationModel,
     MLPParameters,
+    SpatialBatch,
+    SpatialLocalizationModel,
+    SpatialModelConfig,
+    SpatialParameters,
+    SpatialTopology,
+    SpatialTrainingConfig,
+    build_angular_topology,
     train_linear,
     train_mlp,
+    train_spatial,
 )
 from fly_brain.tasks import evaluate_localization
+from fly_vision.lattice import default_lattice
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -30,6 +46,12 @@ def _parser() -> argparse.ArgumentParser:
     prepare.add_argument("datasets", nargs="+", type=Path)
     prepare.add_argument("--out", required=True, type=Path)
     prepare.add_argument("--matrix-cache", required=True, type=Path)
+    audit = commands.add_parser("audit-stills")
+    audit.add_argument("dataset", type=Path)
+    audit.add_argument("cache", type=Path)
+    audit.add_argument("--config", required=True, type=Path)
+    audit.add_argument("--matrix-cache", required=True, type=Path)
+    audit.add_argument("--report", required=True, type=Path)
     train = commands.add_parser("train-linear")
     train.add_argument("caches", nargs="+", type=Path)
     train.add_argument("--steps", type=int, default=300)
@@ -45,6 +67,11 @@ def _parser() -> argparse.ArgumentParser:
     deep.add_argument("--seed", type=int, default=0)
     deep.add_argument("--report", required=True, type=Path)
     deep.add_argument("--checkpoint", required=True, type=Path)
+    spatial = commands.add_parser("train-spatial")
+    spatial.add_argument("caches", nargs="+", type=Path)
+    spatial.add_argument("--config", required=True, type=Path)
+    spatial.add_argument("--report", required=True, type=Path)
+    spatial.add_argument("--checkpoint", required=True, type=Path)
     return parser
 
 
@@ -64,6 +91,30 @@ def _prepare(args: argparse.Namespace) -> int:
         )
         print(f"  wrote {converted.rows} samples", flush=True)
     return 0
+
+
+def _audit_stills(args: argparse.Namespace) -> int:
+    raw_values: Any = json.loads(args.config.read_text())
+    if not isinstance(raw_values, dict):
+        raise ValueError("still-label audit config must be a JSON object")
+    values = cast(dict[str, Any], raw_values)
+    if values.pop("format", None) != ("fly-brain-still-label-audit-config-v1"):
+        raise ValueError("unsupported still-label audit config format")
+    try:
+        config = StillLabelAuditConfig(**values)
+    except TypeError as error:
+        raise ValueError(f"invalid still-label audit setting: {error}") from error
+    report = audit_still_labels(
+        args.dataset,
+        CachedStillDataset.load(args.cache),
+        matrix_cache=args.matrix_cache,
+        config=config,
+    )
+    payload = report.as_dict()
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0 if report.passed else 1
 
 
 def _targets(batch: LocalizationBatch) -> BrainTargets:
@@ -183,6 +234,190 @@ def _train_deep(args: argparse.Namespace) -> int:
     return 0
 
 
+def _train_spatial(args: argparse.Namespace) -> int:
+    model_config, training_config = _load_spatial_config(args.config)
+    datasets = [CachedStillDataset.load(path) for path in args.caches]
+    train = _spatial_batch(datasets, "train")
+    validation = _spatial_batch(datasets, "validation")
+    test = _spatial_batch(datasets, "test")
+    lattice = default_lattice()
+    if lattice.ommatidium_id.size != train.site_count:
+        raise ValueError("cached sensor sites do not match the default fly-vision lattice")
+    topology = build_angular_topology(
+        train.directions,
+        lattice.eye,
+        neighbor_count=model_config.neighbor_count,
+        radius_deg=model_config.neighbor_radius_deg,
+    )
+    model = SpatialLocalizationModel(train.channel_count, train.site_count, model_config)
+    result = train_spatial(model, train, validation, topology, training_config)
+    validation_prediction = model.predict(
+        result.parameters, validation, topology, batch_size=training_config.batch_size
+    )
+    threshold = _select_presence_threshold(
+        validation_prediction.presence_probability,
+        validation.presence.astype(np.bool_),
+        training_config,
+    )
+    report: dict[str, object] = {
+        "format": "fly-brain-spatial-report-v1",
+        "git_revision": _git_revision(),
+        "datasets": [dataset.metadata for dataset in datasets],
+        "model": {
+            "kind": "spatial_coverage_localisation",
+            "channel_count": model.channel_count,
+            "site_count": model.site_count,
+            **asdict(model_config),
+        },
+        "topology": {
+            "valid_edges": int(np.count_nonzero(topology.neighbor_valid)),
+            "possible_edges": int(topology.neighbor_valid.size),
+        },
+        "training": {
+            **asdict(training_config),
+            "samples": train.rows,
+            "completed_steps": len(result.losses),
+            "best_step": result.best_step,
+            "initial_loss": result.losses[0],
+            "final_loss": result.losses[-1],
+            "validation_losses": [list(item) for item in result.validation_losses],
+            "selected_presence_threshold": threshold,
+        },
+        "validation": asdict(
+            evaluate_localization(
+                validation_prediction,
+                _spatial_targets(validation),
+                presence_threshold=threshold,
+            )
+        ),
+        "test": _evaluate_spatial(
+            model, result.parameters, test, topology, training_config.batch_size, threshold
+        ),
+        "per_dataset": {
+            str(dataset.metadata["source_dataset_id"]): {
+                split: _evaluate_spatial(
+                    model,
+                    result.parameters,
+                    _spatial_batch([dataset], split),
+                    topology,
+                    training_config.batch_size,
+                    threshold,
+                )
+                for split in ("validation", "test")
+            }
+            for dataset in datasets
+        },
+    }
+    report["checkpoint_manifest_sha256"] = save_checkpoint(
+        args.checkpoint, result.parameters._asdict(), report
+    )
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0
+
+
+def _load_spatial_config(path: Path) -> tuple[SpatialModelConfig, SpatialTrainingConfig]:
+    raw_values: Any = json.loads(path.read_text())
+    if not isinstance(raw_values, dict):
+        raise ValueError("spatial experiment config must be a JSON object")
+    values = cast(dict[str, Any], raw_values)
+    if values.get("format") != "fly-brain-spatial-experiment-v1":
+        raise ValueError("unsupported spatial experiment config format")
+    model_values = values.get("model")
+    training_values = values.get("training")
+    if not isinstance(model_values, dict) or not isinstance(training_values, dict):
+        raise ValueError("spatial experiment config requires model and training objects")
+    try:
+        return SpatialModelConfig(**cast(dict[str, Any], model_values)), SpatialTrainingConfig(
+            **cast(dict[str, Any], training_values)
+        )
+    except TypeError as error:
+        raise ValueError(f"invalid spatial experiment setting: {error}") from error
+
+
+def _spatial_batch(datasets: list[CachedStillDataset], split: str) -> SpatialBatch:
+    if not datasets:
+        raise ValueError("at least one cached dataset is required")
+    first = datasets[0]
+    if any(
+        not np.array_equal(dataset.valid, first.valid)
+        or not np.allclose(dataset.directions, first.directions)
+        or dataset.activations.shape[1:] != first.activations.shape[1:]
+        for dataset in datasets[1:]
+    ):
+        raise ValueError("spatial datasets must use the same sensor layout")
+    selected = [np.asarray(dataset.splits) == split for dataset in datasets]
+    if any(not mask.any() for mask in selected):
+        raise ValueError(f"every spatial dataset must contain {split!r} samples")
+    return SpatialBatch(
+        signals=np.concatenate(
+            [dataset.activations[mask] for dataset, mask in zip(datasets, selected, strict=True)]
+        ),
+        valid=first.valid,
+        coverage=np.concatenate(
+            [dataset.coverage[mask] for dataset, mask in zip(datasets, selected, strict=True)]
+        ),
+        directions=first.directions,
+    )
+
+
+def _spatial_targets(batch: SpatialBatch) -> BrainTargets:
+    weighted = batch.coverage @ batch.directions
+    norms = np.linalg.norm(weighted, axis=1)
+    direction = np.zeros_like(weighted, dtype=np.float32)
+    nonzero = norms > 0
+    direction[nonzero] = weighted[nonzero] / norms[nonzero, None]
+    return BrainTargets(
+        time_mask=np.ones(batch.rows, dtype=np.bool_),
+        honey_present=batch.presence.astype(np.bool_),
+        honey_direction=direction,
+        honey_coverage=batch.coverage,
+    )
+
+
+def _select_presence_threshold(
+    probabilities: np.ndarray,
+    truth: np.ndarray,
+    config: SpatialTrainingConfig,
+) -> float:
+    thresholds = np.linspace(
+        config.threshold_search_min,
+        config.threshold_search_max,
+        config.threshold_search_steps,
+    )
+    positive = truth
+    negative = ~truth
+    best_threshold = float(thresholds[0])
+    best_score = -1.0
+    for threshold in thresholds:
+        predicted = probabilities >= threshold
+        recall = float(np.mean(predicted[positive])) if positive.any() else 0.0
+        specificity = float(np.mean(~predicted[negative])) if negative.any() else 0.0
+        score = (recall + specificity) / 2.0
+        if score > best_score:
+            best_score = score
+            best_threshold = float(threshold)
+    return best_threshold
+
+
+def _evaluate_spatial(
+    model: SpatialLocalizationModel,
+    parameters: SpatialParameters,
+    batch: SpatialBatch,
+    topology: SpatialTopology,
+    batch_size: int,
+    threshold: float,
+) -> dict[str, object]:
+    return asdict(
+        evaluate_localization(
+            model.predict(parameters, batch, topology, batch_size=batch_size),
+            _spatial_targets(batch),
+            presence_threshold=threshold,
+        )
+    )
+
+
 def _evaluate_mlp(
     model: MLPLocalizationModel, parameters: MLPParameters, batch: LocalizationBatch
 ) -> dict[str, object]:
@@ -208,10 +443,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "prepare-stills":
             return _prepare(args)
+        if args.command == "audit-stills":
+            return _audit_stills(args)
         if args.command == "train-linear":
             return _train(args)
         if args.command == "train-mlp":
             return _train_deep(args)
+        if args.command == "train-spatial":
+            return _train_spatial(args)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
         print(f"fly-brain: error: {error}", file=sys.stderr)
         return 1
