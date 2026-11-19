@@ -25,6 +25,7 @@ class SensorLayout:
     ommatidium_subtypes: tuple[str, ...]  # (N,)
     channel_names: tuple[str, ...]  # (C,)
     model_version: str
+    geometry_hash: str
     config_hash: str
 
     def __post_init__(self) -> None:
@@ -52,8 +53,10 @@ class SensorLayout:
             raise ValueError("ommatidium_subtypes must not contain empty names")
         if not self.channel_names or len(set(self.channel_names)) != len(self.channel_names):
             raise ValueError("channel_names must be non-empty and unique")
-        if not self.model_version.strip() or not self.config_hash.strip():
-            raise ValueError("model_version and config_hash must not be empty")
+        if not self.model_version.strip() or not self.geometry_hash.strip():
+            raise ValueError("model_version and geometry_hash must not be empty")
+        if not self.config_hash.strip():
+            raise ValueError("config_hash must not be empty")
         object.__setattr__(self, "site_ids", readonly(site_ids))
         object.__setattr__(self, "directions", readonly(directions))
 

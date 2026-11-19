@@ -22,5 +22,6 @@ def sensor_layout() -> SensorLayout:
         ommatidium_subtypes=("pale", "yellow", "pale", "yellow"),
         channel_names=("R1_6", "R7", "R8"),
         model_version="fixture-1",
+        geometry_hash="fixture-geometry-hash",
         config_hash="fixture-config-hash",
     )

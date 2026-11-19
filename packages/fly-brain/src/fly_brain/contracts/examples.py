@@ -19,6 +19,7 @@ class BrainTargets:
     honey_coverage: NDArray[np.float32] | None = None  # (T, N)
     honey_direction: NDArray[np.float32] | None = None  # (T, 3)
     teacher_actions: FeatureBlock | None = None
+    teacher_action_mask: NDArray[np.bool_] | None = None  # (T,)
 
     def __post_init__(self) -> None:
         time_mask = np.asarray(self.time_mask, dtype=np.bool_)
@@ -53,6 +54,17 @@ class BrainTargets:
             if self.teacher_actions.time_steps != time_steps:
                 raise ValueError(f"teacher_actions must contain {time_steps} time steps")
             self.teacher_actions.require_availability(Availability.TEACHER)
+            if self.teacher_action_mask is None:
+                raise ValueError("teacher_actions require teacher_action_mask")
+        if self.teacher_action_mask is not None:
+            teacher_mask = np.asarray(self.teacher_action_mask, dtype=np.bool_)
+            if teacher_mask.shape != (time_steps,):
+                raise ValueError(
+                    f"teacher_action_mask must have shape {(time_steps,)}, got {teacher_mask.shape}"
+                )
+            if self.teacher_actions is None:
+                raise ValueError("teacher_action_mask requires teacher_actions")
+            object.__setattr__(self, "teacher_action_mask", readonly(teacher_mask))
 
     @property
     def time_steps(self) -> int:

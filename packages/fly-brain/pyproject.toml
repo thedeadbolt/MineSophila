@@ -6,7 +6,10 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
 authors = [{ name = "João Moutinho" }]
-dependencies = ["numpy>=2.5.4"]
+dependencies = [
+    "fly-vision>=0.0.1",
+    "numpy>=2.5.4",
+]
 
 [dependency-groups]
 dev = [

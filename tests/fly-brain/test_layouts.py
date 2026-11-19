@@ -14,6 +14,7 @@ def test_layout_requires_unit_directions() -> None:
             ommatidium_subtypes=("pale",),
             channel_names=("R1_6", "R7", "R8"),
             model_version="v1",
+            geometry_hash="geometry",
             config_hash="hash",
         )
 
@@ -28,6 +29,7 @@ def test_layout_owns_immutable_array_copies() -> None:
         ommatidium_subtypes=("pale", "yellow"),
         channel_names=("R1_6", "R7", "R8"),
         model_version="v1",
+        geometry_hash="geometry",
         config_hash="hash",
     )
     site_ids[0] = 99

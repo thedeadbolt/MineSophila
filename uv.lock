@@ -195,6 +195,7 @@ name = "fly-brain"
 version = "0.0.1"
 source = { editable = "packages/fly-brain" }
 dependencies = [
+    { name = "fly-vision" },
     { name = "numpy" },
 ]
 
@@ -205,7 +206,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "numpy", specifier = ">=2.5.4" }]
+requires-dist = [
+    { name = "fly-vision", editable = "packages/fly-vision" },
+    { name = "numpy", specifier = ">=2.5.4" },
+]
 
 [package.metadata.requires-dev]
 dev = [
