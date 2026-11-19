@@ -16,5 +16,9 @@ Cached `fly-vision` frames can now be assembled into still or temporal examples.
 Factory adapters add causal egocentric movement context and masked teacher-action targets without
 placing world pose or teacher state in model-visible observations.
 
+The framework-independent connectome layer represents a pinned release as canonical immutable
+neuron and directed-synapse tables. It validates endpoints and anatomical counts, creates stable
+graph checksums and induced subgraphs, and reports annotation gaps and in-memory size.
+
 Connectome loading, training frameworks and executable models follow in later slices of the
 [foundation plan](../../docs/superpowers/plans/2026-11-19-fly-brain-foundation.md).
