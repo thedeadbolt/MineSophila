@@ -1,5 +1,12 @@
 """Framework-independent sparse connectome structures."""
 
+from fly_brain.connectome.components import (
+    BiologicalStatus,
+    ComponentResolver,
+    ComponentRole,
+    ComponentSpec,
+    NetworkComponent,
+)
 from fly_brain.connectome.graph import ConnectomeGraph, ConnectomeSummary
 from fly_brain.connectome.loaders import ConnectomeLoader
 from fly_brain.connectome.release import ConnectomeRelease
@@ -15,6 +22,10 @@ from fly_brain.connectome.tables import NeuronTable, SynapseTable
 
 __all__ = [
     "AnnotationEquals",
+    "BiologicalStatus",
+    "ComponentResolver",
+    "ComponentRole",
+    "ComponentSpec",
     "ConnectomeGraph",
     "ConnectomeLoader",
     "ConnectomeRelease",
@@ -22,6 +33,7 @@ __all__ = [
     "Exclude",
     "ExplicitIds",
     "Intersection",
+    "NetworkComponent",
     "NeuronSelector",
     "NeuronTable",
     "SynapseTable",
