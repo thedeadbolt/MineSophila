@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Cross-record rules over a manifest and its parsed scene and sample records. Each record
@@ -38,46 +39,9 @@ public final class DatasetConsistency {
 	/** Returns every violation found; an empty list means the records are consistent. */
 	public static List<String> check(DatasetManifest manifest, List<SceneRecord> scenes, List<SampleRecord> samples) {
 		List<String> errors = new ArrayList<>();
-		SceneBase sceneBase = SceneSpec.read(JsonFields.of(manifest.sceneRecipe()), "level1").base();
-		SceneBase.NaturalTerrain natural = sceneBase instanceof SceneBase.NaturalTerrain terrain ? terrain : null;
-		List<SceneSlots.Slot> slots = switch (manifest.splitGrouping()) {
-			case SCENE -> SceneSlots.plan(manifest.seed(), manifest.acceptedScenesRequested(), manifest.targetPresentScenes(), manifest.splitRatios());
-			case SOURCE_REGION -> natural == null ? null
-				: SceneSlots.planPatches(manifest.seed(), manifest.acceptedScenesRequested(), manifest.targetPresentScenes(), natural.scenesPerPatch(), manifest.splitRatios());
-			case SOURCE_WORLD -> null;
-		};
+		List<SceneSlots.Slot> slots = slots(manifest);
 		DatasetManifest.Visibility visibility = manifest.visibility();
-		Map<String, SceneRecord> scenesById = new HashMap<>();
-		for (SceneRecord scene : scenes) {
-			if (scenesById.put(scene.sceneId(), scene) != null) {
-				errors.add("scene " + scene.sceneId() + ": duplicate scene_id");
-			}
-
-			if (scene.difficulty() != manifest.difficulty()) {
-				errors.add("scene " + scene.sceneId() + ": difficulty " + scene.difficulty() + " differs from the dataset's " + manifest.difficulty());
-			}
-
-			if (!scene.target().blockId().equals(manifest.targetBlockId())) {
-				errors.add("scene " + scene.sceneId() + ": target block " + scene.target().blockId() + " differs from the dataset's " + manifest.targetBlockId());
-			}
-
-			SceneSeeds expected = SceneSeeds.derive(manifest.seed(), scene.generation().sceneIndex(), scene.generation().attemptIndex());
-			if (!expected.equals(scene.generation().seeds())) {
-				errors.add("scene " + scene.sceneId() + ": seeds do not derive from the dataset seed, scene index and attempt index");
-			}
-
-			if (slots != null) {
-				checkSlot(scene, slots, Algorithms.slotsFor(manifest.splitGrouping()), errors);
-			}
-
-			if ((natural != null) != (scene.sourcePatch() != null)) {
-				errors.add("scene " + scene.sceneId() + ": " + (natural != null ? "lacks the source_patch a natural_patch base needs" : "has a source_patch but the base is a platform"));
-			}
-		}
-
-		if (natural != null) {
-			checkSourceRegions(natural, scenes, errors);
-		}
+		Map<String, SceneRecord> scenesById = checkScenes(manifest, scenes, errors);
 
 		Set<String> sampleIds = new HashSet<>();
 		Map<String, Set<Integer>> viewpointsByScene = new HashMap<>();
@@ -156,10 +120,70 @@ public final class DatasetConsistency {
 		}
 
 		if (manifest.lifecycle() == DatasetManifest.Lifecycle.COMPLETE) {
-			checkComplete(manifest, scenes, present, baseSamplesByScene, splitTotals, errors);
+			checkComplete(manifest, slots, scenes, present, baseSamplesByScene, splitTotals, errors);
 		}
 
 		return errors;
+	}
+
+	/** The scene slots the dataset's split grouping assigns, or null when it assigns none ahead. */
+	static List<SceneSlots.Slot> slots(DatasetManifest manifest) {
+		SceneBase sceneBase = SceneSpec.read(JsonFields.of(manifest.sceneRecipe()), "level1").base();
+		SceneBase.NaturalTerrain natural = sceneBase instanceof SceneBase.NaturalTerrain terrain ? terrain : null;
+		return switch (manifest.splitGrouping()) {
+			case SCENE -> SceneSlots.plan(manifest.seed(), manifest.acceptedScenesRequested(), manifest.targetPresentScenes(), manifest.splitRatios());
+			case SOURCE_REGION -> natural == null ? null
+				: SceneSlots.planPatches(manifest.seed(), manifest.acceptedScenesRequested(), manifest.targetPresentScenes(), natural.scenesPerPatch(), manifest.splitRatios());
+			case SOURCE_WORLD -> null;
+		};
+	}
+
+	/**
+	 * Rules every dataset's scenes follow, stills or clips: unique IDs, the dataset's level
+	 * and target, seed derivation, slot class and split, slice membership and source patches.
+	 * Returns the scenes by ID.
+	 */
+	static Map<String, SceneRecord> checkScenes(DatasetManifest manifest, List<SceneRecord> scenes, List<String> errors) {
+		SceneBase sceneBase = SceneSpec.read(JsonFields.of(manifest.sceneRecipe()), "level1").base();
+		SceneBase.NaturalTerrain natural = sceneBase instanceof SceneBase.NaturalTerrain terrain ? terrain : null;
+		List<SceneSlots.Slot> slots = slots(manifest);
+		Map<String, SceneRecord> scenesById = new HashMap<>();
+		for (SceneRecord scene : scenes) {
+			if (scenesById.put(scene.sceneId(), scene) != null) {
+				errors.add("scene " + scene.sceneId() + ": duplicate scene_id");
+			}
+
+			if (scene.difficulty() != manifest.difficulty()) {
+				errors.add("scene " + scene.sceneId() + ": difficulty " + scene.difficulty() + " differs from the dataset's " + manifest.difficulty());
+			}
+
+			if (!scene.target().blockId().equals(manifest.targetBlockId())) {
+				errors.add("scene " + scene.sceneId() + ": target block " + scene.target().blockId() + " differs from the dataset's " + manifest.targetBlockId());
+			}
+
+			SceneSeeds expected = SceneSeeds.derive(manifest.seed(), scene.generation().sceneIndex(), scene.generation().attemptIndex());
+			if (!expected.equals(scene.generation().seeds())) {
+				errors.add("scene " + scene.sceneId() + ": seeds do not derive from the dataset seed, scene index and attempt index");
+			}
+
+			if (slots != null) {
+				checkSlot(scene, slots, Algorithms.slotsFor(manifest.splitGrouping()), errors);
+			}
+
+			if (manifest.slice() != null && !manifest.slice().slots().contains(scene.generation().sceneIndex())) {
+				errors.add("scene " + scene.sceneId() + ": scene_index " + scene.generation().sceneIndex() + " is not one of slice " + manifest.slice().index() + "'s slots");
+			}
+
+			if ((natural != null) != (scene.sourcePatch() != null)) {
+				errors.add("scene " + scene.sceneId() + ": " + (natural != null ? "lacks the source_patch a natural_patch base needs" : "has a source_patch but the base is a platform"));
+			}
+		}
+
+		if (natural != null) {
+			checkSourceRegions(natural, scenes, errors);
+		}
+
+		return scenesById;
 	}
 
 	/**
@@ -227,15 +251,25 @@ public final class DatasetConsistency {
 
 	private static void checkComplete(
 		DatasetManifest manifest,
+		@Nullable List<SceneSlots.Slot> slots,
 		List<SceneRecord> scenes,
 		int present,
 		Map<String, Integer> baseSamplesByScene,
 		Map<Split, int[]> splitTotals,
 		List<String> errors
 	) {
-		if (present != manifest.targetPresentScenes() || scenes.size() - present != manifest.targetAbsentScenes()) {
+		// A slice's quotas are the target classes of its own slots.
+		int wantedPresent = manifest.targetPresentScenes();
+		int wantedAbsent = manifest.targetAbsentScenes();
+		if (manifest.slice() != null && slots != null) {
+			List<Integer> own = manifest.slice().slots();
+			wantedPresent = (int) own.stream().filter(index -> index < slots.size() && slots.get(index).targetPresent()).count();
+			wantedAbsent = own.size() - wantedPresent;
+		}
+
+		if (present != wantedPresent || scenes.size() - present != wantedAbsent) {
 			errors.add("manifest: " + present + " target-present and " + (scenes.size() - present) + " absent scenes do not meet the quotas "
-				+ manifest.targetPresentScenes() + "/" + manifest.targetAbsentScenes());
+				+ wantedPresent + "/" + wantedAbsent);
 		}
 
 		for (SceneRecord scene : scenes) {

@@ -27,3 +27,5 @@ Preserve accepted decisions. To change one, write a new ADR that supersedes it.
 | [0019](0019-fly-vision-v0-eye-model.md) | fly-vision v0 eye model | Accepted |
 | [0020](0020-image-placement.md) | Image placement in the fly's visual field | Accepted |
 | [0021](0021-spectral-remap.md) | Spectral remap of the fly's pigments into the visible | Accepted |
+| [0022](0022-fast-parallel-generation.md) | Fast and parallel generation | Accepted |
+| [0023](0023-motion-clips-and-teacher.md) | Motion clips and the first teacher | Accepted |

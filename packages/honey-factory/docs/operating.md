@@ -55,6 +55,69 @@ The dataset is written to `<output root>/<dataset id>/`; the ID ends with the fi
 hex digits of the resolved configuration's hash. It is marked `complete` only when the
 mod's own validation passes.
 
+### Several game instances
+
+One dataset can be generated on several game clients at once (M12-1, ADR 0022). From the
+repository:
+
+```sh
+uv run --package honey-factory-tools honey-factory-tools generate \
+  --instances 2 --root /mnt/fastvault/minesophila/datasets/<run> config.json
+```
+
+- Each instance generates a slice of the scene groups (scenes on a platform, source patches
+  on natural terrain) in its own world, `<dataset name>-i<index>`, with its own game folder
+  under `packages/honey-factory/build/run/instance-<index>/`.
+- `<root>/jobs/` holds each instance's configuration, job file and log;
+  `<root>/slices/` the slices; `<root>/worlds/` the worlds; `<root>/metrics/` the
+  measurements.
+- When every instance completes, the slices are merged into `<root>/<dataset id>/`, the
+  dataset one run would write, and validated. The merged manifest's `worlds` lists each
+  slice's world and scene slots. A level-5 scene replays only in its own world, copied under
+  `worlds/`.
+- If an instance fails, the command names its slice and stops. The finished slices stay
+  for inspection, and nothing is merged.
+- `merge-slices OUTPUT SLICE...` merges slices by hand. It links the images, so the slices
+  stay as they are.
+- Two or three instances fit the reference machine's 8 GB of VRAM. Each instance takes about
+  20–30 s to start, so small datasets gain little.
+
+### Motion clips
+
+A configuration with a `clips` section generates motion clips instead of still samples
+(M12-2, ADR 0023); the commands above are the same. For example,
+`packages/honey-factory/configs/m12-2-pilot-level3.json`:
+
+```json
+{
+  "dataset": {"name": "m12-2-pilot-l3", "seed": 2026103, "difficulty": 3},
+  "quotas": {"accepted_scenes": 50, "scene_attempts_per_accepted_scene": 4},
+  "clips": {"clips_per_scene": 4},
+  "output": {"root": "/mnt/fastvault/minesophila/pilot/m12-2"}
+}
+```
+
+- Clips capture the production panorama (2480 × 1280) by default, 3 frames per tick. Each
+  clip's videos and frame records are under `clips/<split>/<shard>/<clip id>/`.
+- `clips` settings, all optional: `frames_per_tick`, `clips_per_scene`, `ticks` per type,
+  `mix`, `drift`, `teacher`, `motor`, and `codec` (`h264-lossless`, `ffv1`, or
+  `{"name": "h264-lossy", "crf": 18}`).
+- ffmpeg must be on the `PATH`; the run refuses to start without it.
+- `drift.hazard_fraction` (default 0.3) is the share of drift episodes that push towards
+  a nearby ledge or wall; the edge guard keeps the body from going over.
+- `honey-factory-tools clip-report DATASET...` summarises clip datasets: reach by clip
+  type and why the others missed, falls (`counts.clip_redraws`), realizability
+  violations, ticks by driver and guarded ticks, search coverage, time per clip and disk
+  use. Falls and teacher failures must be 0.
+- To train a policy, use each tick's `tick_labels.teacher` command; `tick_labels.driver`
+  says whether the executed command came from the teacher or a script.
+- `honey-factory-tools inspect DATASET` plays clips: space plays and pauses, `,` and `.`
+  step, `o` toggles the mask, `w` widens the player.
+- `/honeyfactory_replay clip <clip id> <dataset>` replays a clip in the game and compares
+  every frame.
+- In Python, `honey_factory_tools.clips.iter_clips(dataset)` yields clips, and
+  `clip.frames()` each frame's RGB image, mask and labels.
+
 ## 4. Validate outside the game
 
 ```sh
@@ -63,7 +126,9 @@ uv run honey-factory-tools validate-dataset /mnt/fastvault/minesophila/datasets/
 
 This is an independent implementation of the contract. It checks the manifest and
 indexes against the schemas, the cross-record rules and every image. Exit status 0 means
-valid; every error is printed on its own line.
+valid; every error is printed on its own line. For a clip dataset it also checks every
+frame record, the teacher's realizability on every tick and every mask against its labels;
+`--quick` decodes the masks of only one clip in twenty.
 
 ## 5. Inspect and review
 

@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import shutil
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -82,6 +83,8 @@ def test_shared_semantic_record_cases(
         "dataset": records.manifest_errors,
         "scene": records.scene_errors,
         "sample": records.sample_errors,
+        "clip": records.clip_errors,
+        "frame": records.frame_errors,
     }
     errors = rules[case["kind"]](record)  # type: ignore[arg-type]
     if case["expect"] == "valid":
@@ -188,3 +191,82 @@ def test_cli_validates_a_dataset_directory(
     (copy / "rgb" / "stray.png").write_bytes(b"")
     assert main(["validate-dataset", "--schemas", str(schema_dir), str(copy)]) == 1
     assert "rgb/stray.png" in capsys.readouterr().out
+
+
+CLIP_CASES: list[dict[str, Any]] = json.loads((FIXTURE_DIR / "clip-cases.json").read_text())[
+    "cases"
+]
+
+
+@pytest.fixture
+def clip_copy(tmp_path: Path, contract_dir: Path) -> Path:
+    """A writable copy of the shared mini clip dataset, videos included."""
+    target = tmp_path / "clips"
+    shutil.copytree(contract_dir / "clips", target)
+    return target
+
+
+def test_shared_clip_fixture_is_valid(schemas: Schemas, clip_copy: Path) -> None:
+    report = dataset.validate(clip_copy, schemas)
+    assert report.errors == []
+    assert len(report.clips) == 4
+
+
+@pytest.mark.parametrize("case", CLIP_CASES, ids=lambda case: case["name"])
+def test_shared_clip_cases(schemas: Schemas, clip_copy: Path, case: dict[str, Any]) -> None:
+    files: dict[str, list[dict[str, Any]]] = {}
+    for edit in case["edits"]:
+        lines = files.setdefault(edit["file"], _lines(clip_copy / edit["file"]))
+        if "append_copy_of" in edit:
+            lines.append(json.loads(json.dumps(lines[edit["append_copy_of"]])))
+        elif "remove_line" in edit:
+            del lines[edit["remove_line"]]
+        else:
+            operations: list[Operation] = edit["patch"]
+            lines[edit["line"]] = apply(lines[edit["line"]], operations)  # type: ignore[assignment]
+    for name, lines in files.items():
+        _write_lines(clip_copy / name, lines)
+    errors = dataset.validate(clip_copy, schemas).errors
+    assert any(case["expect_error"] in error for error in errors), errors
+
+
+def test_clip_video_must_hold_every_frame(schemas: Schemas, clip_copy: Path) -> None:
+    clip = _lines(clip_copy / "clips.jsonl")[0]
+    video = clip_copy / clip["files"]["rgb"]["path"]
+    shorter = video.with_name("short.mkv")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-i",
+            str(video),
+            "-frames:v",
+            "12",
+            "-c:v",
+            "libx264rgb",
+            "-qp",
+            "0",
+            str(shorter),
+        ],
+        check=True,
+    )
+    shorter.replace(video)
+    errors = dataset.validate(clip_copy, schemas).errors
+    assert any("video holds 12 frames" in error for error in errors), errors
+
+
+def test_unreferenced_clip_folders_are_reported(schemas: Schemas, clip_copy: Path) -> None:
+    stray = clip_copy / "clips" / "train" / "00" / "s000009-c00"
+    stray.mkdir(parents=True)
+    (stray / "frames.jsonl").write_text("", encoding="utf-8")
+    errors = dataset.validate(clip_copy, schemas).errors
+    assert any("no clip references" in error for error in errors), errors
+
+
+def test_quick_validation_skips_pixels_but_not_records(schemas: Schemas, clip_copy: Path) -> None:
+    lines = _lines(clip_copy / "clips.jsonl")
+    lines[0]["summary"]["drift_ticks"] = 2
+    _write_lines(clip_copy / "clips.jsonl", lines)
+    errors = dataset.validate(clip_copy, schemas, quick=True).errors
+    assert any("drift_ticks" in error for error in errors), errors

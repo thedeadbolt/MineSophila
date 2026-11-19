@@ -79,7 +79,8 @@ async function loadDataset() {
   document.title = `${dataset.dataset_id} – inspector`;
   const capture = dataset.capture;
   const mode = capture.mode === "PANORAMA_310" ? "310° panorama" : "90° perspective";
-  $("dataset-facts").textContent = `Level ${dataset.difficulty}, ${mode} at ${capture.width}×${capture.height}. ${dataset.scene_count} scenes, ${dataset.sample_count} samples, ${dataset.lifecycle}.`;
+  const items = dataset.kind === "clips" ? `${dataset.clip_count} clips` : `${dataset.sample_count} samples`;
+  $("dataset-facts").textContent = `Level ${dataset.difficulty}, ${mode} at ${capture.width}×${capture.height}. ${dataset.scene_count} scenes, ${items}, ${dataset.lifecycle}.`;
   const form = $("filters");
   if (form.split.options.length === 1) {
     fill(form.split, dataset.options.splits);
@@ -97,12 +98,13 @@ async function loadDataset() {
   if (dataset.lifecycle !== "complete") lines.push(`This dataset is ${dataset.lifecycle}. It is shown read-only and is not accepted for training.`);
   for (const error of dataset.index_errors) lines.push(`Index error: ${error}`);
   const validation = dataset.validation;
-  if (validation.state !== "done") lines.push("Checking every file in the background. Samples are checked as you open them.");
+  // A clip dataset's files are checked by validate-dataset; the player shows each frame's own labels.
+  if (validation.state !== "done" && dataset.kind !== "clips") lines.push("Checking every file in the background. Samples are checked as you open them.");
   else if (validation.error_count > 0) lines.push(`The background check found ${validation.error_count} errors. Affected samples are marked.`, ...validation.dataset_errors);
-  if (!dataset.reviews) lines.push("Reviews are off. Start the inspector with --reviews DIR to record them.");
+  if (!dataset.reviews && dataset.kind !== "clips") lines.push("Reviews are off. Start the inspector with --reviews DIR to record them.");
   showBanner(lines, validation.error_count > 0 || dataset.index_errors.length > 0 ? "error" : "info");
   document.querySelectorAll("#review button").forEach((button) => (button.disabled = !dataset.reviews));
-  if (validation.state !== "done") setTimeout(() => loadDataset().then(() => applyFilters(false)), 2000);
+  if (validation.state !== "done" && dataset.kind !== "clips") setTimeout(() => loadDataset().then(() => applyFilters(false)), 2000);
 }
 
 function query() {
@@ -447,6 +449,7 @@ $("zoom-actual").addEventListener("click", actualSize);
   new ResizeObserver(() => view.fit && fitView()).observe(frame);
 }
 document.addEventListener("keydown", (event) => {
+  if (document.body.classList.contains("clips")) return;
   if (event.target.closest("input, select, textarea") || event.metaKey || event.ctrlKey || event.altKey) return;
   const layers = { 1: "rgb", 2: "mask", 3: "overlay" };
   if (layers[event.key]) {
@@ -474,6 +477,7 @@ function filtersFromUrl() {
 }
 
 loadDataset().then(() => {
+  if (state.dataset.kind === "clips") return startClips(state.dataset);
   filtersFromUrl();
   return applyFilters(true);
 }).catch(report);

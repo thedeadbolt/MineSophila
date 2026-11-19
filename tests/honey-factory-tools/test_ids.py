@@ -35,6 +35,24 @@ def test_ids_and_paths_match_vectors(vectors_dir: Path, load_json: Callable[[Pat
         assert ids.dataset_id(case["name"], case["config_sha256"]) == case["dataset_id"]
 
 
+def test_clip_seeds_match_vectors(vectors_dir: Path, load_json: Callable[[Path], Any]) -> None:
+    for case in load_json(vectors_dir / "seeds.json")["clips"]:
+        seeds = ids.clip_seeds(
+            case["dataset_seed"], case["scene_index"], case["clip_index"], case["attempt"]
+        )
+        assert seeds == ids.ClipSeeds(case["start"], case["drive"], case["drift"])
+
+
+def test_clip_ids_and_directories_match_vectors(
+    vectors_dir: Path, load_json: Callable[[Path], Any]
+) -> None:
+    for case in load_json(vectors_dir / "ids.json")["clips"]:
+        clip = ids.clip_id(ids.scene_id(case["scene_index"]), case["clip_index"])
+        assert clip == case["clip_id"]
+        assert ids.shard(clip) == case["shard"]
+        assert ids.clip_directory(case["split"], clip) == case["directory"]
+
+
 def test_scene_slots_match_vectors(vectors_dir: Path, load_json: Callable[[Path], Any]) -> None:
     for case in load_json(vectors_dir / "scene-slots.json")["cases"]:
         ratios = (case["ratios"][0], case["ratios"][1], case["ratios"][2])

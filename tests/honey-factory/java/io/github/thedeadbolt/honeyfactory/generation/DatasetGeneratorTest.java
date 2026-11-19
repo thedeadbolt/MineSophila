@@ -78,6 +78,21 @@ class DatasetGeneratorTest {
 			""").formatted(padding, scenes, root.toString().replace("\\", "\\\\")));
 	}
 
+	private static String naturalJson(Path root, int scenes, int padding) {
+		return ("""
+			{
+			  "dataset": {"name": "m6-unit", "seed": 11, "difficulty": 5},
+			  "scene": {"base": {"type": "natural_patch", "context_padding": %d, "scenes_per_patch": 2}},
+			  "viewpoints": {"count": 2},
+			  "capture": {"width": 48, "height": 32},
+			  "quotas": {"accepted_scenes": %d, "scene_attempts_per_accepted_scene": 3},
+			  "splits": {"train": 0.6, "validation": 0.2, "test": 0.2},
+			  "target": {"present_fraction": 0.75},
+			  "output": {"root": "%s", "free_space_reserve_bytes": 1000000}
+			}
+			""").formatted(padding, scenes, root.toString().replace("\\", "\\\\"));
+	}
+
 	private static DatasetGenerator.Result run(DatasetGenerator generator, ScriptedEnvironment environment) throws IOException {
 		CompletableFuture<DatasetGenerator.Result> result = generator.start();
 		environment.pump();
@@ -113,6 +128,60 @@ class DatasetGeneratorTest {
 		for (String index : new String[] {DatasetWriter.SCENES, DatasetWriter.SAMPLES}) {
 			assertArrayEquals(Files.readAllBytes(result.directory().resolve(index)), Files.readAllBytes(repeat.directory().resolve(index)), index + " regenerates byte for byte");
 		}
+	}
+
+	/** {@code json}'s output member with a slice of the scene groups. */
+	private static String sliced(String json, int index, int count) {
+		return json.replace("\"free_space_reserve_bytes\": 1000000}", "\"free_space_reserve_bytes\": 1000000, \"slice\": {\"index\": %d, \"count\": %d, \"world\": \"world-%d\"}}".formatted(index, count, index));
+	}
+
+	/** Index lines without the fields that depend on the order captures ran in. */
+	private static List<String> stable(Path index) throws IOException {
+		List<String> lines = new ArrayList<>();
+		for (String line : Files.readAllLines(index)) {
+			com.google.gson.JsonObject json = com.google.gson.JsonParser.parseString(line).getAsJsonObject();
+			if (json.has("capture")) {
+				json.getAsJsonObject("capture").remove("operation_id");
+				json.getAsJsonObject("capture").remove("world_tick");
+			}
+
+			lines.add(json.toString());
+		}
+
+		return lines;
+	}
+
+	@ParameterizedTest
+	@ValueSource(booleans = {false, true})
+	void slicesTogetherHoldExactlyTheFullRunsScenesAndEachValidates(boolean natural) throws IOException {
+		ResolvedConfig full = natural ? naturalConfig(this.temp.resolve("full"), 8, 192) : config(this.temp.resolve("full"), 8);
+		ScriptedEnvironment environment = new ScriptedEnvironment();
+		DatasetGenerator.Result whole = run(new DatasetGenerator(full, environment, CLOCK, DISK), environment);
+		assertNull(whole.failure(), () -> whole.failure() + " " + whole.validationErrors());
+
+		List<String> scenes = new ArrayList<>();
+		List<String> samples = new ArrayList<>();
+		for (int index = 0; index < 2; index++) {
+			String base = natural ? naturalJson(this.temp.resolve("slices"), 8, 192) : configJson(this.temp.resolve("slices"), 8, 1, 48, 32);
+			ResolvedConfig slice = ConfigResolver.resolve(sliced(base, index, 2));
+			assertEquals(full.sha256(), slice.sha256(), "a slice keeps the full run's configuration hash");
+			ScriptedEnvironment sliceEnvironment = new ScriptedEnvironment();
+			DatasetGenerator.Result part = run(new DatasetGenerator(slice, sliceEnvironment, CLOCK, DISK), sliceEnvironment);
+			assertNull(part.failure(), () -> part.failure() + " " + part.validationErrors());
+			assertEquals(full.datasetId() + ".slice-" + index + "-of-2", part.directory().getFileName().toString());
+			DatasetManifest.Slice recorded = part.manifest().slice();
+			assertNotNull(recorded);
+			assertEquals("world-" + index, recorded.world());
+			assertEquals(recorded.slots().size(), part.manifest().counts().requestedScenes());
+			assertEquals(List.of(), DatasetValidator.validate(part.directory()).errors());
+			scenes.addAll(Files.readAllLines(part.directory().resolve(DatasetWriter.SCENES)));
+			samples.addAll(stable(part.directory().resolve(DatasetWriter.SAMPLES)));
+		}
+
+		List<String> wholeScenes = Files.readAllLines(whole.directory().resolve(DatasetWriter.SCENES));
+		assertEquals(wholeScenes.size(), scenes.size(), "no scene is missing or doubled");
+		assertEquals(new java.util.HashSet<>(wholeScenes), new java.util.HashSet<>(scenes));
+		assertEquals(new java.util.HashSet<>(stable(whole.directory().resolve(DatasetWriter.SAMPLES))), new java.util.HashSet<>(samples));
 	}
 
 	@Test

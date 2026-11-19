@@ -18,4 +18,10 @@ public interface SceneGenerator {
 	 * so re-sampling one viewpoint never changes another.
 	 */
 	ViewpointCandidate viewpoint(GeneratedScene scene, int viewpointIndex, int attemptIndex);
+
+	/**
+	 * As {@link #viewpoint(GeneratedScene, int, int)}, judged by {@code sight} instead of the
+	 * recipe's own rule: clip starts that need the honey hidden pass {@link SightRule#ANY}.
+	 */
+	ViewpointCandidate viewpoint(GeneratedScene scene, int viewpointIndex, int attemptIndex, SightRule sight);
 }

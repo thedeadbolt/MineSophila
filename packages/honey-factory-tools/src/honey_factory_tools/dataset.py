@@ -25,7 +25,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
-from honey_factory_tools import canonical, ids, images, records
+from honey_factory_tools import canonical, clip_dataset, ids, images, records
 from honey_factory_tools.schemas import Kind, Schemas
 
 type Record = dict[str, Any]
@@ -33,6 +33,7 @@ type Record = dict[str, Any]
 MANIFEST = "dataset.json"
 SCENES = "scenes.jsonl"
 SAMPLES = "samples.jsonl"
+CLIPS = "clips.jsonl"
 IMAGE_ROOTS = ("rgb", "masks")
 # Image checks are I/O and decoding bound; more workers gain little and hold more images.
 MAX_WORKERS = 16
@@ -48,6 +49,7 @@ class Report:
     manifest: Record | None = None
     scenes: list[Record] = field(default_factory=list[Record])
     samples: list[Record] = field(default_factory=list[Record])
+    clips: list[Record] = field(default_factory=list[Record])
     errors: list[str] = field(default_factory=list[str])
 
     @property
@@ -55,9 +57,21 @@ class Report:
         return not self.errors
 
 
-def validate(root: Path, schemas: Schemas, *, allow_generating: bool = False) -> Report:
+def validate(
+    root: Path, schemas: Schemas, *, allow_generating: bool = False, quick: bool = False
+) -> Report:
+    """Validates a dataset directory; ``quick`` decodes the masks of only 1 clip in 20."""
     report = load(root, schemas)
     manifest = report.manifest
+    if manifest is not None and records.is_clips(manifest):
+        if manifest["lifecycle"] == "generating" and not allow_generating:
+            report.errors.append(
+                f"{MANIFEST}: lifecycle is generating; the run is unfinished or was interrupted"
+            )
+        report.errors.extend(
+            clip_dataset.validate(root, manifest, report.scenes, report.clips, schemas, quick)
+        )
+        return report
     if manifest is not None:
         if manifest["lifecycle"] == "generating" and not allow_generating:
             report.errors.append(
@@ -77,10 +91,11 @@ def load(root: Path, schemas: Schemas) -> Report:
     """
     report = Report()
     manifest = _manifest(root, schemas, report.errors)
+    clips = manifest is not None and records.is_clips(manifest)
     digests: dict[str, Record] = {}
     indexes: tuple[tuple[str, Kind, list[Record]], ...] = (
         (SCENES, "scene", report.scenes),
-        (SAMPLES, "sample", report.samples),
+        (CLIPS, "clip", report.clips) if clips else (SAMPLES, "sample", report.samples),
     )
     for name, kind, target in indexes:
         data = _read(root / name, name, report.errors)
@@ -93,7 +108,8 @@ def load(root: Path, schemas: Schemas) -> Report:
         report.lifecycle = manifest["lifecycle"]
         integrity: Record | None = manifest.get("integrity")
         if integrity is not None:
-            for name, key in ((SCENES, "scenes"), (SAMPLES, "samples")):
+            items = (CLIPS, "clips") if clips else (SAMPLES, "samples")
+            for name, key in ((SCENES, "scenes"), items):
                 if name in digests and integrity["indexes"][key] != digests[name]:
                     report.errors.append(
                         f"{MANIFEST}: integrity.indexes.{key} does not match {name}"
@@ -140,10 +156,18 @@ def _record_passes(
             "dataset": records.manifest_errors,
             "scene": records.scene_errors,
             "sample": records.sample_errors,
+            "clip": records.clip_errors,
+            "frame": records.frame_errors,
         }
         found = [f"{location}: {error}" for error in rules[kind](record)]
     errors.extend(found)
     return not found
+
+
+def read_index(path: Path, kind: Kind, schemas: Schemas, errors: list[str]) -> list[Record]:
+    """The records of one JSONL index that pass their schema and single-record rules."""
+    data = _read(path, path.name, errors)
+    return [] if data is None else _index(data, path.name, kind, schemas, errors)
 
 
 def _index(data: bytes, name: str, kind: Kind, schemas: Schemas, errors: list[str]) -> list[Record]:
@@ -162,14 +186,14 @@ def _index(data: bytes, name: str, kind: Kind, schemas: Schemas, errors: list[st
     return valid
 
 
-def consistency(manifest: Record, scenes: list[Record], samples: list[Record]) -> list[str]:
-    """Cross-record rules over individually valid records."""
-    errors: list[str] = []
+def scene_rules(
+    manifest: Record, scenes: list[Record], errors: list[str]
+) -> tuple[dict[str, Record], list[ids.Slot] | None]:
+    """Rules every dataset's scenes follow, stills or clips: IDs, seeds, slots and patches."""
     generator: Record = manifest["generator"]
     seed: int = generator["seed"]
     difficulty: int = manifest["difficulty"]
     block_id: str = manifest["target"]["block_id"]
-    viewpoints: int = manifest["capture"]["viewpoints"]["count"]
     grouping: str = manifest["splits"]["grouping"]
     ratios: Record = manifest["splits"]["ratios"]
     split_ratios = (ratios["train"], ratios["validation"], ratios["test"])
@@ -232,6 +256,11 @@ def consistency(manifest: Record, scenes: list[Record], samples: list[Record]) -
                     errors.append(
                         label + f"target presence differs from the class {algorithm} assigns"
                     )
+        slice_: Record | None = manifest.get("slice")
+        if slice_ is not None and index not in slice_["slots"]:
+            errors.append(
+                label + f"scene_index {index} is not one of slice {slice_['index']}'s slots"
+            )
 
         if natural != ("source_patch" in scene):
             errors.append(
@@ -244,6 +273,16 @@ def consistency(manifest: Record, scenes: list[Record], samples: list[Record]) -
             )
     if natural:
         errors += _source_regions(base, scenes)
+
+    return by_id, slots
+
+
+def consistency(manifest: Record, scenes: list[Record], samples: list[Record]) -> list[str]:
+    """Cross-record rules over individually valid records."""
+    errors: list[str] = []
+    generator: Record = manifest["generator"]
+    viewpoints: int = manifest["capture"]["viewpoints"]["count"]
+    by_id, slots = scene_rules(manifest, scenes, errors)
 
     visibility: Record = generator["visibility"]
     sample_ids: set[str] = set()
@@ -310,7 +349,7 @@ def consistency(manifest: Record, scenes: list[Record], samples: list[Record]) -
             f"{sum(base_samples.values())} base samples"
         )
     if manifest["lifecycle"] == "complete":
-        errors += _complete(manifest, scenes, base_samples)
+        errors += _complete(manifest, scenes, base_samples, slots)
     return errors
 
 
@@ -376,11 +415,22 @@ def _visible_enough(visibility: Record, target: Record) -> bool:
     return (low is None or ratio >= low) and (high is None or ratio <= high)
 
 
-def _complete(manifest: Record, scenes: list[Record], base_samples: dict[str, int]) -> list[str]:
+def _complete(
+    manifest: Record,
+    scenes: list[Record],
+    base_samples: dict[str, int],
+    slots: list[ids.Slot] | None,
+) -> list[str]:
     errors: list[str] = []
     target: Record = manifest["target"]
     present = sum(1 for scene in scenes if scene["target"]["present"])
     quotas = (target["target_present_scenes"], target["target_absent_scenes"])
+    slice_: Record | None = manifest.get("slice")
+    if slice_ is not None and slots is not None:
+        # A slice's quotas are the target classes of its own slots.
+        own: list[int] = slice_["slots"]
+        wanted = sum(1 for index in own if index < len(slots) and slots[index].target_present)
+        quotas = (wanted, len(own) - wanted)
     if (present, len(scenes) - present) != quotas:
         errors.append(
             f"{MANIFEST}: {present} present and {len(scenes) - present} absent scenes "

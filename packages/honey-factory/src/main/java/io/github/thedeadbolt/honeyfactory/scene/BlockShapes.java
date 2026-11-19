@@ -48,6 +48,17 @@ public final class BlockShapes {
 		return id.endsWith("_leaves") || PLANTS.contains(id);
 	}
 
+	/** Whether a body bumps into the state or stands on it; plants it walks through. */
+	public static boolean collides(String state) {
+		return !PLANTS.contains(blockId(state));
+	}
+
+	/** Whether the state's collision rises 1.5 blocks, as a fence's, wall's or fence gate's does. */
+	public static boolean tall(String state) {
+		String id = blockId(state);
+		return id.endsWith("_fence") || id.endsWith("_wall") || id.endsWith("_fence_gate");
+	}
+
 	/** Whether the state is drawn as a whole opaque cube. */
 	public static boolean fullCube(String state) {
 		return !seeThrough(state) && boxes(state) == FULL;

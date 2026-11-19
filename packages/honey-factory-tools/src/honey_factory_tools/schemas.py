@@ -12,8 +12,8 @@ from referencing import Registry, Resource
 
 from honey_factory_tools.canonical import Json
 
-type Kind = Literal["dataset", "scene", "sample"]
-KINDS: tuple[Kind, ...] = ("dataset", "scene", "sample")
+type Kind = Literal["dataset", "scene", "sample", "clip", "frame"]
+KINDS: tuple[Kind, ...] = ("dataset", "scene", "sample", "clip", "frame")
 CONTRACT_VERSION = "1.0"
 SCHEMAS_ENV = "HONEY_FACTORY_SCHEMAS"
 

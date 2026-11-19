@@ -47,8 +47,72 @@
         <div class="actions"><button class="primary">Apply</button><button type="reset">Clear</button></div>
       </form>
     </details>
+    <form id="clip-filters" hidden>
+      <div class="field-grid">
+        <label>Split <select name="split"><option value="">Any</option></select></label>
+        <label>Type <select name="type"><option value="">Any</option></select></label>
+        <label>Scene <input name="scene_id" placeholder="s000000" spellcheck="false"></label>
+      </div>
+      <div class="actions"><button class="primary">Apply</button></div>
+    </form>
     <p id="result-count"></p>
     <ol id="results"></ol>
+  </aside>
+
+  <main class="viewer" id="clip-view" hidden>
+    <nav class="viewer-bar" aria-label="Playback">
+      <div class="stepper">
+        <button id="prev-clip" title="Previous clip">⇤ Clip</button>
+        <button id="clip-back" title="Previous frame (,)">◀︎ Frame</button>
+        <button id="clip-play" class="primary" title="Play or pause (space)">Play</button>
+        <button id="clip-forward" title="Next frame (.)">Frame ▶︎</button>
+        <button id="next-clip" title="Next clip">Clip ⇥</button>
+        <button id="clip-wide" title="Hide the side panels so the player gets the whole window (w)" aria-pressed="false">Wide</button>
+        <strong id="clip-title"></strong>
+      </div>
+      <div class="display">
+        <label>Speed <select id="clip-speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
+        <div class="zoom" role="group" aria-label="Zoom">
+          <button type="button" id="clip-zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
+          <output id="clip-zoom-level" aria-live="polite">100%</output>
+          <button type="button" id="clip-zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+          <button type="button" id="clip-zoom-fit" title="Fit the frame to the player (0)">Fit</button>
+          <button type="button" id="clip-zoom-actual" title="One frame pixel per screen pixel">1:1</button>
+        </div>
+        <label title="Resolution frames are decoded at; Auto follows the zoom">Detail <select id="clip-detail"><option value="auto" selected>Auto</option><option value="0.25">¼</option><option value="0.5">½</option><option value="1">Full</option></select></label>
+        <label class="check"><input id="clip-overlay" type="checkbox" checked> Mask overlay (o)</label>
+        <label class="check"><input id="clip-box" type="checkbox" checked> Box</label>
+      </div>
+    </nav>
+    <div id="clip-errors" hidden></div>
+    <div class="stage clip-stage" id="clip-stage" title="Scroll to zoom, drag to pan, double-click to switch between fit and 1:1"><canvas id="clip-canvas"></canvas><p id="clip-loading" hidden>Decoding frames…</p></div>
+    <div class="scrub">
+      <input id="clip-scrub" type="range" min="0" value="0" aria-label="Frame">
+      <output id="clip-frame-label"></output>
+    </div>
+    <section class="timeline" aria-labelledby="timeline-title">
+      <h2 id="timeline-title">Across the clip <span class="legend" id="timeline-legend"></span></h2>
+      <canvas id="clip-timeline" title="Click to jump to a frame"></canvas>
+    </section>
+  </main>
+
+  <aside class="inspector" id="clip-details" hidden aria-label="Frame details">
+    <section>
+      <h2>This frame</h2>
+      <dl id="frame-facts"></dl>
+    </section>
+    <section>
+      <h2>This tick</h2>
+      <dl id="tick-facts"></dl>
+    </section>
+    <section>
+      <h2>Clip</h2>
+      <dl id="clip-facts"></dl>
+    </section>
+    <details class="raw">
+      <summary>Frame record</summary>
+      <pre id="frame-record"></pre>
+    </details>
   </aside>
 
   <main class="viewer" id="view" hidden>
@@ -124,5 +188,6 @@
   </aside>
 </div>
 <script src="/static/app.js"></script>
+<script src="/static/clips.js"></script>
 </body>
 </html>

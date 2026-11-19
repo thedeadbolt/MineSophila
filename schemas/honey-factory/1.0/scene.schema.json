@@ -100,6 +100,7 @@
       }
     },
     "layout_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
-    "accepted_sample_count": {"type": "integer", "minimum": 0, "maximum": 99}
+    "accepted_sample_count": {"type": "integer", "minimum": 0, "maximum": 99},
+    "accepted_clip_count": {"description": "On a clip dataset (M12-2): the scene's accepted clips; accepted_sample_count is then 0.", "type": "integer", "minimum": 0, "maximum": 99}
   }
 }

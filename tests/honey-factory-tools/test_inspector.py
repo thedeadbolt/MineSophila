@@ -1,14 +1,16 @@
 import hashlib
+import io
 import json
 import shutil
 import threading
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from PIL import Image
 
 from honey_factory_tools import selection
 from honey_factory_tools.catalog import Catalog, IntegrityError
@@ -486,3 +488,87 @@ class TestCli:
     ) -> None:
         assert main(["inspect", "--schemas", str(schema_dir), "--no-browser", str(tmp_path)]) == 2
         assert "no readable manifest" in capsys.readouterr().err
+
+
+@pytest.fixture
+def clip_dataset(tmp_path: Path, make_clip_dataset: Any) -> Path:
+    return make_clip_dataset(tmp_path / "clips")
+
+
+@pytest.fixture
+def clip_client(clip_dataset: Path, schemas: Schemas) -> Iterator[Client]:
+    yield from serve(Inspector(Catalog(clip_dataset, schemas), None))
+
+
+class TestClips:
+    def test_catalog_reads_a_clip_dataset(self, clip_dataset: Path, schemas: Schemas) -> None:
+        catalog = Catalog(clip_dataset, schemas)
+        assert catalog.kind == "clips"
+        assert catalog.index_errors == []
+        assert sorted(catalog.clips) == ["s000000-c00", "s000000-c01"]
+        assert catalog.samples == []
+
+    def test_clip_list_and_record(self, clip_client: Client) -> None:
+        status, dataset = clip_client.get("/api/dataset")
+        assert status == 200
+        assert dataset["kind"] == "clips"
+        assert dataset["clip_count"] == 2
+        status, listing = clip_client.get("/api/clips")
+        assert status == 200
+        assert [clip["clip_id"] for clip in listing["clips"]] == ["s000000-c00", "s000000-c01"]
+        assert listing["clips"][0]["clip_type"] == "approach"
+        status, clip = clip_client.get("/api/clips/s000000-c00")
+        assert status == 200
+        assert clip["clip"]["frame_count"] == 13
+        assert len(clip["frames"]) == 13
+        assert clip["frames"][3]["tick_labels"]["teacher_mode"] == "track"
+        assert clip["next"] == "s000000-c01"
+
+    def test_clip_list_filters_by_type(self, clip_client: Client) -> None:
+        status, listing = clip_client.get("/api/clips?type=scan")
+        assert status == 200
+        assert listing["clips"] == []
+
+    def test_frame_png_is_scaled(
+        self, clip_client: Client, clip_frame_pixels: Callable[[int], tuple[bytes, bytes]]
+    ) -> None:
+        status, png = clip_client.get("/api/clips/s000000-c00/frames/12.png?scale=0.5")
+        assert status == 200
+        image = Image.open(io.BytesIO(png))
+        assert image.size == (32, 16)
+        status, png = clip_client.get("/api/clips/s000000-c00/frames/12.png?scale=1")
+        assert status == 200
+        assert Image.open(io.BytesIO(png)).convert("RGB").tobytes() == clip_frame_pixels(12)[0]
+
+    def test_mask_png_keeps_the_mask_exact(
+        self, clip_client: Client, clip_frame_pixels: Callable[[int], tuple[bytes, bytes]]
+    ) -> None:
+        status, png = clip_client.get("/api/clips/s000000-c01/masks/5.png?scale=1")
+        assert status == 200
+        assert Image.open(io.BytesIO(png)).convert("L").tobytes() == clip_frame_pixels(5)[1]
+        status, png = clip_client.get("/api/clips/s000000-c01/masks/5.png?scale=0.25")
+        assert status == 200
+        assert set(Image.open(io.BytesIO(png)).convert("L").tobytes()) <= {0, 255}
+
+    def test_unknown_frame_404(self, clip_client: Client) -> None:
+        assert clip_client.get("/api/clips/s000000-c00/frames/13.png")[0] == 404
+        assert clip_client.get("/api/clips/s000000-c09")[0] == 404
+        assert clip_client.get("/api/clips/s000000-c00/frames/1.png?scale=3")[0] == 400
+
+    def test_clip_frames_need_the_token(self, clip_client: Client) -> None:
+        assert clip_client.get("/api/clips/s000000-c00/frames/0.png", token=False)[0] == 403
+
+
+def test_decoded_clips_are_kept_within_a_byte_budget(
+    clip_dataset: Path, schemas: Schemas, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from honey_factory_tools import catalog as catalog_module
+
+    catalog = Catalog(clip_dataset, schemas)
+    first = catalog.clip_frames("s000000-c00")
+    first.frame_png(0, 1.0)
+    monkeypatch.setattr(catalog_module, "CLIP_CACHE_BYTES", first.cached_bytes)
+    second = catalog.clip_frames("s000000-c01")
+    second.frame_png(0, 1.0)
+    catalog.clip_frames("s000000-c01")
+    assert catalog.clip_frames("s000000-c00") is not first, "the older clip was dropped"

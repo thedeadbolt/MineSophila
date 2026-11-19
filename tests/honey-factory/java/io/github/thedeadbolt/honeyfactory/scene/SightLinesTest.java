@@ -96,6 +96,17 @@ class SightLinesTest {
 		assertFalse(grid.intersects(new double[] {5.2, 1.0, 5.2}, new double[] {5.8, 2.8, 5.8}), "standing on the floor");
 	}
 
+	@Test
+	void theGridSaysHowABodyMeetsEachBlock() {
+		SolidGrid grid = grid(new Placement(3, 1, 3, "minecraft:oak_fence[east=false,north=false,south=false,waterlogged=false,west=false]"),
+			new Placement(4, 1, 3, "minecraft:mud_brick_wall"), new Placement(5, 1, 3, "minecraft:fern"), new Placement(6, 1, 3, "minecraft:stone"));
+		assertTrue(grid.collides(3, 1, 3) && grid.tall(3, 1, 3), "a fence is 1.5 high");
+		assertTrue(grid.collides(4, 1, 3) && grid.tall(4, 1, 3), "so is a wall");
+		assertTrue(grid.solid(5, 1, 3) && !grid.collides(5, 1, 3), "a fern is walked through");
+		assertTrue(grid.collides(6, 1, 3) && !grid.tall(6, 1, 3));
+		assertFalse(grid.collides(7, 1, 3) || grid.tall(7, 1, 3), "air");
+	}
+
 	private static SolidGrid grid(Placement... blocks) {
 		Template template = Template.platform("test", 1, 16, 16, 8, "minecraft:light_gray_concrete");
 		return SolidGrid.of(new ScenePlan(template, List.of(blocks), null, 6000, Weather.CLEAR));

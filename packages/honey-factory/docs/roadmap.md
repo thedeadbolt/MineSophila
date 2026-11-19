@@ -55,7 +55,8 @@ this package.
 | M9 | Acceptance matrix and production pilot | M0–M8 | Exit gate passed; [findings](m9-acceptance.md) |
 | M10 | Phase-1 production datasets | M9 | Planned |
 | M11 | Animal-like control: lock-step continuous commands, one frame per tick | M7, M9 | Exit gate passed; [findings](m11-animal-like-control.md), ADR 0018 |
-| M12 | Motion clips generated through that control | M10, M11 | Planned |
+| M12-1 | Fast and parallel generation | M10, M11 | Exit gate passed; [findings](m12-1-fast-parallel-generation.md), ADR 0022 |
+| M12-2 | Motion clips generated through that control, and the first teacher | M12-1 | In progress: pilot to rerun with the edge-aware teacher; ADR 0023 |
 | M13 | Level-6 active-search environment and teacher episodes | M11, M12 | Planned |
 | M14 | Live adapter for the fly brain | M13 | Planned |
 
@@ -379,21 +380,44 @@ Deliverables:
 - Determinism: the same command sequence from the same state gives the same frames on the
   reference setup, whatever the caller's speed.
 
-### M12 — Motion clips
+### M12-1 — Fast and parallel generation
 
-Short frame streams for training motion-sensitive vision offline, generated within M11's
-constraints.
+Faster still datasets and control steps on one machine, and one generation job on several
+game instances, before M12-2 builds clips on the same machinery. Design:
+`docs/superpowers/specs/2026-10-25-m12-1-fast-parallel-generation-design.md`.
 
-Deliverables:
+Delivered:
 
-- Clips of 16–32 ticks per scene, made by driving the player with sampled smooth command
-  sequences: ramping turns, walks that start and stop, pauses, and approaches toward and
-  passes by the honey. They are never made by moving a free camera.
-- A mask and metadata for every frame, and the full command sequence stored so a clip
-  replays exactly.
-- The dataset contract extended with clip and frame records, with validation, inspection
-  and replay. The resolution is agreed with the collaborator, since the eye model samples
-  far coarser than the static datasets.
+- a benchmark of every phase on fixed-seed reference workloads, with a frame-for-frame
+  quality comparison;
+- frame-rate, vsync and inactivity limits lifted while generating, and every arena section
+  rebuilt before a capture;
+- reprojection on worker threads and readback overlapped with rendering;
+- several frames per control tick;
+- slices of a dataset's scene groups, `merge-slices`, and `generate --instances N`.
+
+### M12-2 — Motion clips and the first teacher
+
+Short frame streams for training motion-sensitive vision offline, made by driving the
+player through M11's control, and the first teacher. Design:
+`docs/superpowers/specs/2026-10-25-m12-2-motion-clips-design.md`.
+
+Delivered:
+
+- a clip dataset kind: panorama frames at 3 per tick, lossless video (H.264 by default,
+  FFV1 or lossy H.264 by choice), and labels on every frame from its own capture;
+- a realizable teacher (Track, Re-acquire, Search) that sees the honey only when the frame
+  shows it, plans over what it has seen and searches frontiers;
+- seven clip types (approach, pass-by, scan, occlusion, detour, search, no honey) with correlated
+  drift, a `driver` on every tick (teacher, teacher with drift, or script), and 15%
+  scripted clips by default;
+- an edge-aware teacher and an edge guard on the executed command, drift that pushes
+  towards ledges and walls, falls counted in the manifest, and a reason for every missed
+  approach, detour or occlusion;
+- both validators extended, including the teacher's realizability on every tick; slices,
+  merging, exact replay, a Python reader, and clip playback in the inspector;
+- `clip-report`, and a first pilot (level 1, 200 clips) that found the falls and the
+  render-thread validation; the 1,000-clip pilot over levels 1–5 is still to run.
 
 ### M13 — Level-6 active-search environment
 

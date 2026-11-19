@@ -1,13 +1,18 @@
 package io.github.thedeadbolt.honeyfactory.contract;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import io.github.thedeadbolt.honeyfactory.clip.ClipCodec;
+import io.github.thedeadbolt.honeyfactory.clip.ClipCodecs;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -34,9 +39,47 @@ public record DatasetManifest(
 	Provenance provenance,
 	@Nullable Integrity integrity,
 	String licence,
-	String intendedUse
+	String intendedUse,
+	@Nullable Slice slice,
+	List<World> worlds
 ) {
+	public DatasetManifest {
+		worlds = List.copyOf(worlds);
+	}
+
+	/**
+	 * On a dataset merged from slices (M12-1): the world one slice generated in, when known,
+	 * and its scene slots. Natural scenes replay exactly only in the world that generated them.
+	 */
+	public record World(@Nullable String world, List<Integer> slots) {
+		public World {
+			slots = List.copyOf(slots);
+		}
+	}
 	public static final String UNASSIGNED = "unassigned";
+
+	/**
+	 * The part of a dataset one of several instances generated (M12-1): instance
+	 * {@code index} of {@code count}, in world {@code world} when known, holding the scene
+	 * slots {@code slots} in order. A slice validates on its own against those slots;
+	 * merging the slices gives the dataset a single run would.
+	 */
+	public record Slice(int index, int count, @Nullable String world, List<Integer> slots) {
+		public Slice {
+			slots = List.copyOf(slots);
+		}
+
+		JsonObject toJson() {
+			JsonObject json = new JsonObject();
+			json.addProperty("index", this.index);
+			json.addProperty("count", this.count);
+			json.add("world", JsonWrite.nullable(this.world));
+			JsonArray slots = new JsonArray();
+			this.slots.forEach(slots::add);
+			json.add("slots", slots);
+			return json;
+		}
+	}
 	public static final String RGB_ENCODING = "png-rgb8";
 
 	public enum Lifecycle implements JsonEnum {
@@ -49,11 +92,26 @@ public record DatasetManifest(
 		}
 	}
 
-	public record SplitCount(int scenes, int samples) {
+	/** A split's final counts; {@code clips} counts the clips of a clip dataset and is 0 for stills. */
+	public record SplitCount(int scenes, int samples, int clips) {
+		public SplitCount(int scenes, int samples) {
+			this(scenes, samples, 0);
+		}
 	}
 
-	/** {@code gitCommit} is null outside a Git checkout. */
-	public record Software(String minecraft, String fabricLoader, String fabricApi, String mod, String java, @Nullable String gitCommit, boolean gitDirty) {
+	/**
+	 * {@code gitCommit} is null outside a Git checkout; {@code ffmpeg}, the first line of
+	 * {@code ffmpeg -version}, is recorded by clip datasets, whose videos it encodes.
+	 */
+	public record Software(String minecraft, String fabricLoader, String fabricApi, String mod, String java, @Nullable String gitCommit, boolean gitDirty, @Nullable String ffmpeg) {
+		public Software(String minecraft, String fabricLoader, String fabricApi, String mod, String java, @Nullable String gitCommit, boolean gitDirty) {
+			this(minecraft, fabricLoader, fabricApi, mod, java, gitCommit, gitDirty, null);
+		}
+
+		/** This software with the ffmpeg that encodes a clip dataset's videos. */
+		public Software withFfmpeg(String version) {
+			return new Software(this.minecraft, this.fabricLoader, this.fabricApi, this.mod, this.java, this.gitCommit, this.gitDirty, version);
+		}
 	}
 
 	public record ResourcePack(String id, @Nullable String sha256) {
@@ -116,10 +174,18 @@ public record DatasetManifest(
 		int rejectedScenes,
 		int failedScenes,
 		int acceptedSamples,
-		Map<String, Integer> rejectionReasons
+		int acceptedClips,
+		Map<String, Integer> rejectionReasons,
+		Map<String, Integer> clipRedraws
 	) {
+		/** Counts without clip redraws. */
+		public Counts(int requestedScenes, int attemptedScenes, int acceptedScenes, int rejectedScenes, int failedScenes, int acceptedSamples, int acceptedClips,
+			Map<String, Integer> rejectionReasons) {
+			this(requestedScenes, attemptedScenes, acceptedScenes, rejectedScenes, failedScenes, acceptedSamples, acceptedClips, rejectionReasons, Map.of());
+		}
+
 		public static Counts empty(int requestedScenes) {
-			return new Counts(requestedScenes, 0, 0, 0, 0, 0, Map.of());
+			return new Counts(requestedScenes, 0, 0, 0, 0, 0, 0, Map.of());
 		}
 	}
 
@@ -129,6 +195,7 @@ public record DatasetManifest(
 	public record IndexDigest(long bytes, String sha256) {
 	}
 
+	/** Index digests at completion; {@code samples} digests {@code samples.jsonl}, or {@code clips.jsonl} in a clip dataset. */
 	public record Integrity(IndexDigest scenes, IndexDigest samples, boolean validationPassed, int validationErrors) {
 	}
 
@@ -137,6 +204,23 @@ public record DatasetManifest(
 	 * as produced by {@code ResolvedConfig.toJson()}.
 	 */
 	public static DatasetManifest generating(JsonObject configuration, Instant createdAt, Software software, RenderEnvironment renderEnvironment, Provenance provenance) {
+		return generating(configuration, createdAt, software, renderEnvironment, provenance, null);
+	}
+
+	/** The same for a slice, whose requested scenes are its slots. */
+	public static DatasetManifest generating(JsonObject configuration, Instant createdAt, Software software, RenderEnvironment renderEnvironment, Provenance provenance,
+		@Nullable Slice slice) {
+		DatasetManifest manifest = generatingWhole(configuration, createdAt, software, renderEnvironment, provenance);
+		if (slice == null) {
+			return manifest;
+		}
+
+		return new DatasetManifest(manifest.schemaVersion, manifest.datasetId, manifest.contentVersion, manifest.lifecycle, manifest.createdAtUtc, null,
+			manifest.resolvedConfigSha256, manifest.configuration, null, software, renderEnvironment, Counts.empty(slice.slots().size()), provenance, null,
+			manifest.licence, manifest.intendedUse, slice, List.of());
+	}
+
+	private static DatasetManifest generatingWhole(JsonObject configuration, Instant createdAt, Software software, RenderEnvironment renderEnvironment, Provenance provenance) {
 		String sha256 = CanonicalJson.sha256(configuration);
 		JsonObject generator = configuration.getAsJsonObject("generator");
 		return new DatasetManifest(
@@ -155,7 +239,9 @@ public record DatasetManifest(
 			provenance,
 			null,
 			UNASSIGNED,
-			UNASSIGNED
+			UNASSIGNED,
+			null,
+			List.of()
 		);
 	}
 
@@ -183,7 +269,9 @@ public record DatasetManifest(
 			this.provenance,
 			integrity,
 			this.licence,
-			this.intendedUse
+			this.intendedUse,
+			this.slice,
+			this.worlds
 		);
 	}
 
@@ -197,6 +285,22 @@ public record DatasetManifest(
 
 	public int acceptedScenesRequested() {
 		return generator().get("accepted_scenes").getAsInt();
+	}
+
+	/** The world that generated scene slot {@code sceneIndex}, as a merged dataset records it, or null when not recorded. */
+	public @Nullable String worldOf(int sceneIndex) {
+		for (World world : this.worlds) {
+			if (world.slots().contains(sceneIndex)) {
+				return world.world();
+			}
+		}
+
+		return null;
+	}
+
+	/** The dataset directory's name: the dataset ID, plus {@code .slice-<index>-of-<count>} for a slice. */
+	public String directoryName() {
+		return this.slice == null ? this.datasetId : this.datasetId + ".slice-" + this.slice.index() + "-of-" + this.slice.count();
 	}
 
 	public int targetPresentScenes() {
@@ -258,6 +362,24 @@ public record DatasetManifest(
 		return SplitGrouping.fromJson(this.configuration.getAsJsonObject("splits").get("grouping").getAsString());
 	}
 
+	/** Stills, or motion clips when the configuration has {@code generator.clips} (M12-2). */
+	public DatasetKind kind() {
+		return generator().has("clips") ? DatasetKind.CLIPS : DatasetKind.STILLS;
+	}
+
+	/**
+	 * A clip dataset's {@code generator.clips}.
+	 *
+	 * @throws IllegalStateException for a still dataset
+	 */
+	public ClipSettings clipSettings() {
+		if (kind() != DatasetKind.CLIPS) {
+			throw new IllegalStateException(this.datasetId + " is not a clip dataset");
+		}
+
+		return ClipSettings.fromJson(JsonFields.of(generator().getAsJsonObject("clips")));
+	}
+
 	private JsonObject generator() {
 		return this.configuration.getAsJsonObject("generator");
 	}
@@ -269,6 +391,11 @@ public record DatasetManifest(
 	public JsonObject toJson() {
 		JsonObject json = new JsonObject();
 		json.addProperty("schema_version", this.schemaVersion);
+		boolean clips = kind() == DatasetKind.CLIPS;
+		if (clips) {
+			json.addProperty("kind", DatasetKind.CLIPS.jsonName());
+		}
+
 		json.addProperty("dataset_id", this.datasetId);
 		json.addProperty("content_version", this.contentVersion);
 		json.addProperty("lifecycle", this.lifecycle.jsonName());
@@ -286,6 +413,10 @@ public record DatasetManifest(
 				JsonObject entry = new JsonObject();
 				entry.addProperty("scenes", count.scenes());
 				entry.addProperty("samples", count.samples());
+				if (clips) {
+					entry.addProperty("clips", count.clips());
+				}
+
 				counts.add(split.jsonName(), entry);
 			}
 
@@ -300,9 +431,13 @@ public record DatasetManifest(
 		software.addProperty("java", this.software.java());
 		software.add("git_commit", JsonWrite.nullable(this.software.gitCommit()));
 		software.addProperty("git_dirty", this.software.gitDirty());
+		if (this.software.ffmpeg() != null) {
+			software.addProperty("ffmpeg", this.software.ffmpeg());
+		}
+
 		json.add("software", software);
 		json.add("render_environment", this.renderEnvironment.toJson());
-		json.add("storage", storageJson());
+		json.add("storage", clips ? clipStorageJson(clipSettings().codec()) : storageJson());
 		JsonObject counts = new JsonObject();
 		counts.addProperty("requested_scenes", this.counts.requestedScenes());
 		counts.addProperty("attempted_scenes", this.counts.attemptedScenes());
@@ -310,21 +445,48 @@ public record DatasetManifest(
 		counts.addProperty("rejected_scenes", this.counts.rejectedScenes());
 		counts.addProperty("failed_scenes", this.counts.failedScenes());
 		counts.addProperty("accepted_samples", this.counts.acceptedSamples());
+		if (clips) {
+			counts.addProperty("accepted_clips", this.counts.acceptedClips());
+		}
+
 		JsonObject reasons = new JsonObject();
 		this.counts.rejectionReasons().forEach(reasons::addProperty);
 		counts.add("rejection_reasons", reasons);
+		if (clips) {
+			JsonObject redraws = new JsonObject();
+			new TreeMap<>(this.counts.clipRedraws()).forEach(redraws::addProperty);
+			counts.add("clip_redraws", redraws);
+		}
+
 		json.add("counts", counts);
 		JsonObject provenance = new JsonObject();
 		provenance.addProperty("tool", this.provenance.tool());
 		provenance.add("parent_dataset_ids", JsonWrite.strings(this.provenance.parentDatasetIds()));
 		provenance.add("derivations", JsonWrite.strings(this.provenance.derivations()));
 		json.add("provenance", provenance);
+		if (this.slice != null) {
+			json.add("slice", this.slice.toJson());
+		}
+
+		if (!this.worlds.isEmpty()) {
+			JsonArray worlds = new JsonArray();
+			for (World world : this.worlds) {
+				JsonObject entry = new JsonObject();
+				entry.add("world", JsonWrite.nullable(world.world()));
+				JsonArray slots = new JsonArray();
+				world.slots().forEach(slots::add);
+				entry.add("slots", slots);
+				worlds.add(entry);
+			}
+
+			json.add("worlds", worlds);
+		}
 		if (this.integrity != null) {
 			JsonObject integrity = new JsonObject();
 			integrity.addProperty("hash_algorithm", Sha256.ALGORITHM);
 			JsonObject indexes = new JsonObject();
 			indexes.add("scenes", digestJson(this.integrity.scenes()));
-			indexes.add("samples", digestJson(this.integrity.samples()));
+			indexes.add(clips ? "clips" : "samples", digestJson(this.integrity.samples()));
 			integrity.add("indexes", indexes);
 			JsonObject validation = new JsonObject();
 			validation.addProperty("passed", this.integrity.validationPassed());
@@ -358,6 +520,24 @@ public record DatasetManifest(
 		return storage;
 	}
 
+	/** The layout of a clip dataset (M12-2): its indexes, clip folders and the codecs of its videos. */
+	static JsonObject clipStorageJson(ClipCodec codec) {
+		JsonObject storage = new JsonObject();
+		JsonObject indexes = new JsonObject();
+		indexes.addProperty("scenes", "scenes.jsonl");
+		indexes.addProperty("clips", "clips.jsonl");
+		storage.add("indexes", indexes);
+		storage.addProperty("clip_root", "clips");
+		JsonObject encodings = new JsonObject();
+		encodings.addProperty("rgb", codec.name());
+		encodings.addProperty("mask", ClipCodecs.maskCodecFor(codec).name());
+		encodings.addProperty("frames", "jsonl");
+		storage.add("encodings", encodings);
+		storage.addProperty("sharding", Algorithms.IDS);
+		storage.add("channels", JsonWrite.strings(List.of("rgb", "mask")));
+		return storage;
+	}
+
 	private static JsonObject digestJson(IndexDigest digest) {
 		JsonObject json = new JsonObject();
 		json.addProperty("bytes", digest.bytes());
@@ -380,6 +560,15 @@ public record DatasetManifest(
 		Instant completed = fields.isNull("completed_at_utc") ? null : timestamp(fields, "completed_at_utc");
 
 		JsonObject configuration = configuration(json, fields);
+		DatasetKind kind = configuration.getAsJsonObject("generator").has("clips") ? DatasetKind.CLIPS : DatasetKind.STILLS;
+		DatasetKind declared = fields.has("kind") ? fields.enumValue("kind", DatasetKind::fromJson) : DatasetKind.STILLS;
+		if (declared != kind) {
+			throw kind == DatasetKind.CLIPS
+				? fields.object("generator").error("clips", "only a clip dataset (kind clips) has clip settings")
+				: fields.object("generator").error("clips", "a clip dataset needs its clip settings");
+		}
+
+		ClipSettings clipSettings = kind == DatasetKind.CLIPS ? ClipSettings.fromJson(fields.object("generator").object("clips")) : null;
 		String configSha = fields.string("resolved_config_sha256");
 		String actualSha = CanonicalJson.sha256(configuration);
 		if (!configSha.equals(actualSha)) {
@@ -396,13 +585,18 @@ public record DatasetManifest(
 		Software software = software(fields.object("software"));
 		RenderEnvironment render = render(fields.object("render_environment"));
 		JsonFields storage = fields.object("storage");
-		if (!storage.raw().equals(storageJson())) {
-			throw fields.error("storage", "must describe the contract " + SchemaVersion.MAJOR + ".x layout exactly");
+		JsonObject layout = clipSettings == null ? storageJson() : clipStorageJson(clipSettings.codec());
+		if (!storage.raw().equals(layout)) {
+			throw fields.error("storage", "must describe the contract " + SchemaVersion.MAJOR + ".x " + kind.jsonName() + " layout exactly: " + layout);
+		}
+
+		if (clipSettings != null && !fields.object("counts").has("accepted_clips")) {
+			throw fields.object("counts").error("accepted_clips", "a clip dataset counts its clips");
 		}
 
 		Counts counts = counts(fields.object("counts"));
 		Provenance provenance = provenance(fields.object("provenance"));
-		Integrity integrity = fields.has("integrity") ? integrity(fields.object("integrity")) : null;
+		Integrity integrity = fields.has("integrity") ? integrity(fields.object("integrity"), kind) : null;
 		DatasetManifest manifest = new DatasetManifest(
 			version,
 			datasetId,
@@ -419,15 +613,20 @@ public record DatasetManifest(
 			provenance,
 			integrity,
 			fields.string("licence"),
-			fields.string("intended_use")
+			fields.string("intended_use"),
+			fields.has("slice") ? slice(fields.object("slice")) : null,
+			fields.has("worlds") ? worlds(fields) : List.of()
 		);
 		manifest.checkLifecycle(fields);
 		return manifest;
 	}
 
 	private void checkLifecycle(JsonFields fields) {
-		if (this.counts.requestedScenes() != acceptedScenesRequested()) {
-			throw fields.object("counts").error("requested_scenes", "must equal generator.accepted_scenes (" + acceptedScenesRequested() + ")");
+		int requested = this.slice == null ? acceptedScenesRequested() : this.slice.slots().size();
+		if (this.counts.requestedScenes() != requested) {
+			throw fields.object("counts").error("requested_scenes", this.slice == null
+				? "must equal generator.accepted_scenes (" + acceptedScenesRequested() + ")"
+				: "must equal the slice's " + requested + " slots");
 		}
 
 		if (this.lifecycle == Lifecycle.GENERATING) {
@@ -467,6 +666,11 @@ public record DatasetManifest(
 			int samples = this.splitCounts.values().stream().mapToInt(SplitCount::samples).sum();
 			if (scenes != this.counts.acceptedScenes() || samples != this.counts.acceptedSamples()) {
 				throw fields.object("splits").error("counts", "must sum to the accepted scene and sample counts");
+			}
+
+			int clips = this.splitCounts.values().stream().mapToInt(SplitCount::clips).sum();
+			if (kind() == DatasetKind.CLIPS && clips != this.counts.acceptedClips()) {
+				throw fields.object("splits").error("counts", "clips must sum to the accepted clip count");
 			}
 		}
 	}
@@ -552,7 +756,7 @@ public record DatasetManifest(
 		Map<Split, SplitCount> result = new EnumMap<>(Split.class);
 		for (Split split : Split.values()) {
 			JsonFields entry = counts.object(split.jsonName());
-			result.put(split, new SplitCount(entry.integer32("scenes", 0, Ids.MAX_SCENES), entry.integer32("samples", 0, Integer.MAX_VALUE)));
+			result.put(split, new SplitCount(entry.integer32("scenes", 0, Ids.MAX_SCENES), entry.integer32("samples", 0, Integer.MAX_VALUE), entry.integer32("clips", 0, Integer.MAX_VALUE, 0)));
 		}
 
 		return result;
@@ -571,7 +775,8 @@ public record DatasetManifest(
 			software.string("mod"),
 			software.string("java"),
 			commit,
-			software.bool("git_dirty")
+			software.bool("git_dirty"),
+			software.has("ffmpeg") ? software.string("ffmpeg") : null
 		);
 	}
 
@@ -608,6 +813,43 @@ public record DatasetManifest(
 		);
 	}
 
+	private static List<World> worlds(JsonFields fields) {
+		List<World> worlds = new ArrayList<>();
+		for (JsonElement element : fields.array("worlds")) {
+			if (!element.isJsonObject()) {
+				throw fields.error("worlds", "must hold objects of a world and its slots");
+			}
+
+			JsonFields world = JsonFields.of(element.getAsJsonObject());
+			List<Integer> slots = new ArrayList<>();
+			for (JsonElement slot : world.array("slots")) {
+				slots.add(slot.getAsInt());
+			}
+
+			worlds.add(new World(world.isNull("world") ? null : world.string("world"), slots));
+		}
+
+		return worlds;
+	}
+
+	private static Slice slice(JsonFields slice) {
+		int count = (int) slice.integer("count", 1, Integer.MAX_VALUE);
+		int index = (int) slice.integer("index", 0, count - 1);
+		String world = slice.isNull("world") ? null : slice.string("world");
+		List<Integer> slots = new ArrayList<>();
+		int previous = -1;
+		for (JsonElement element : slice.array("slots")) {
+			if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isNumber() || element.getAsInt() <= previous) {
+				throw slice.error("slots", "must be scene indexes in increasing order");
+			}
+
+			previous = element.getAsInt();
+			slots.add(previous);
+		}
+
+		return new Slice(index, count, world, slots);
+	}
+
 	private static Counts counts(JsonFields counts) {
 		int requested = counts.integer32("requested_scenes", 1, Ids.MAX_SCENES);
 		int attempted = counts.integer32("attempted_scenes", 0, Integer.MAX_VALUE);
@@ -636,7 +878,16 @@ public record DatasetManifest(
 			throw counts.error("rejection_reasons", "must sum to rejected_scenes (" + rejected + ")");
 		}
 
-		return new Counts(requested, attempted, accepted, rejected, failed, counts.integer32("accepted_samples", 0, Integer.MAX_VALUE), Map.copyOf(rejectionReasons));
+		Map<String, Integer> clipRedraws = new LinkedHashMap<>();
+		if (counts.has("clip_redraws")) {
+			JsonFields redraws = counts.object("clip_redraws");
+			for (String key : redraws.raw().keySet()) {
+				clipRedraws.put(key, redraws.integer32(key, 0, Integer.MAX_VALUE));
+			}
+		}
+
+		return new Counts(requested, attempted, accepted, rejected, failed, counts.integer32("accepted_samples", 0, Integer.MAX_VALUE), counts.integer32("accepted_clips", 0, Integer.MAX_VALUE, 0),
+			Map.copyOf(rejectionReasons), Map.copyOf(clipRedraws));
 	}
 
 	private static Provenance provenance(JsonFields provenance) {
@@ -650,14 +901,15 @@ public record DatasetManifest(
 		return new Provenance(provenance.string("tool"), parents, provenance.strings("derivations"));
 	}
 
-	private static Integrity integrity(JsonFields integrity) {
+	private static Integrity integrity(JsonFields integrity, DatasetKind kind) {
 		if (!Sha256.ALGORITHM.equals(integrity.string("hash_algorithm"))) {
 			throw integrity.error("hash_algorithm", "must be " + Sha256.ALGORITHM);
 		}
 
 		JsonFields indexes = integrity.object("indexes");
 		JsonFields validation = integrity.object("validation");
-		return new Integrity(digest(indexes.object("scenes")), digest(indexes.object("samples")), validation.bool("passed"), validation.integer32("error_count", 0, Integer.MAX_VALUE));
+		String items = kind == DatasetKind.CLIPS ? "clips" : "samples";
+		return new Integrity(digest(indexes.object("scenes")), digest(indexes.object(items)), validation.bool("passed"), validation.integer32("error_count", 0, Integer.MAX_VALUE));
 	}
 
 	private static IndexDigest digest(JsonFields digest) {

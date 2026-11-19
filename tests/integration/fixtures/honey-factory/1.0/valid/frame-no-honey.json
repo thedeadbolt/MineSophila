@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "clip_id": "s000001-c01",
+  "frame": 6,
+  "tick": 2,
+  "sub_frame": 3,
+  "frames_per_tick": 3,
+  "partial_tick": 1.0,
+  "pose": {
+    "position": [
+      16.5,
+      65.0,
+      24.3
+    ],
+    "yaw_degrees": -178.5,
+    "pitch_degrees": 10.0
+  },
+  "target": {
+    "target_present": false,
+    "target_in_projection": false,
+    "visible_pixels": 0,
+    "unoccluded_pixels": 0,
+    "visibility_ratio": null,
+    "target_status": "absent",
+    "visible_bbox_xywh": null,
+    "visible_centroid_xy": null
+  },
+  "touches_edge": false,
+  "bearing": null,
+  "tick_labels": {
+    "server_tick": 1002,
+    "velocity": [
+      0.0,
+      0.0,
+      -0.2
+    ],
+    "senses": {
+      "forward_speed": 0.1,
+      "strafe_speed": 0.0,
+      "vertical_speed": 0.0,
+      "yaw_rate": 1.8,
+      "pitch_rate": 0.0,
+      "pitch": 10.0,
+      "down": [
+        0.0,
+        -0.984807753012208,
+        0.17364817766693033
+      ],
+      "on_ground": true,
+      "bumped": false,
+      "in_water": false,
+      "last_command": {
+        "forward": 0.0,
+        "strafe": 0.0,
+        "turn_rate": 0.0,
+        "pitch_rate": 0.0,
+        "jump": false,
+        "delay_ticks": 0
+      }
+    },
+    "executed": {
+      "forward": 0.5,
+      "strafe": 0.0,
+      "turn_rate": 9.0,
+      "pitch_rate": 0.0,
+      "jump": false,
+      "delay_ticks": 0
+    },
+    "teacher": {
+      "forward": 1.0,
+      "strafe": 0.0,
+      "turn_rate": 9.0,
+      "pitch_rate": 0.0,
+      "jump": false,
+      "delay_ticks": 0
+    },
+    "teacher_mode": "search",
+    "belief": {
+      "source": "none",
+      "position": null,
+      "observed_tick": 1
+    },
+    "drifting": true,
+    "driver": "teacher_drift",
+    "guarded": false,
+    "coverage": 0.35
+  }
+}

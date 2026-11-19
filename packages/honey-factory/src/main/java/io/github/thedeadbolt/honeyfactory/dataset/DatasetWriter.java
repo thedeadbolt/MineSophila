@@ -1,6 +1,8 @@
 package io.github.thedeadbolt.honeyfactory.dataset;
 
 import io.github.thedeadbolt.honeyfactory.capture.CapturedImages;
+import io.github.thedeadbolt.honeyfactory.contract.ClipRecord;
+import io.github.thedeadbolt.honeyfactory.contract.DatasetKind;
 import io.github.thedeadbolt.honeyfactory.contract.DatasetManifest;
 import io.github.thedeadbolt.honeyfactory.contract.Ids;
 import io.github.thedeadbolt.honeyfactory.contract.Jsonl;
@@ -31,6 +33,7 @@ public final class DatasetWriter {
 	public static final String MANIFEST = "dataset.json";
 	public static final String SCENES = "scenes.jsonl";
 	public static final String SAMPLES = "samples.jsonl";
+	public static final String CLIPS = "clips.jsonl";
 
 	/** The image files of one written sample. */
 	public record SampleFiles(SampleRecord.ImageFile rgb, SampleRecord.ImageFile mask) {
@@ -46,7 +49,8 @@ public final class DatasetWriter {
 	}
 
 	/**
-	 * Creates {@code <outputRoot>/<dataset id>/} with the {@code generating} manifest and
+	 * Creates {@code <outputRoot>/<dataset id>/} (for a slice, {@code <dataset id>.slice-<i>-of-<n>/})
+	 * with the {@code generating} manifest and
 	 * empty indexes.
 	 *
 	 * @throws FileAlreadyExistsException if the dataset directory already exists; identical
@@ -58,12 +62,12 @@ public final class DatasetWriter {
 		}
 
 		Files.createDirectories(outputRoot);
-		Path root = outputRoot.resolve(manifest.datasetId());
+		Path root = outputRoot.resolve(manifest.directoryName());
 		Files.createDirectory(root);
 		DatasetWriter writer = new DatasetWriter(root);
 		writer.writeManifest(manifest);
 		Files.write(root.resolve(SCENES), new byte[0], StandardOpenOption.CREATE_NEW);
-		Files.write(root.resolve(SAMPLES), new byte[0], StandardOpenOption.CREATE_NEW);
+		Files.write(root.resolve(manifest.kind() == DatasetKind.CLIPS ? CLIPS : SAMPLES), new byte[0], StandardOpenOption.CREATE_NEW);
 		return writer;
 	}
 
@@ -118,6 +122,26 @@ public final class DatasetWriter {
 		StringBuilder lines = new StringBuilder();
 		samples.forEach(sample -> lines.append(Jsonl.line(sample.toJson())));
 		append(SAMPLES, lines.toString());
+	}
+
+	/** Appends a clip dataset's accepted scene and then its clips, whose files must already be final. */
+	public void appendClipScene(SceneRecord scene, List<ClipRecord> clips) throws IOException {
+		for (ClipRecord clip : clips) {
+			if (!clip.sceneId().equals(scene.sceneId())) {
+				throw new IllegalArgumentException("Clip " + clip.clipId() + " does not belong to scene " + scene.sceneId());
+			}
+
+			for (String path : List.of(clip.rgb().path(), clip.visibleMask().path(), clip.frames().path())) {
+				if (!Files.isRegularFile(resolve(path))) {
+					throw new IOException("Clip file " + path + " is missing");
+				}
+			}
+		}
+
+		append(SCENES, Jsonl.line(scene.toJson()));
+		StringBuilder lines = new StringBuilder();
+		clips.forEach(clip -> lines.append(Jsonl.line(clip.toJson())));
+		append(CLIPS, lines.toString());
 	}
 
 	/** Atomically replaces {@code dataset.json}. */

@@ -2,12 +2,18 @@ package io.github.thedeadbolt.honeyfactory.client.replay;
 
 import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
 import io.github.thedeadbolt.honeyfactory.client.generation.DatasetRuns;
+import io.github.thedeadbolt.honeyfactory.client.generation.RuntimeClipEnvironment;
 import io.github.thedeadbolt.honeyfactory.client.generation.RuntimeGenerationEnvironment;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
+import io.github.thedeadbolt.honeyfactory.clip.ClipEnvironment;
+import io.github.thedeadbolt.honeyfactory.contract.ClipRecord;
 import io.github.thedeadbolt.honeyfactory.contract.SampleRecord;
 import io.github.thedeadbolt.honeyfactory.contract.SceneRecord;
+import io.github.thedeadbolt.honeyfactory.control.ControlStep;
+import io.github.thedeadbolt.honeyfactory.control.MotorCommand;
 import io.github.thedeadbolt.honeyfactory.environment.CameraPose;
 import io.github.thedeadbolt.honeyfactory.generation.GenerationEnvironment;
+import io.github.thedeadbolt.honeyfactory.replay.ReplayClip;
 import io.github.thedeadbolt.honeyfactory.replay.ReplayComparison;
 import io.github.thedeadbolt.honeyfactory.replay.ReplayException;
 import io.github.thedeadbolt.honeyfactory.replay.ReplayScene;
@@ -85,13 +91,7 @@ public final class ReplayRuns {
 		}
 
 		ReplayScene scene = ReplayScene.load(directory, id);
-		SceneRecord.SourcePatch patch = scene.scene().sourcePatch();
-		IntegratedServer server = Minecraft.getInstance().getSingleplayerServer();
-		if (patch != null && server != null && server.overworld().getSeed() != patch.worldSeed()) {
-			throw new ReplayException(ReplayException.Reason.UNAVAILABLE, "scene " + scene.scene().sceneId() + " was copied from a world with seed " + patch.worldSeed()
-				+ "; replay it in a dataset world created with that seed, not " + server.overworld().getSeed());
-		}
-
+		checkWorld(scene);
 		begin();
 		current = null;
 		EnvironmentRuntime runtime = EnvironmentRuntime.get();
@@ -107,6 +107,83 @@ public final class ReplayRuns {
 				current = new Loaded(scene, regenerated.plan(), state.layoutSha256(), scene.focus(), differences);
 				return current;
 			})));
+	}
+
+	/** Refuses a natural scene outside the world that generated it, where its terrain differs. */
+	private static void checkWorld(ReplayScene scene) {
+		SceneRecord.SourcePatch patch = scene.scene().sourcePatch();
+		IntegratedServer server = Minecraft.getInstance().getSingleplayerServer();
+		String world = scene.world();
+		if (patch != null && server != null && world != null && !world.equals(server.getWorldData().getLevelName())) {
+			throw new ReplayException(ReplayException.Reason.UNAVAILABLE, "scene " + scene.scene().sceneId() + " was generated in world " + world
+				+ ", one of the slices' worlds; open that world to replay it, not " + server.getWorldData().getLevelName());
+		}
+
+		if (patch != null && server != null && server.overworld().getSeed() != patch.worldSeed()) {
+			throw new ReplayException(ReplayException.Reason.UNAVAILABLE, "scene " + scene.scene().sceneId() + " was copied from a world with seed " + patch.worldSeed()
+				+ "; replay it in a dataset world created with that seed, not " + server.overworld().getSeed());
+		}
+	}
+
+	/**
+	 * Replays motion clip {@code clipId} of the clip dataset in {@code directory} (M12-2): the
+	 * scene is rebuilt, the body reset at the clip's start and the recorded executed commands
+	 * run again through the control loop, and every frame is compared with the stored one
+	 * (see {@link ReplayClip}). The control session ends with the replay.
+	 *
+	 * @throws ReplayException NOT_FOUND, INVALID_DATASET, UNAVAILABLE or MISMATCH, before the world changes
+	 * @throws IllegalStateException while a replay request or dataset generation runs, or without improved transparency
+	 */
+	public static CompletableFuture<ReplayClip.Result> replayClip(Path directory, String clipId) {
+		if (DatasetRuns.running() != null) {
+			throw new IllegalStateException("a dataset generation is running");
+		}
+
+		if (!Minecraft.getInstance().options.improvedTransparency().get()) {
+			throw new IllegalStateException(CaptureService.IMPROVED_TRANSPARENCY_REQUIRED);
+		}
+
+		ReplayClip replay = ReplayClip.load(directory, clipId);
+		ReplayScene scene = replay.scene();
+		checkWorld(scene);
+		begin();
+		current = null;
+		EnvironmentRuntime runtime = EnvironmentRuntime.get();
+		GenerationEnvironment.PatchRequest request = scene.patchRequest();
+		CompletableFuture<GeneratedScene> generated = request == null
+			? CompletableFuture.supplyAsync(() -> scene.regenerate(null), Minecraft.getInstance())
+			: new RuntimeGenerationEnvironment(runtime).preparePatch(request).thenApply(scene::regenerate);
+		ClipRecord clip = replay.clip();
+		CompletableFuture<ReplayClip.Result> run = generated.thenCompose(regenerated -> {
+			int[] target = regenerated.plan().targetPosition(scene.arena());
+			return runtime.controlReset(scene.arena(), regenerated.plan(), clip.start(), scene.projection(), clip.seeds().drive(), clip.framesPerTick())
+				.thenCompose(reset -> {
+					compare(replay, reset, target);
+					return steps(runtime, replay, 1, target);
+				});
+		}).whenComplete((result, error) -> {
+			runtime.controlEnd();
+			replay.close();
+		});
+		return finish(run);
+	}
+
+	private static CompletableFuture<ReplayClip.Result> steps(EnvironmentRuntime runtime, ReplayClip replay, int tick, int @Nullable [] target) {
+		if (tick > replay.clip().tickCount()) {
+			return CompletableFuture.completedFuture(replay.result());
+		}
+
+		MotorCommand executed = replay.clip().executed().get(tick - 1);
+		return runtime.controlStep(executed, replay.teacher(tick), ControlStep.Executed.STUDENT).thenCompose(result -> {
+			compare(replay, result, target);
+			return steps(runtime, replay, tick + 1, target);
+		});
+	}
+
+	private static void compare(ReplayClip replay, EnvironmentRuntime.ControlResult result, int @Nullable [] target) {
+		for (ClipEnvironment.Frame frame : RuntimeClipEnvironment.step(result).frames()) {
+			replay.compare(frame.pose(), frame.partialTick(), frame.images(), target);
+		}
 	}
 
 	/** Moves the camera to viewpoint {@code index} of the loaded scene. */

@@ -38,6 +38,26 @@ class GoldenVectorsTest {
 	}
 
 	@Test
+	void clipSeedsMatchVectors() {
+		for (JsonElement element : Fixtures.json(Fixtures.vectors().resolve("seeds.json")).getAsJsonArray("clips")) {
+			JsonObject c = element.getAsJsonObject();
+			ClipSeeds seeds = ClipSeeds.derive(c.get("dataset_seed").getAsLong(), c.get("scene_index").getAsInt(), c.get("clip_index").getAsInt(), c.get("attempt").getAsInt());
+			assertEquals(new ClipSeeds(c.get("start").getAsLong(), c.get("drive").getAsLong(), c.get("drift").getAsLong()), seeds);
+		}
+	}
+
+	@Test
+	void clipIdsAndDirectoriesMatchVectors() {
+		for (JsonElement element : Fixtures.json(Fixtures.vectors().resolve("ids.json")).getAsJsonArray("clips")) {
+			JsonObject c = element.getAsJsonObject();
+			String clip = Ids.clipId(Ids.sceneId(c.get("scene_index").getAsInt()), c.get("clip_index").getAsInt());
+			assertEquals(c.get("clip_id").getAsString(), clip);
+			assertEquals(c.get("shard").getAsString(), Ids.shard(clip));
+			assertEquals(c.get("directory").getAsString(), Ids.clipDirectory(Split.fromJson(c.get("split").getAsString()), clip));
+		}
+	}
+
+	@Test
 	void idsShardsAndPathsMatchVectors() {
 		JsonObject vectors = Fixtures.json(Fixtures.vectors().resolve("ids.json"));
 		for (JsonElement element : vectors.getAsJsonArray("samples")) {

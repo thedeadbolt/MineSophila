@@ -120,6 +120,11 @@ public final class RecipeGenerator implements SceneGenerator {
 
 	@Override
 	public ViewpointCandidate viewpoint(GeneratedScene scene, int viewpointIndex, int attemptIndex) {
+		return viewpoint(scene, viewpointIndex, attemptIndex, this.spec.sight());
+	}
+
+	@Override
+	public ViewpointCandidate viewpoint(GeneratedScene scene, int viewpointIndex, int attemptIndex, SightRule sight) {
 		ResolvedConfig.Viewpoints settings = this.viewpoints;
 		SeededRandom random = random("viewpoint/" + scene.seeds().viewpoint() + "/" + viewpointIndex + "/" + attemptIndex);
 		double distance = random.uniform(settings.distanceMinBlocks(), settings.distanceMaxBlocks());
@@ -149,9 +154,9 @@ public final class RecipeGenerator implements SceneGenerator {
 			return new ViewpointCandidate.Rejected("camera_inside_block");
 		}
 
-		String sight = this.spec.sight().check(grid, new double[] {x, feetY + settings.eyeHeightBlocks(), z}, aim);
-		if (sight != null) {
-			return new ViewpointCandidate.Rejected(sight);
+		String unseen = sight.check(grid, new double[] {x, feetY + settings.eyeHeightBlocks(), z}, aim);
+		if (unseen != null) {
+			return new ViewpointCandidate.Rejected(unseen);
 		}
 
 		return ViewpointAims.orient(settings, this.projection, random, x, feetY, z, aim, yawJitter, pitchJitter);

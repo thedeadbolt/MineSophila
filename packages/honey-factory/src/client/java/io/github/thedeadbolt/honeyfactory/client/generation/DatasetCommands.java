@@ -8,6 +8,7 @@ import io.github.thedeadbolt.honeyfactory.config.ConfigResolver;
 import io.github.thedeadbolt.honeyfactory.config.ResolvedConfig;
 import io.github.thedeadbolt.honeyfactory.contract.ContractException;
 import io.github.thedeadbolt.honeyfactory.generation.DatasetGenerator;
+import io.github.thedeadbolt.honeyfactory.generation.Generator;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -57,7 +58,7 @@ public final class DatasetCommands {
 				}
 			})))
 			.then(literal("status").executes(context -> {
-				DatasetGenerator generator = DatasetRuns.running();
+				Generator generator = DatasetRuns.running();
 				String message;
 				if (generator != null) {
 					DatasetGenerator.Progress progress = generator.progress();
@@ -76,7 +77,7 @@ public final class DatasetCommands {
 				return 1;
 			}))
 			.then(literal("cancel").executes(context -> {
-				DatasetGenerator generator = DatasetRuns.running();
+				Generator generator = DatasetRuns.running();
 				if (generator == null) {
 					context.getSource().sendError(Component.literal("No dataset generation is running"));
 					return 0;

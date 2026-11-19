@@ -1,6 +1,11 @@
 package io.github.thedeadbolt.honeyfactory.capture;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -97,8 +102,27 @@ final class PanoramaSampling {
 		return new PanoramaSampling(width, height, size, samples);
 	}
 
-	/** Reprojects six face captures, in {@link CubeFace} order, into one panorama. */
+	/** Worker threads shared by every reprojection: all but one processor, at most 16. */
+	static final int THREADS = Math.clamp(Runtime.getRuntime().availableProcessors() - 1, 1, 16);
+	/** Bands of rows per reprojection, more than threads so uneven bands even out. */
+	private static final int BANDS = THREADS * 4;
+	private static final ExecutorService POOL = Executors.newFixedThreadPool(THREADS, Thread.ofPlatform().daemon().name("honey-factory-reproject-", 0).factory());
+
+	/**
+	 * Reprojects six face captures, in {@link CubeFace} order, into one panorama, in bands of
+	 * rows on the shared worker threads. Every output pixel depends only on its own sample, so
+	 * the result equals {@link #reprojectSequential}'s byte for byte.
+	 */
 	CapturedImages reproject(List<CapturedImages> faces) {
+		return reproject(faces, BANDS);
+	}
+
+	/** The same on the calling thread, kept as the reference for tests. */
+	CapturedImages reprojectSequential(List<CapturedImages> faces) {
+		return reproject(faces, 1);
+	}
+
+	private CapturedImages reproject(List<CapturedImages> faces, int bands) {
 		int size = this.faceSize;
 		int count = CubeFace.values().length;
 		if (faces.size() != count) {
@@ -123,8 +147,37 @@ final class PanoramaSampling {
 		byte[] outRgb = new byte[pixels * 3];
 		byte[] outVisible = new byte[pixels];
 		byte[] outUnoccluded = new byte[pixels];
+		if (bands == 1) {
+			reprojectPixels(0, pixels, rgb, visible, unoccluded, outRgb, outVisible, outUnoccluded);
+		} else {
+			List<Future<?>> parts = new ArrayList<>(bands);
+			int rows = Math.ceilDiv(this.height, bands);
+			for (int band = 0; band < bands; band++) {
+				int from = Math.min(band * rows, this.height) * this.width;
+				int to = Math.min((band + 1) * rows, this.height) * this.width;
+				parts.add(POOL.submit(() -> reprojectPixels(from, to, rgb, visible, unoccluded, outRgb, outVisible, outUnoccluded)));
+			}
+
+			for (Future<?> part : parts) {
+				try {
+					part.get();
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					throw new IllegalStateException("interrupted while reprojecting a panorama", e);
+				} catch (ExecutionException e) {
+					throw new IllegalStateException("reprojecting a panorama failed", e.getCause());
+				}
+			}
+		}
+
+		return new CapturedImages(this.width, this.height, outRgb, outVisible, outUnoccluded);
+	}
+
+	/** Reprojects output pixels {@code [from, to)}. */
+	private void reprojectPixels(int from, int to, byte[][] rgb, byte[][] visible, byte[][] unoccluded, byte[] outRgb, byte[] outVisible, byte[] outUnoccluded) {
+		int size = this.faceSize;
 		int last = size - 1;
-		for (int p = 0; p < pixels; p++) {
+		for (int p = from; p < to; p++) {
 			long sample = this.samples[p];
 			int face = (int) (sample >>> (2 * COORDINATE_BITS));
 			int qx = (int) (sample >>> COORDINATE_BITS & COORDINATE_MASK);
@@ -172,8 +225,6 @@ final class PanoramaSampling {
 				outRgb[p * 3 + c] = (byte) ((value + 32_768) >>> 16);
 			}
 		}
-
-		return new CapturedImages(this.width, this.height, outRgb, outVisible, outUnoccluded);
 	}
 
 	/** The face and quantized face coordinates output pixel {@code (x, y)} samples, for tests. */

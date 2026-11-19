@@ -52,6 +52,40 @@ def image_path(root: Literal["rgb", "masks"], split: Split, sample: str) -> str:
     return f"{root}/{split}/{shard(sample)}/{sample}.png"
 
 
+def clip_id(scene: str, clip_index: int) -> str:
+    return f"{scene}-c{clip_index:02d}"
+
+
+def clip_directory(split: Split, clip: str) -> str:
+    """The folder holding a clip's videos and frame records."""
+    return f"clips/{split}/{shard(clip)}/{clip}"
+
+
+@dataclass(frozen=True)
+class ClipSeeds:
+    start: int
+    drive: int
+    drift: int
+
+
+CLIP_ATTEMPTS = 1000
+
+
+def clip_seeds(dataset_seed: int, scene_index: int, clip_index: int, attempt: int) -> ClipSeeds:
+    """``seed-v1`` purposes ``clip-start``, ``clip-drive`` and ``clip-drift``.
+
+    The attempt index is ``clip_index * 1000 + attempt``.
+    """
+    if not 0 <= attempt < CLIP_ATTEMPTS or clip_index < 0:
+        raise ValueError("clip seed inputs out of range")
+    index = clip_index * CLIP_ATTEMPTS + attempt
+    return ClipSeeds(
+        derive_seed("clip-start", dataset_seed, scene_index, index),
+        derive_seed("clip-drive", dataset_seed, scene_index, index),
+        derive_seed("clip-drift", dataset_seed, scene_index, index),
+    )
+
+
 @dataclass(frozen=True)
 class Slot:
     scene_index: int

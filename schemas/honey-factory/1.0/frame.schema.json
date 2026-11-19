@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/thedeadbolt/MineSophila/schemas/honey-factory/1.0/frame.schema.json",
+  "title": "honey-factory clip frames.jsonl record",
+  "description": "The labels of one clip frame (M12-2), derived from that frame's own capture and pose. Frame 0 is the reset (tick 0, sub-frame 0); tick t >= 1 has sub-frames 1 to frames_per_tick, the last at the tick's end. Tick labels (senses, commands, the teacher's mode and belief) sit on frame 0 and on each tick's last frame. Rules comparing members (frame index versus tick, partial tick, where tick labels appear, belief versus position, bearing versus presence, target status versus counts) are enforced by the contract validators, not this schema.",
+  "type": "object",
+  "required": ["schema_version", "clip_id", "frame", "tick", "sub_frame", "frames_per_tick", "partial_tick", "pose", "target", "touches_edge", "bearing"],
+  "properties": {
+    "schema_version": {"$ref": "common.schema.json#/$defs/schemaVersion"},
+    "clip_id": {"$ref": "clip.schema.json#/$defs/clipId"},
+    "frame": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+    "tick": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+    "sub_frame": {"type": "integer", "minimum": 0, "maximum": 8},
+    "frames_per_tick": {"type": "integer", "minimum": 1, "maximum": 8},
+    "partial_tick": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+    "pose": {"$ref": "clip.schema.json#/$defs/pose"},
+    "target": {"$ref": "sample.schema.json#/$defs/target"},
+    "touches_edge": {"type": "boolean"},
+    "bearing": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["azimuth_degrees", "elevation_degrees", "distance_blocks"],
+          "properties": {
+            "azimuth_degrees": {"type": "number", "minimum": -180, "maximum": 180},
+            "elevation_degrees": {"type": "number", "minimum": -90, "maximum": 90},
+            "distance_blocks": {"type": "number", "minimum": 0}
+          }
+        }
+      ]
+    },
+    "tick_labels": {
+      "type": "object",
+      "required": ["server_tick", "velocity", "senses", "executed", "teacher", "teacher_mode", "belief", "drifting", "driver", "guarded", "coverage"],
+      "properties": {
+        "server_tick": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "velocity": {"$ref": "common.schema.json#/$defs/vec3"},
+        "senses": {
+          "type": "object",
+          "required": ["forward_speed", "strafe_speed", "vertical_speed", "yaw_rate", "pitch_rate", "pitch", "down", "on_ground", "bumped", "in_water", "last_command"],
+          "properties": {
+            "down": {"$ref": "common.schema.json#/$defs/vec3"},
+            "on_ground": {"type": "boolean"},
+            "bumped": {"type": "boolean"},
+            "in_water": {"type": "boolean"},
+            "last_command": {"$ref": "clip.schema.json#/$defs/motorCommand"}
+          }
+        },
+        "executed": {"oneOf": [{"type": "null"}, {"$ref": "clip.schema.json#/$defs/motorCommand"}]},
+        "teacher": {"oneOf": [{"type": "null"}, {"$ref": "clip.schema.json#/$defs/motorCommand"}]},
+        "teacher_mode": {"oneOf": [{"type": "null"}, {"$ref": "clip.schema.json#/$defs/teacherMode"}]},
+        "belief": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "required": ["source", "position", "observed_tick"],
+              "properties": {
+                "source": {"enum": ["seen", "memory", "none"]},
+                "position": {"oneOf": [{"type": "null"}, {"$ref": "common.schema.json#/$defs/blockPos"}]},
+                "observed_tick": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
+              }
+            }
+          ]
+        },
+        "drifting": {"type": "boolean"},
+        "driver": {"oneOf": [{"type": "null"}, {"$ref": "clip.schema.json#/$defs/driver"}]},
+        "guarded": {"description": "Whether the edge guard stopped the executed command's walk short of a ledge; the teacher's command is unchanged.", "type": "boolean"},
+        "coverage": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    }
+  }
+}

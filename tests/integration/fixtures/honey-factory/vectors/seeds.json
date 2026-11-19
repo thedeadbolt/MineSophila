@@ -41,5 +41,43 @@
       "target": 4265795045324323,
       "viewpoint": 4487257159390642
     }
+  ],
+  "clips": [
+    {
+      "dataset_seed": 0,
+      "scene_index": 0,
+      "clip_index": 0,
+      "attempt": 0,
+      "start": 570486533354413,
+      "drive": 1276440947385300,
+      "drift": 4146953380264270
+    },
+    {
+      "dataset_seed": 42,
+      "scene_index": 0,
+      "clip_index": 0,
+      "attempt": 1,
+      "start": 8456742488583696,
+      "drive": 3370315706939332,
+      "drift": 3536530123189837
+    },
+    {
+      "dataset_seed": 42,
+      "scene_index": 7,
+      "clip_index": 3,
+      "attempt": 2,
+      "start": 5694045548513072,
+      "drive": 33517725198828,
+      "drift": 8508377312673616
+    },
+    {
+      "dataset_seed": 9007199254740991,
+      "scene_index": 999998,
+      "clip_index": 99,
+      "attempt": 19,
+      "start": 8625109528696754,
+      "drive": 4718633284231428,
+      "drift": 3705949348547678
+    }
   ]
 }

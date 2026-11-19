@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/thedeadbolt/MineSophila/schemas/honey-factory/1.0/clip.schema.json",
+  "title": "honey-factory clips.jsonl record",
+  "description": "One accepted motion clip (M12-2): a frame stream made by driving the player through the control loop, stored as videos plus one frame record per frame. Rules comparing values across members (clip ID versus scene and index, frame count versus ticks, paths versus IDs and shards, clip types, summary totals) are enforced by the contract validators, not this schema.",
+  "type": "object",
+  "required": ["schema_version", "clip_id", "scene_id", "split", "clip_index", "requested_type", "clip_type", "attempt", "seeds", "start_pose", "frames_per_tick", "tick_count", "frame_count", "end_reason", "codec", "files", "executed", "summary"],
+  "properties": {
+    "schema_version": {"$ref": "common.schema.json#/$defs/schemaVersion"},
+    "clip_id": {"$ref": "#/$defs/clipId"},
+    "scene_id": {"$ref": "common.schema.json#/$defs/sceneId"},
+    "split": {"$ref": "common.schema.json#/$defs/split"},
+    "clip_index": {"type": "integer", "minimum": 0, "maximum": 99},
+    "requested_type": {"$ref": "#/$defs/clipType"},
+    "clip_type": {"$ref": "#/$defs/clipType"},
+    "attempt": {"type": "integer", "minimum": 0, "maximum": 999},
+    "seeds": {
+      "type": "object",
+      "required": ["start", "drive", "drift"],
+      "properties": {
+        "start": {"$ref": "common.schema.json#/$defs/seed"},
+        "drive": {"$ref": "common.schema.json#/$defs/seed"},
+        "drift": {"$ref": "common.schema.json#/$defs/seed"}
+      }
+    },
+    "start_pose": {"$ref": "#/$defs/pose"},
+    "frames_per_tick": {"type": "integer", "minimum": 1, "maximum": 8},
+    "tick_count": {"type": "integer", "minimum": 1},
+    "frame_count": {"type": "integer", "minimum": 2},
+    "end_reason": {"enum": ["length", "reached"]},
+    "codec": {"$ref": "#/$defs/codec"},
+    "files": {
+      "type": "object",
+      "required": ["rgb", "visible_mask", "frames"],
+      "properties": {
+        "rgb": {"$ref": "#/$defs/videoFile"},
+        "visible_mask": {"$ref": "#/$defs/videoFile"},
+        "frames": {
+          "type": "object",
+          "required": ["path", "media_type", "bytes", "sha256"],
+          "properties": {
+            "path": {"allOf": [{"$ref": "common.schema.json#/$defs/relativePath"}, {"pattern": "^clips/(train|validation|test)/[0-9a-f]{2}/[^/]+/frames\\.jsonl$"}]},
+            "media_type": {"const": "application/jsonl"},
+            "bytes": {"type": "integer", "minimum": 1},
+            "sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+          }
+        }
+      }
+    },
+    "executed": {"type": "array", "items": {"$ref": "#/$defs/motorCommand"}},
+    "summary": {
+      "type": "object",
+      "required": ["drift_ticks", "reached", "coverage_final", "ticks_by_mode", "ticks_by_driver", "guarded_ticks", "miss_reason"],
+      "properties": {
+        "drift_ticks": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "reached": {"type": ["boolean", "null"]},
+        "coverage_final": {"type": "number", "minimum": 0, "maximum": 1},
+        "ticks_by_mode": {
+          "type": "object",
+          "required": ["track", "reacquire", "search"],
+          "properties": {
+            "track": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+            "reacquire": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+            "search": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
+          }
+        },
+        "ticks_by_driver": {
+          "type": "object",
+          "required": ["teacher", "teacher_drift", "script"],
+          "properties": {
+            "teacher": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+            "teacher_drift": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+            "script": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"}
+          }
+        },
+        "guarded_ticks": {"$ref": "common.schema.json#/$defs/nonNegativeInteger"},
+        "miss_reason": {"description": "Why a clip that sought the honey did not reach it, by the scene's true layout; null when it reached it or did not seek it.", "enum": [null, "timeout", "unreachable", "teacher_failure"]}
+      }
+    }
+  },
+  "$defs": {
+    "clipId": {"type": "string", "pattern": "^s[0-9]{6}-c[0-9]{2}$"},
+    "clipType": {"enum": ["approach", "pass_by", "scan", "occlusion", "detour", "search", "no_honey"]},
+    "teacherMode": {"enum": ["track", "reacquire", "search"]},
+    "driver": {"description": "Who chose a tick's executed command; the teacher's command is the policy target either way.", "enum": ["teacher", "teacher_drift", "script"]},
+    "codec": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "crf": {"type": "integer", "minimum": 0, "maximum": 51}
+      }
+    },
+    "pose": {
+      "type": "object",
+      "required": ["position", "yaw_degrees", "pitch_degrees"],
+      "properties": {
+        "position": {"$ref": "common.schema.json#/$defs/vec3"},
+        "yaw_degrees": {"type": "number", "minimum": -180, "maximum": 180},
+        "pitch_degrees": {"type": "number", "minimum": -90, "maximum": 90}
+      }
+    },
+    "motorCommand": {
+      "type": "object",
+      "required": ["forward", "strafe", "turn_rate", "pitch_rate", "jump", "delay_ticks"],
+      "properties": {
+        "forward": {"type": "number", "minimum": -1, "maximum": 1},
+        "strafe": {"type": "number", "minimum": -1, "maximum": 1},
+        "turn_rate": {"type": "number"},
+        "pitch_rate": {"type": "number"},
+        "jump": {"type": "boolean"},
+        "delay_ticks": {"const": 0}
+      }
+    },
+    "videoFile": {
+      "type": "object",
+      "required": ["path", "media_type", "width", "height", "frames", "bytes", "sha256"],
+      "properties": {
+        "path": {"allOf": [{"$ref": "common.schema.json#/$defs/relativePath"}, {"pattern": "^clips/(train|validation|test)/[0-9a-f]{2}/[^/]+/[a-z_]+\\.mkv$"}]},
+        "media_type": {"const": "video/x-matroska"},
+        "width": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "height": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "frames": {"type": "integer", "minimum": 1},
+        "bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    }
+  }
+}

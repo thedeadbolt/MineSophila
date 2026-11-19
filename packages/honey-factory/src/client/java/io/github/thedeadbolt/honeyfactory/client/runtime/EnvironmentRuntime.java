@@ -7,6 +7,7 @@ import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
 import io.github.thedeadbolt.honeyfactory.client.mixin.AtmosphericFogAccessor;
 import io.github.thedeadbolt.honeyfactory.client.mixin.ClientLevelAccessor;
 import io.github.thedeadbolt.honeyfactory.client.mixin.FogRendererAccessor;
+import io.github.thedeadbolt.honeyfactory.client.mixin.LevelExtractorAccessor;
 import io.github.thedeadbolt.honeyfactory.client.mixin.SectionOcclusionGraphAccessor;
 import io.github.thedeadbolt.honeyfactory.config.ConfigResolver;
 import io.github.thedeadbolt.honeyfactory.control.ActionMacros;
@@ -47,15 +48,21 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.SectionUpdateTracker;
 import net.minecraft.client.player.ClientInput;
 import net.minecraft.client.player.KeyboardInput;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.ViewArea;
+import net.minecraft.client.renderer.chunk.CompiledSectionMesh;
+import net.minecraft.client.renderer.chunk.RenderRegionCache;
+import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.client.renderer.fog.environment.FogEnvironment;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.server.level.ChunkTrackingView;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LightLayer;
@@ -133,8 +140,16 @@ public final class EnvironmentRuntime {
 	}
 
 	/** One control step, the capture it returned, and the control session it belongs to. */
-	public record ControlResult(ControlStep step, CaptureService.Capture capture, long session) {
+	/**
+	 * A control step's record and its captures: {@code capture} at the end of the tick, and
+	 * {@code frames} at partial ticks {@code k / framesPerTick}, the last being
+	 * {@code capture}. A reset's step 0 has the one still frame.
+	 */
+	public record ControlResult(ControlStep step, CaptureService.Capture capture, long session, List<CaptureService.Capture> frames) {
 	}
+
+	/** The most frames a control tick captures. */
+	public static final int MAX_FRAMES_PER_TICK = 8;
 
 	private static final EnvironmentRuntime INSTANCE = new EnvironmentRuntime(Timing.DEFAULT);
 	private static final double POSE_TOLERANCE = 1e-6;
@@ -222,6 +237,7 @@ public final class EnvironmentRuntime {
 			session.restore(Minecraft.getInstance());
 		}
 
+		FramePacing.restoreAll(Minecraft.getInstance());
 		this.coordinator = new OperationCoordinator();
 		this.deferredCapture = null;
 		this.poseSequence = null;
@@ -351,6 +367,19 @@ public final class EnvironmentRuntime {
 	 * auto-jump option are borrowed until {@link #controlEnd}.
 	 */
 	public CompletableFuture<ControlResult> controlReset(ArenaLayout layout, ScenePlan plan, CameraPose start, CaptureProjection projection, long seed) {
+		return controlReset(layout, plan, start, projection, seed, 1);
+	}
+
+	/**
+	 * The same, capturing {@code framesPerTick} frames per later step (1 to
+	 * {@value #MAX_FRAMES_PER_TICK}): the tick's end and evenly spaced points the camera
+	 * passes during it, for motion clips.
+	 */
+	public CompletableFuture<ControlResult> controlReset(ArenaLayout layout, ScenePlan plan, CameraPose start, CaptureProjection projection, long seed, int framesPerTick) {
+		if (framesPerTick < 1 || framesPerTick > MAX_FRAMES_PER_TICK) {
+			return CompletableFuture.failedFuture(new EnvironmentException(EnvironmentException.Reason.INVALID_REQUEST, "frames per tick must be 1 to " + MAX_FRAMES_PER_TICK + ", got " + framesPerTick));
+		}
+
 		Minecraft minecraft = Minecraft.getInstance();
 		if (minecraft.isPaused()) {
 			return CompletableFuture.failedFuture(paused());
@@ -363,7 +392,7 @@ public final class EnvironmentRuntime {
 		releaseStill(minecraft);
 		return reset(layout, plan, start).thenCompose(state -> start(OperationKind.CONTROL_RESET, (server, operation) -> {
 			ControlSession session = this.control == null ? new ControlSession(minecraft) : this.control.restart();
-			session.install(minecraft, projection, seed, this.settings.autoJump());
+			session.install(minecraft, projection, seed, framesPerTick, this.settings.autoJump());
 			// Held from here on, so a failure gives the input back (see onFailure).
 			this.control = session;
 			TickStepper.get().hold(server);
@@ -373,7 +402,8 @@ public final class EnvironmentRuntime {
 				minecraft.level.tickRateManager().isFrozen() && minecraft.gameMode.getPlayerMode() == GameType.ADVENTURE && inArena(minecraft) && sectionsCompiled(minecraft)
 			), (embodied, settled) -> {
 				this.coordinator.advance(operation, OperationState.CAPTURING);
-				return session.record(minecraft, operation, controlStep(minecraft, operation, session, 0, null, null, ControlStep.Executed.STUDENT, MotorState.ZERO, levelTime(server), new double[3]));
+				Captured still = controlStep(minecraft, operation, session, 0, null, null, ControlStep.Executed.STUDENT, MotorState.ZERO, levelTime(server), new double[3]);
+				return session.record(minecraft, operation, still, List.of(still.capture()));
 			});
 			pending.afterWork = () -> this.coordinator.advance(operation, OperationState.SETTLING);
 			return pending;
@@ -430,7 +460,9 @@ public final class EnvironmentRuntime {
 				this.coordinator.advance(operation, OperationState.CAPTURING);
 				session.motor = achieved[0];
 				int index = session.last.step().index() + 1;
-				return session.record(minecraft, operation, controlStep(minecraft, operation, session, index, student, teacher, executed, achieved[0], tick.serverTick(), tick.displacement()));
+				CameraPose from = session.last.step().truth().pose();
+				Captured captured = controlStep(minecraft, operation, session, index, student, teacher, executed, achieved[0], tick.serverTick(), tick.displacement());
+				return session.record(minecraft, operation, captured, frames(minecraft, session, from, captured));
 			});
 			pending.afterWork = () -> this.coordinator.advance(operation, OperationState.SETTLING);
 			return pending;
@@ -503,6 +535,40 @@ public final class EnvironmentRuntime {
 	private record Captured(ControlStep step, CaptureService.Capture capture) {
 	}
 
+	/**
+	 * A step's frames: the camera's poses at partial ticks {@code k / framesPerTick} between
+	 * the last step's pose and this one's, then the end-of-tick capture. The tick only moves
+	 * the body a fraction of a block, so the readiness check of the end pose holds for them;
+	 * a frame that moves into another section rebuilds the section graph first (see
+	 * {@link CaptureService#captureAt}).
+	 */
+	private List<CaptureService.Capture> frames(Minecraft minecraft, ControlSession session, CameraPose from, Captured captured) {
+		int count = session.framesPerTick;
+		if (count == 1) {
+			return List.of(captured.capture());
+		}
+
+		CameraPose to = captured.step().truth().pose();
+		int[] cell = this.scene.targetPosition(this.arena);
+		BlockPos target = cell == null ? null : new BlockPos(cell[0], cell[1], cell[2]);
+		List<CaptureService.Capture> frames = new ArrayList<>(count);
+		for (int k = 1; k < count; k++) {
+			double t = k / (double) count;
+			CameraPose at = new CameraPose(
+				from.x() + (to.x() - from.x()) * t,
+				from.y() + (to.y() - from.y()) * t,
+				from.z() + (to.z() - from.z()) * t,
+				// Poses may hold wrapped yaws (181.8 as -178.2), so turn the short way.
+				(float) (from.yawDegrees() + Mth.wrapDegrees(to.yawDegrees() - from.yawDegrees()) * t),
+				(float) (from.pitchDegrees() + (to.pitchDegrees() - from.pitchDegrees()) * t)
+			);
+			frames.add(CaptureService.captureAt(minecraft, session.projection, target, at, t));
+		}
+
+		frames.add(captured.capture());
+		return List.copyOf(frames);
+	}
+
 	private static long levelTime(IntegratedServer server) {
 		ServerPlayer player = player(server);
 		return player.level().getGameTime();
@@ -525,8 +591,11 @@ public final class EnvironmentRuntime {
 		private final MotorInput input = new MotorInput();
 		private @Nullable ClientInput savedInput;
 		private @Nullable Boolean savedAutoJump;
+		/** The uncapped frame rate, held from the first install until restore. */
+		private FramePacing.@Nullable Lease pacing;
 		private CaptureProjection projection;
 		private long seed;
+		private int framesPerTick = 1;
 		private MotorState motor = MotorState.ZERO;
 		private MotorCommand lastExecuted = MotorCommand.IDLE;
 		private @Nullable ControlResult last;
@@ -539,15 +608,21 @@ public final class EnvironmentRuntime {
 			ControlSession next = new ControlSession(null);
 			next.savedInput = this.savedInput;
 			next.savedAutoJump = this.savedAutoJump;
+			next.pacing = this.pacing;
 			return next;
 		}
 
-		void install(Minecraft minecraft, CaptureProjection projection, long seed, boolean autoJump) {
+		void install(Minecraft minecraft, CaptureProjection projection, long seed, int framesPerTick, boolean autoJump) {
 			this.projection = projection;
 			this.seed = seed;
+			this.framesPerTick = framesPerTick;
 			if (this.savedInput == null) {
 				this.savedInput = minecraft.player.input;
 				this.savedAutoJump = minecraft.options.autoJump().get();
+			}
+
+			if (this.pacing == null) {
+				this.pacing = FramePacing.uncap(minecraft);
 			}
 
 			this.input.set(MotorCommand.IDLE);
@@ -555,8 +630,8 @@ public final class EnvironmentRuntime {
 			minecraft.options.autoJump().set(autoJump);
 		}
 
-		ControlResult record(Minecraft minecraft, Operation operation, Captured captured) {
-			this.last = new ControlResult(captured.step(), captured.capture(), this.id);
+		ControlResult record(Minecraft minecraft, Operation operation, Captured captured, List<CaptureService.Capture> frames) {
+			this.last = new ControlResult(captured.step(), captured.capture(), this.id, frames);
 			return this.last;
 		}
 
@@ -567,6 +642,11 @@ public final class EnvironmentRuntime {
 
 			if (this.savedAutoJump != null) {
 				minecraft.options.autoJump().set(this.savedAutoJump);
+			}
+
+			if (this.pacing != null) {
+				this.pacing.close(minecraft);
+				this.pacing = null;
 			}
 		}
 	}
@@ -602,12 +682,14 @@ public final class EnvironmentRuntime {
 	 * the reset readied. Returns one observation per pose, in order.
 	 */
 	public CompletableFuture<List<Observation>> observeAll(CaptureProjection projection, List<CameraPose> poses) {
+		Minecraft minecraft = Minecraft.getInstance();
+		FramePacing.Lease pacing = FramePacing.uncap(minecraft);
 		return start(OperationKind.OBSERVE, (server, operation) -> {
 			int[] target = this.scene.targetPosition(this.arena);
 			PoseSequence sequence = new PoseSequence(operation, projection, target == null ? null : new BlockPos(target[0], target[1], target[2]), poses);
 			this.poseSequence = sequence;
 			return new Pending<>(operation, sequence.result, 0, 0, observations -> true, (observations, settled) -> observations);
-		});
+		}).whenComplete((observations, error) -> minecraft.execute(() -> pacing.close(minecraft)));
 	}
 
 	/** The poses of one {@link #observeAll} operation, advanced between frames. */
@@ -1046,9 +1128,14 @@ public final class EnvironmentRuntime {
 
 	/**
 	 * Whether every section in view is compiled and the occlusion graph that picks the
-	 * sections to draw is current for the camera's position.
+	 * sections to draw is current for the camera's position. First rebuilds every arena
+	 * section whose blocks changed, in view or not, as a panorama looks every way.
 	 */
-	private static boolean sectionsCompiled(Minecraft minecraft) {
+	private boolean sectionsCompiled(Minecraft minecraft) {
+		if (this.arena != null) {
+			compileArena(minecraft, this.arena.resetVolume());
+		}
+
 		if (!minecraft.levelRenderer.hasRenderedAllSections()) {
 			return false;
 		}
@@ -1056,6 +1143,43 @@ public final class EnvironmentRuntime {
 		SectionOcclusionGraphAccessor graph = (SectionOcclusionGraphAccessor) minecraft.levelRenderer.sectionOcclusionGraph();
 		Future<?> rebuild = graph.honeyFactory$fullUpdateTask();
 		return !graph.honeyFactory$needsFullUpdate() && (rebuild == null || rebuild.isDone()) && !graph.honeyFactory$needsFrustumUpdate().get();
+	}
+
+	/**
+	 * Rebuilds, on this thread, every section of {@code box} whose blocks changed since its
+	 * mesh was built. The game rebuilds only sections in view; a section behind the camera
+	 * would otherwise keep its old mesh until a capture's view turned to it, and that view
+	 * would draw it stale. Sections the game would not build yet, without their neighbours
+	 * loaded, are left as they are.
+	 */
+	private static void compileArena(Minecraft minecraft, BlockBox box) {
+		ViewArea view = minecraft.levelRenderer.viewArea();
+		SectionUpdateTracker tracker = ((LevelExtractorAccessor) minecraft.levelExtractor).honeyFactory$sectionUpdateTracker();
+		if (view == null || tracker == null) {
+			return;
+		}
+
+		RenderRegionCache cache = null;
+		for (int x = SectionPos.blockToSectionCoord(box.minX()); x <= SectionPos.blockToSectionCoord(box.maxX()); x++) {
+			for (int y = SectionPos.blockToSectionCoord(box.minY()); y <= SectionPos.blockToSectionCoord(box.maxY()); y++) {
+				for (int z = SectionPos.blockToSectionCoord(box.minZ()); z <= SectionPos.blockToSectionCoord(box.maxZ()); z++) {
+					long node = SectionPos.asLong(x, y, z);
+					SectionUpdateTracker.SectionDirtyState dirty = tracker.getDirtyState(node);
+					SectionRenderDispatcher.RenderSection section = view.getRenderSectionAt(SectionPos.of(x, y, z).origin());
+					if (dirty == null || !dirty.isDirty() || section == null
+						|| section.sectionMesh.get() == CompiledSectionMesh.UNCOMPILED && !tracker.hasAllNeighbors(minecraft.level, node)) {
+						continue;
+					}
+
+					if (cache == null) {
+						cache = new RenderRegionCache();
+					}
+
+					section.compileSync(cache.createRegion(minecraft.level, node));
+					dirty.setNotDirty();
+				}
+			}
+		}
 	}
 
 	/** How strongly rain currently thickens the atmospheric fog; see {@link AtmosphericFogAccessor}. */

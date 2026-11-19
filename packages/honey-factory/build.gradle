@@ -36,6 +36,8 @@ fabricApi {
 loom {
 	runs {
 		clientGameTest {
+			// The client's game folder; separate folders let several instances run at once (M12-1).
+			runDir providers.systemProperty("honeyfactory.runDir").getOrElse("build/run/clientGameTest")
 			property("honeyfactory.repoRoot", file('../..').canonicalPath)
 			property("honeyfactory.regenerateGolden", providers.systemProperty("honeyfactory.regenerateGolden").getOrElse("false"))
 			// Comma-separated test name prefixes, such as M6; empty runs every test.
@@ -50,6 +52,13 @@ loom {
 			property("honeyfactory.productionScenes", providers.systemProperty("honeyfactory.productionScenes").getOrElse(""))
 			// Steps the M11 exit test drives through the control server; empty uses 300.
 			property("honeyfactory.controlSteps", providers.systemProperty("honeyfactory.controlSteps").getOrElse(""))
+			// The M12 benchmark's output label and the reference it is compared with; empty uses baseline for both.
+			property("honeyfactory.benchmarkLabel", providers.systemProperty("honeyfactory.benchmarkLabel").getOrElse(""))
+			property("honeyfactory.benchmarkBefore", providers.systemProperty("honeyfactory.benchmarkBefore").getOrElse(""))
+			// The generation job file GenerationJobTest runs (M12-1 generate --instances); empty runs none.
+			property("honeyfactory.job", providers.systemProperty("honeyfactory.job").getOrElse(""))
+			// The merged dataset whose slices' worlds M12ExitReplayTest replays a scene in.
+			property("honeyfactory.exitDataset", providers.systemProperty("honeyfactory.exitDataset").getOrElse(""))
 		}
 	}
 }

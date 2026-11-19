@@ -1,6 +1,7 @@
 package io.github.thedeadbolt.honeyfactory.gametest;
 
 import io.github.thedeadbolt.honeyfactory.capture.PerspectiveProjection;
+import io.github.thedeadbolt.honeyfactory.client.capture.CaptureService;
 import io.github.thedeadbolt.honeyfactory.client.runtime.EnvironmentRuntime;
 import io.github.thedeadbolt.honeyfactory.control.ControlStep;
 import io.github.thedeadbolt.honeyfactory.control.MotorCommand;
@@ -9,10 +10,13 @@ import io.github.thedeadbolt.honeyfactory.environment.EnvironmentException;
 import io.github.thedeadbolt.honeyfactory.scene.FixturePlans;
 import io.github.thedeadbolt.honeyfactory.scene.ViewpointPlan;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import net.minecraft.client.InactivityFpsLimit;
+import net.minecraft.client.Options;
 import net.minecraft.client.player.KeyboardInput;
 
 /**
@@ -26,6 +30,8 @@ public class M11ControlLoopTest implements FabricClientGameTest {
 	private static final PerspectiveProjection PROJECTION = new PerspectiveProjection(64, 48);
 	private static final long SEED = 7L;
 	private static final boolean USER_AUTO_JUMP = false;
+	/** The user's frame pacing, which control sessions lift and must give back. */
+	private static final int USER_FRAMERATE_LIMIT = 90;
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
@@ -34,7 +40,12 @@ public class M11ControlLoopTest implements FabricClientGameTest {
 		}
 
 		GameTestSupport.pinCaptureSettings(context);
-		context.runOnClient(minecraft -> minecraft.options.autoJump().set(USER_AUTO_JUMP));
+		context.runOnClient(minecraft -> {
+			minecraft.options.autoJump().set(USER_AUTO_JUMP);
+			minecraft.options.framerateLimit().set(USER_FRAMERATE_LIMIT);
+			minecraft.options.enableVsync().set(true);
+			minecraft.options.inactivityFpsLimit().set(InactivityFpsLimit.AFK);
+		});
 		List<String> failures = new ArrayList<>();
 		try (TestSingleplayerContext world = GameTestSupport.datasetWorld(context, WORLD_NAME)) {
 			GameTestSupport.claim(world, WORLD_NAME);
@@ -46,7 +57,13 @@ public class M11ControlLoopTest implements FabricClientGameTest {
 				failures.add("reset gave step " + first.step().index() + " with a " + first.capture().images().width() + "x" + first.capture().images().height() + " frame");
 			}
 
+			String pacing = pacing(context);
+			if (!pacing.equals(Options.UNLIMITED_FRAMERATE_CUTOFF + " false minimized")) {
+				failures.add("a control session runs with frame pacing " + pacing + ", expected it uncapped");
+			}
+
 			turning(context, failures);
+			framesPerTick(context, failures);
 			walking(context, failures);
 			teacher(context, failures);
 			bumping(context, failures);
@@ -68,6 +85,11 @@ public class M11ControlLoopTest implements FabricClientGameTest {
 		boolean autoJump = context.computeOnClient(minecraft -> minecraft.options.autoJump().get());
 		if (autoJump != USER_AUTO_JUMP) {
 			failures.add("leaving the world mid-session left auto-jump " + autoJump);
+		}
+
+		String pacing = pacing(context);
+		if (!pacing.equals(USER_PACING)) {
+			failures.add("leaving the world mid-session left frame pacing " + pacing + ", expected " + USER_PACING);
 		}
 
 		if (!failures.isEmpty()) {
@@ -106,6 +128,60 @@ public class M11ControlLoopTest implements FabricClientGameTest {
 
 			if (horizontal(previous.step().truth().pose(), result.step().truth().pose()) > 1e-6) {
 				failures.add("turning in place moved the body at step " + i);
+			}
+
+			previous = result;
+		}
+	}
+
+	/**
+	 * M12-1 task 7: with 3 frames per tick, a step returns 3 frames at partial ticks 1/3,
+	 * 2/3 and 1, whose yaws step evenly through the tick's turn; the last frame equals the
+	 * single frame of a 1-frame session given the same commands; every mask is binary.
+	 */
+	private static void framesPerTick(ClientGameTestContext context, List<String> failures) {
+		MotorCommand turn = new MotorCommand(0.4, 0.0, 9.0, 0.0, false, 0);
+		CameraPose start = FixturePlans.courseStart(FixturePlans.Lane.STEP).pose();
+		List<EnvironmentRuntime.ControlResult> single = new ArrayList<>();
+		GameTestSupport.await(context, runtime -> runtime.controlReset(FixturePlans.ARENA, FixturePlans.course(), start, PROJECTION, SEED, 1));
+		for (int i = 0; i < 8; i++) {
+			single.add(step(context, turn));
+		}
+
+		EnvironmentRuntime.ControlResult previous = GameTestSupport.await(context, runtime -> runtime.controlReset(FixturePlans.ARENA, FixturePlans.course(), start, PROJECTION, SEED, 3));
+		if (previous.frames().size() != 1) {
+			failures.add("a 3-frame reset gave " + previous.frames().size() + " frames, expected its one still frame");
+		}
+
+		for (int i = 0; i < 8; i++) {
+			EnvironmentRuntime.ControlResult result = step(context, turn);
+			List<CaptureService.Capture> frames = result.frames();
+			if (frames.size() != 3) {
+				failures.add("3-frame step " + i + " gave " + frames.size() + " frames");
+				return;
+			}
+
+			double from = previous.step().truth().pose().yawDegrees();
+			double turned = wrap(result.step().truth().pose().yawDegrees() - from);
+			for (int k = 0; k < 3; k++) {
+				CaptureService.Capture frame = frames.get(k);
+				double expected = from + turned * (k + 1) / 3.0;
+				if (Math.abs(frame.partialTick() - (k + 1) / 3.0) > 1e-9 || Math.abs(wrap(frame.pose().yawDegrees() - expected)) > 1e-3) {
+					failures.add("3-frame step " + i + " frame " + k + ": partial " + frame.partialTick() + ", yaw " + frame.pose().yawDegrees() + ", expected " + expected);
+				}
+
+				for (byte value : frame.images().visibleMask()) {
+					if (value != 0 && value != (byte) 255) {
+						failures.add("3-frame step " + i + " frame " + k + " has a non-binary mask value " + (value & 0xFF));
+						break;
+					}
+				}
+			}
+
+			CaptureService.Capture last = frames.get(2);
+			CaptureService.Capture alone = single.get(i).capture();
+			if (!Arrays.equals(last.images().rgb(), alone.images().rgb()) || !Arrays.equals(last.images().visibleMask(), alone.images().visibleMask())) {
+				failures.add("3-frame step " + i + ": the last frame differs from the 1-frame session's frame of the same tick");
 			}
 
 			previous = result;
@@ -195,6 +271,19 @@ public class M11ControlLoopTest implements FabricClientGameTest {
 		if (!keyboard || autoJump != USER_AUTO_JUMP) {
 			failures.add(what + " left keyboard input " + keyboard + " and auto-jump " + autoJump);
 		}
+
+		String pacing = pacing(context);
+		if (!pacing.equals(USER_PACING)) {
+			failures.add(what + " left frame pacing " + pacing + ", expected " + USER_PACING);
+		}
+	}
+
+	private static final String USER_PACING = USER_FRAMERATE_LIMIT + " true afk";
+
+	/** The frame-rate limit, vsync and inactivity limit, as one string. */
+	private static String pacing(ClientGameTestContext context) {
+		return context.computeOnClient(minecraft -> minecraft.options.framerateLimit().get() + " " + minecraft.options.enableVsync().get() + " "
+			+ minecraft.options.inactivityFpsLimit().get().getSerializedName());
 	}
 
 	/** Mouse turns, which arrive every frame through LocalPlayer.turn, do not move a held body. */

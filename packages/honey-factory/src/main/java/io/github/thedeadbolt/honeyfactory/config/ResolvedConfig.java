@@ -8,6 +8,8 @@ import io.github.thedeadbolt.honeyfactory.capture.CaptureProjection;
 import io.github.thedeadbolt.honeyfactory.contract.Algorithms;
 import io.github.thedeadbolt.honeyfactory.contract.CanonicalJson;
 import io.github.thedeadbolt.honeyfactory.contract.CaptureMode;
+import io.github.thedeadbolt.honeyfactory.contract.ClipSettings;
+import io.github.thedeadbolt.honeyfactory.contract.DatasetKind;
 import io.github.thedeadbolt.honeyfactory.contract.Ids;
 import io.github.thedeadbolt.honeyfactory.contract.MaskStatistics;
 import io.github.thedeadbolt.honeyfactory.contract.SplitGrouping;
@@ -39,8 +41,20 @@ public record ResolvedConfig(
 	Capture capture,
 	Quotas quotas,
 	Splits splits,
-	Output output
+	Output output,
+	@Nullable ClipSettings clips
 ) {
+	/** A still-dataset configuration. */
+	public ResolvedConfig(String datasetName, int difficulty, long seed, Target target, Arena arena, Viewpoints viewpoints, SceneSpec scene, Visibility visibility, Capture capture,
+		Quotas quotas, Splits splits, Output output) {
+		this(datasetName, difficulty, seed, target, arena, viewpoints, scene, visibility, capture, quotas, splits, output, null);
+	}
+
+	/** Stills, or motion clips when the configuration has clip settings (M12-2). */
+	public DatasetKind kind() {
+		return this.clips == null ? DatasetKind.STILLS : DatasetKind.CLIPS;
+	}
+
 	public record Target(String blockId, List<String> allowedBlockStates, double presentFraction) {
 	}
 
@@ -84,7 +98,22 @@ public record ResolvedConfig(
 	 * Where datasets are written and the free space a run keeps there; neither affects the
 	 * generated data, so neither enters the resolved configuration.
 	 */
-	public record Output(Path root, long freeSpaceReserveBytes) {
+	/** Where and how the dataset is written; machine-specific, so outside the configuration hash. */
+	public record Output(Path root, long freeSpaceReserveBytes, @Nullable Slice slice) {
+	}
+
+	/**
+	 * One of {@code count} instances generating a dataset together (M12-1): this one
+	 * generates the scene slots whose group, the scene index or on a natural base the
+	 * source patch, is {@code index} modulo {@code count}. {@code world} names the world it
+	 * generates in, for replay.
+	 */
+	public record Slice(int index, int count, @Nullable String world) {
+		public static final int MAX_COUNT = 64;
+
+		public boolean holds(int group) {
+			return group % this.count == this.index;
+		}
 	}
 
 	public Path outputRoot() {
@@ -157,6 +186,10 @@ public record ResolvedConfig(
 		algorithms.addProperty("layout", Algorithms.LAYOUT);
 		algorithms.addProperty("scene_generator", Algorithms.sceneGenerator(this.difficulty));
 		generator.add("algorithms", algorithms);
+		if (this.clips != null) {
+			generator.add("clips", this.clips.toJson());
+		}
+
 		return generator;
 	}
 

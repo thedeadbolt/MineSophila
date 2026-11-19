@@ -280,11 +280,16 @@ public record SampleRecord(
 	}
 
 	private static Target target(JsonFields target, ImageFile mask) {
+		return target(target, mask.width(), mask.height());
+	}
+
+	/** A target object whose box and centroid lie in a {@code width × height} mask. */
+	static Target target(JsonFields target, int width, int height) {
 		boolean present = target.bool("target_present");
 		boolean inProjection = target.bool("target_in_projection");
 		int visible = target.integer32("visible_pixels", 0, Integer.MAX_VALUE);
 		int unoccluded = target.integer32("unoccluded_pixels", 0, Integer.MAX_VALUE);
-		long maskPixels = (long) mask.width() * mask.height();
+		long maskPixels = (long) width * height;
 		if (unoccluded > maskPixels) {
 			throw target.error("unoccluded_pixels", "exceeds the mask's " + maskPixels + " pixels");
 		}
@@ -313,8 +318,8 @@ public record SampleRecord(
 		}
 
 		if (bbox != null) {
-			if (bbox[0] < 0 || bbox[1] < 0 || bbox[2] < 1 || bbox[3] < 1 || bbox[0] + bbox[2] > mask.width() || bbox[1] + bbox[3] > mask.height()) {
-				throw target.error("visible_bbox_xywh", "must lie inside the " + mask.width() + "x" + mask.height() + " mask");
+			if (bbox[0] < 0 || bbox[1] < 0 || bbox[2] < 1 || bbox[3] < 1 || bbox[0] + bbox[2] > width || bbox[1] + bbox[3] > height) {
+				throw target.error("visible_bbox_xywh", "must lie inside the " + width + "x" + height + " mask");
 			}
 
 			if ((long) bbox[2] * bbox[3] < visible) {

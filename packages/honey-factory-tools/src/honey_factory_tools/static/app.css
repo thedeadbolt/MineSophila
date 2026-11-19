@@ -36,6 +36,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Panels toggled with the hidden attribute stay hidden whatever display their class sets. */
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 /* The page is exactly the window; only the panes inside it scroll. */
 body { margin: 0; background: var(--chrome); color: var(--ink); height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
@@ -203,3 +205,37 @@ dd { margin: 0; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }
 }
+
+/* Clip player (M12-2): the frame fills the stage, a scrub bar and a timeline follow it. */
+#results button.result.current { background: var(--honey-soft); box-shadow: inset 3px 0 0 var(--honey); }
+#clip-filters { display: grid; gap: 0.5rem; margin-bottom: 0.6rem; }
+.clip-stage { flex: 1 1 auto; min-height: max(12rem, 32vh); }
+#results li button.result { grid-template-columns: auto minmax(0, 1fr); row-gap: 0.1rem; }
+#results li button.result .chip { justify-self: start; }
+#results li button.result .muted { grid-column: 1 / -1; font-size: 0.8rem; color: var(--muted); }
+/* The player gets the room: narrower side panes, and none at all in wide mode. */
+body.clips .workspace { grid-template-columns: 16rem minmax(0, 1fr) 18rem; grid-template-rows: minmax(0, 1fr); }
+body.clips .results { grid-column: 1; grid-row: 1; }
+body.clips #clip-view { grid-column: 2; grid-row: 1; }
+body.clips #clip-details { grid-column: 3; grid-row: 1; }
+body.clips .viewer { gap: 0.45rem; padding: 0.5rem 0.75rem; overflow: auto; }
+body.clips.wide .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+body.clips.wide .results, body.clips.wide #clip-details { display: none; }
+body.clips.wide #clip-view { grid-column: 1; grid-row: 1; }
+#clip-zoom-fit.on, #clip-wide[aria-pressed="true"] { background: var(--honey-soft); border-color: var(--honey); }
+@media (max-width: 1180px) {
+  body.clips .workspace { grid-template-columns: 15rem minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  body.clips .results { grid-column: 1; grid-row: 1 / span 2; }
+  body.clips #clip-view { grid-column: 2; grid-row: 1; }
+  body.clips #clip-details { grid-column: 2; grid-row: 2; max-height: 24vh; border-left: 0; border-top: 1px solid var(--rule); }
+}
+.clip-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; transform: none; }
+#clip-loading { position: absolute; inset: auto 0 0.5rem 0; margin: 0; text-align: center; color: #fff; text-shadow: 0 1px 2px #000; }
+#clip-errors { color: var(--fail); }
+.scrub { display: flex; gap: 0.75rem; align-items: center; }
+.scrub input { flex: 1; accent-color: var(--honey); }
+.scrub output { color: var(--muted); white-space: nowrap; min-width: 14rem; text-align: right; }
+.timeline h2 { display: flex; flex-wrap: wrap; gap: 0.3rem 0.8rem; align-items: baseline; font-size: 0.85rem; color: var(--muted); font-weight: 500; }
+.timeline canvas { width: 100%; height: 5rem; display: block; cursor: pointer; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-control); }
+.legend { display: inline-flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; font-weight: 400; }
+.legend .key::before { content: ""; display: inline-block; width: 0.7em; height: 0.7em; margin-right: 0.3em; border-radius: 2px; background: var(--key); vertical-align: -0.05em; }

@@ -175,11 +175,16 @@ def scene_errors(scene: Record) -> list[str]:
         ):
             errors.append(f"/environment/gamerules/{rule}: must be a boolean or an integer")
 
+    clips: int | None = scene.get("accepted_clip_count")
+    if clips is not None and scene["accepted_sample_count"] != 0:
+        errors.append("/accepted_sample_count: is 0 in a clip dataset's scene")
     parameters: Record | None = generation.get("parameters")
     if parameters is not None:
-        if len(parameters["viewpoint_draws"]) != scene["accepted_sample_count"]:
+        draws = scene["accepted_sample_count"] if clips is None else clips
+        if len(parameters["viewpoint_draws"]) != draws:
             errors.append(
-                "/generation/parameters/viewpoint_draws: needs one draw per accepted sample"
+                "/generation/parameters/viewpoint_draws: needs one draw per accepted sample, "
+                "or per accepted clip in a clip dataset"
             )
         if not _inside(parameters["aim_block"], low, high):
             errors.append("/generation/parameters/aim_block: must lie inside the arena bounds")
@@ -224,8 +229,17 @@ def manifest_errors(manifest: Record) -> list[str]:
         )
 
     counts: Record = manifest["counts"]
-    if counts["requested_scenes"] != accepted_requested:
+    slice_: Record | None = manifest.get("slice")
+    if slice_ is None and counts["requested_scenes"] != accepted_requested:
         errors.append("/counts/requested_scenes: must equal generator.accepted_scenes")
+    if slice_ is not None:
+        slots: list[int] = slice_["slots"]
+        if counts["requested_scenes"] != len(slots):
+            errors.append(f"/counts/requested_scenes: must equal the slice's {len(slots)} slots")
+        if slots != sorted(set(slots)):
+            errors.append("/slice/slots: must be scene indexes in increasing order")
+        if slice_["index"] >= slice_["count"]:
+            errors.append("/slice/index: must be less than count")
     if (
         counts["accepted_scenes"] + counts["rejected_scenes"] + counts["failed_scenes"]
         != counts["attempted_scenes"]
@@ -236,7 +250,7 @@ def manifest_errors(manifest: Record) -> list[str]:
     if sum(cast(dict[str, int], counts["rejection_reasons"]).values()) != counts["rejected_scenes"]:
         errors.append("/counts/rejection_reasons: must sum to rejected_scenes")
 
-    return errors + _lifecycle_errors(manifest)
+    return errors + _kind_errors(manifest) + _lifecycle_errors(manifest)
 
 
 def _lifecycle_errors(manifest: Record) -> list[str]:
@@ -275,8 +289,209 @@ def _lifecycle_errors(manifest: Record) -> list[str]:
         samples = sum(count["samples"] for count in split_counts.values())
         if (scenes, samples) != (counts["accepted_scenes"], counts["accepted_samples"]):
             errors.append("/splits/counts: must sum to the accepted scene and sample counts")
+        if is_clips(manifest):
+            clips = sum(count.get("clips", -1) for count in split_counts.values())
+            if clips != counts.get("accepted_clips"):
+                errors.append("/splits/counts: clips must sum to the accepted clip count")
     return errors
 
 
 def _time(value: str) -> datetime:
     return datetime.fromisoformat(value)
+
+
+CLIP_TYPES = ("approach", "pass_by", "scan", "occlusion", "detour", "search", "no_honey")
+CODECS = ("h264-lossless", "ffv1", "h264-lossy")
+# Clip types that seek the honey and record whether they reached it.
+SEEKING_TYPES = ("approach", "detour", "occlusion", "search")
+LOSSLESS_CODECS = ("h264-lossless", "ffv1")
+_STILL_STORAGE_INDEXES = {"scenes": "scenes.jsonl", "samples": "samples.jsonl"}
+
+
+def is_clips(manifest: Record) -> bool:
+    """Whether the manifest describes a clip dataset (M12-2); a missing ``kind`` means stills."""
+    return manifest.get("kind", "stills") == "clips"
+
+
+def mask_codec(rgb_codec: str) -> str:
+    """The lossless codec a clip's masks use beside ``rgb_codec``."""
+    return "ffv1" if rgb_codec == "ffv1" else "h264-lossless"
+
+
+def _kind_errors(manifest: Record) -> list[str]:
+    clips: Record | None = manifest["generator"].get("clips")
+    storage: Record = manifest["storage"]
+    if not is_clips(manifest):
+        errors: list[str] = []
+        if clips is not None:
+            errors.append("/generator/clips: only a clip dataset has clip settings")
+        if storage.get("indexes") != _STILL_STORAGE_INDEXES:
+            errors.append("/storage: a still dataset uses the still layout")
+        return errors
+    if clips is None:
+        return ["/generator/clips: a clip dataset needs its clip settings"]
+    errors = []
+    codec: str = clips["codec"]["name"]
+    if codec not in CODECS:
+        errors.append(f"/generator/clips/codec/name: must be one of {', '.join(CODECS)}")
+    if "crf" in clips["codec"] and codec != "h264-lossy":
+        errors.append("/generator/clips/codec/crf: applies to h264-lossy only")
+    if not sum(cast(dict[str, float], clips["mix"]).values()) > 0:
+        errors.append("/generator/clips/mix: needs a positive weight")
+    if not 0 <= clips["drift"]["rate"] < 1:
+        errors.append("/generator/clips/drift/rate: must lie in [0, 1)")
+    encodings: Record | None = storage.get("encodings")
+    if "clip_root" not in storage or encodings is None:
+        errors.append("/storage: a clip dataset uses the clip layout")
+    else:
+        if encodings["rgb"] != codec:
+            errors.append(f"/storage/encodings/rgb: must be the clip codec {codec}")
+        if encodings["mask"] != mask_codec(codec):
+            errors.append(
+                f"/storage/encodings/mask: must be {mask_codec(codec)}, which is lossless"
+            )
+    if "accepted_clips" not in manifest["counts"]:
+        errors.append("/counts/accepted_clips: a clip dataset counts its clips")
+    integrity: Record | None = manifest.get("integrity")
+    if integrity is not None and "clips" not in integrity["indexes"]:
+        errors.append("/integrity/indexes/clips: a clip dataset digests clips.jsonl")
+    return errors
+
+
+def clip_errors(clip: Record) -> list[str]:
+    errors: list[str] = []
+    expected = ids.clip_id(clip["scene_id"], clip["clip_index"])
+    if clip["clip_id"] != expected:
+        errors.append(f"/clip_id: must be '{expected}' for this scene and clip index")
+    ticks: int = clip["tick_count"]
+    frames: int = 1 + ticks * clip["frames_per_tick"]
+    if clip["frame_count"] != frames:
+        errors.append(
+            f"/frame_count: must be {frames}, one reset frame plus ticks x frames per tick"
+        )
+    if len(clip["executed"]) != ticks:
+        errors.append(f"/executed: needs one command per tick ({ticks})")
+    directory = ids.clip_directory(clip["split"], clip["clip_id"])
+    files: Record = clip["files"]
+    for key, name in (
+        ("rgb", "rgb.mkv"),
+        ("visible_mask", "visible.mkv"),
+        ("frames", "frames.jsonl"),
+    ):
+        if files[key]["path"] != f"{directory}/{name}":
+            errors.append(f"/files/{key}/path: must be '{directory}/{name}'")
+    rgb, mask = files["rgb"], files["visible_mask"]
+    if (rgb["width"], rgb["height"]) != (mask["width"], mask["height"]):
+        errors.append("/files/visible_mask: dimensions differ from the RGB video")
+    for key, video in (("rgb", rgb), ("visible_mask", mask)):
+        if video["frames"] != clip["frame_count"]:
+            errors.append(f"/files/{key}/frames: must hold all {clip['frame_count']} frames")
+
+    requested: str = clip["requested_type"]
+    clip_type: str = clip["clip_type"]
+    if requested != clip_type and not (
+        requested in ("occlusion", "detour", "search") and clip_type == "approach"
+    ):
+        errors.append(
+            "/clip_type: may differ from requested_type only as an occlusion, detour or "
+            "search clip falling back to approach"
+        )
+    summary: Record = clip["summary"]
+    reached: bool | None = summary["reached"]
+    if (clip_type in SEEKING_TYPES) != (reached is not None):
+        errors.append(
+            "/summary/reached: is recorded for approach, detour, occlusion and search clips only"
+        )
+    if clip["end_reason"] == "reached" and reached is not True:
+        errors.append("/end_reason: a reached end needs a clip that reached the honey")
+    if (reached is False) != (summary["miss_reason"] is not None):
+        errors.append(
+            "/summary/miss_reason: is recorded exactly when a clip that sought the honey "
+            "did not reach it"
+        )
+    if sum(cast(dict[str, int], summary["ticks_by_mode"]).values()) != ticks:
+        errors.append("/summary/ticks_by_mode: must add up to the tick count")
+    if summary["drift_ticks"] > ticks:
+        errors.append("/summary/drift_ticks: must not exceed the tick count")
+    if summary["guarded_ticks"] > ticks:
+        errors.append("/summary/guarded_ticks: must not exceed the tick count")
+    drivers = cast(dict[str, int], summary["ticks_by_driver"])
+    if sum(drivers.values()) != ticks:
+        errors.append("/summary/ticks_by_driver: must add up to the tick count")
+    scripted_type = clip_type in ("scan", "pass_by")
+    if (scripted_type and drivers["script"] != ticks) or (
+        not scripted_type and clip_type != "occlusion" and drivers["script"] != 0
+    ):
+        errors.append(
+            "/summary/ticks_by_driver: a script drives every tick of scan and pass-by clips, "
+            "part of an occlusion clip, and no tick of others"
+        )
+
+    codec: Record = clip["codec"]
+    if codec["name"] not in CODECS:
+        errors.append(f"/codec/name: must be one of {', '.join(CODECS)}")
+    elif "crf" in codec and codec["name"] != "h264-lossy":
+        errors.append("/codec/crf: applies to h264-lossy only")
+    return errors
+
+
+def frame_errors(frame: Record) -> list[str]:
+    """Rules within one frame record; box placement within the video is checked per dataset."""
+    errors: list[str] = []
+    tick: int = frame["tick"]
+    sub: int = frame["sub_frame"]
+    per_tick: int = frame["frames_per_tick"]
+    if tick == 0:
+        if sub != 0 or frame["frame"] != 0 or frame["partial_tick"] != 1.0:
+            errors.append("/sub_frame: the reset frame is frame 0, sub-frame 0, partial tick 1")
+    else:
+        if not 1 <= sub <= per_tick:
+            errors.append(f"/sub_frame: must lie in 1 to {per_tick} after the reset")
+        expected = (tick - 1) * per_tick + sub
+        if frame["frame"] != expected:
+            errors.append(f"/frame: must be {expected} for tick {tick}, sub-frame {sub}")
+        if not math.isclose(frame["partial_tick"], sub / per_tick, rel_tol=0, abs_tol=1e-9):
+            errors.append(f"/partial_tick: must be sub_frame / frames_per_tick ({sub / per_tick})")
+
+    labels: Record | None = frame.get("tick_labels")
+    if (sub in (0, per_tick)) != (labels is not None):
+        errors.append("/tick_labels: appear exactly on the reset frame and each tick's last frame")
+    if labels is not None:
+        commands = (
+            labels["executed"],
+            labels["teacher"],
+            labels["teacher_mode"],
+            labels["belief"],
+            labels["driver"],
+        )
+        if tick == 0 and any(value is not None for value in commands):
+            errors.append(
+                "/tick_labels/executed: the reset frame carries no commands, belief or driver"
+            )
+        if tick > 0 and any(value is None for value in commands):
+            errors.append(
+                "/tick_labels/executed: a later tick carries its commands, mode, belief and driver"
+            )
+        if tick == 0 and labels["guarded"]:
+            errors.append("/tick_labels/guarded: the reset frame executes nothing to guard")
+        driver: str | None = labels["driver"]
+        if (driver == "teacher_drift" and not labels["drifting"]) or (
+            driver == "teacher" and labels["drifting"]
+        ):
+            errors.append(
+                "/tick_labels/driver: is teacher_drift exactly when the teacher drove a "
+                "drifting tick"
+            )
+        belief: Record | None = labels["belief"]
+        if belief is not None:
+            if (belief["source"] == "none") != (belief["position"] is None):
+                errors.append(
+                    "/tick_labels/belief/position: is null exactly when the source is none"
+                )
+            if belief["observed_tick"] != tick - 1:
+                errors.append(f"/tick_labels/belief/observed_tick: must be {tick - 1}")
+
+    target: Record = frame["target"]
+    if target["target_present"] == (frame["bearing"] is None):
+        errors.append("/bearing: is null exactly when the target is absent")
+    return errors + _target_errors(target, 65536, 65536)

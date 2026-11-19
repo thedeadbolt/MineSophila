@@ -19,6 +19,7 @@ import io.github.thedeadbolt.honeyfactory.scene.ScenePlan;
 import io.github.thedeadbolt.honeyfactory.scene.SourcePatch;
 import io.github.thedeadbolt.honeyfactory.scene.Template;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /** Builds the contract records of one dataset from generation results; it touches no files. */
 final class RecordFactory {
@@ -68,6 +69,11 @@ final class RecordFactory {
 
 	/** @param draws the accepted draw of each viewpoint, in order */
 	SceneRecord scene(SceneDescriptor descriptor, GeneratedScene generated, List<Integer> draws, GenerationEnvironment.SceneReady ready, int acceptedSamples) {
+		return scene(descriptor, generated, draws, ready, acceptedSamples, null);
+	}
+
+	/** @param acceptedClips a clip dataset's accepted clips, whose start draws {@code draws} lists; null for stills */
+	SceneRecord scene(SceneDescriptor descriptor, GeneratedScene generated, List<Integer> draws, GenerationEnvironment.SceneReady ready, int acceptedSamples, @Nullable Integer acceptedClips) {
 		ResolvedConfig.Arena size = this.config.scene().base() instanceof SceneBase.NaturalTerrain natural
 			? new ResolvedConfig.Arena(natural.coreWidth(), natural.coreLength(), natural.height(), natural.contextPadding())
 			: this.config.arena();
@@ -103,7 +109,8 @@ final class RecordFactory {
 			new SceneRecord.Target(target != null, this.config.target().blockId(), plan.target() == null ? null : plan.target().state(), target),
 			new SceneRecord.Environment(plan.timeOfDayTicks(), plan.weather(), ready.gamerules()),
 			ready.layoutSha256(),
-			acceptedSamples
+			acceptedSamples,
+			acceptedClips
 		);
 	}
 }
