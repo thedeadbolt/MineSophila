@@ -1,7 +1,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # Python workspace members (uv packages)
-py_packages := "fly-vision honey-factory-tools"
+py_packages := "fly-brain fly-vision honey-factory-tools"
 mod_dir := "packages/honey-factory"
 
 # List recipes

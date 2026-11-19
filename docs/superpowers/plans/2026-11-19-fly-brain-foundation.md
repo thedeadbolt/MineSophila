@@ -73,7 +73,7 @@ consumes receptor sequences and does not know about PNG, MKV or Minecraft file l
 Start with one installable `fly-brain` distribution and strong internal subpackages:
 
 ```text
-data
+contracts
   ^
 connectome
   ^
@@ -82,7 +82,7 @@ modeling
 learning / runtime / baselines
 ```
 
-- `data` knows nothing about connectomes or training.
+- `contracts` knows nothing about connectomes or training.
 - `connectome` owns structural data and selection, not tensor frameworks.
 - `modeling` combines observations and structure into executable models.
 - `learning` owns tasks, losses, training and evaluation.
@@ -100,7 +100,7 @@ packages/fly-brain/
   pyproject.toml
   README.md
   src/fly_brain/
-    data/
+    contracts/
       layouts.py
       features.py
       observations.py
