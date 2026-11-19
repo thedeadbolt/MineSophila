@@ -50,8 +50,10 @@ class LocalizationMetrics:
     sample_count: int
     positive_count: int
     presence_accuracy: float
+    presence_balanced_accuracy: float
     presence_precision: float
     presence_recall: float
+    presence_specificity: float
     mean_bearing_error_deg: float | None
     coverage_mae: float | None
 
@@ -78,8 +80,11 @@ def evaluate_localization(
     true_positive = int(np.count_nonzero(predicted & truth))
     predicted_positive = int(np.count_nonzero(predicted))
     positive_count = int(np.count_nonzero(truth))
+    negative_count = sample_count - positive_count
+    true_negative = int(np.count_nonzero(~predicted & ~truth))
     precision = true_positive / predicted_positive if predicted_positive else 0.0
     recall = true_positive / positive_count if positive_count else 0.0
+    specificity = true_negative / negative_count if negative_count else 0.0
     bearing_error = _bearing_error(
         prediction.direction[mask][truth], targets.honey_direction[mask][truth]
     )
@@ -88,8 +93,10 @@ def evaluate_localization(
         sample_count=sample_count,
         positive_count=positive_count,
         presence_accuracy=float(np.count_nonzero(predicted == truth) / sample_count),
+        presence_balanced_accuracy=(recall + specificity) / 2.0,
         presence_precision=precision,
         presence_recall=recall,
+        presence_specificity=specificity,
         mean_bearing_error_deg=bearing_error,
         coverage_mae=coverage_mae,
     )

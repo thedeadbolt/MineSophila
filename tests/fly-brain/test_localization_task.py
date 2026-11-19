@@ -26,8 +26,10 @@ def test_localisation_metrics_respect_time_mask_and_positive_targets() -> None:
     assert metrics.sample_count == 3
     assert metrics.positive_count == 2
     assert metrics.presence_accuracy == pytest.approx(2 / 3)
+    assert metrics.presence_balanced_accuracy == 0.5
     assert metrics.presence_precision == pytest.approx(2 / 3)
     assert metrics.presence_recall == 1.0
+    assert metrics.presence_specificity == 0.0
     assert metrics.mean_bearing_error_deg == pytest.approx(45.0)
     assert metrics.coverage_mae == pytest.approx(0.4 / 6)
 
