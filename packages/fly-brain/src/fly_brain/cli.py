@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import subprocess
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -10,10 +11,12 @@ import numpy as np
 
 from fly_brain.contracts import BrainTargets
 from fly_brain.datasets import CachedStillDataset, combine_batches, convert_honey_factory_dataset
+from fly_brain.experiments import save_checkpoint
 from fly_brain.models import (
     LinearLocalizationModel,
     LocalizationBatch,
     MLPLocalizationModel,
+    MLPParameters,
     train_linear,
     train_mlp,
 )
@@ -41,6 +44,7 @@ def _parser() -> argparse.ArgumentParser:
     deep.add_argument("--learning-rate", type=float, default=1e-3)
     deep.add_argument("--seed", type=int, default=0)
     deep.add_argument("--report", required=True, type=Path)
+    deep.add_argument("--checkpoint", required=True, type=Path)
     return parser
 
 
@@ -134,6 +138,7 @@ def _train_deep(args: argparse.Namespace) -> int:
     )
     report = {
         "format": "fly-brain-mlp-report-v1",
+        "git_revision": _git_revision(),
         "datasets": [dataset.metadata for dataset in datasets],
         "model": {
             "kind": "mlp_localisation",
@@ -161,11 +166,41 @@ def _train_deep(args: argparse.Namespace) -> int:
                 model.predict_features(result.parameters, test.features), _targets(test)
             )
         ),
+        "per_dataset": {
+            str(dataset.metadata["source_dataset_id"]): {
+                split: _evaluate_mlp(model, result.parameters, dataset.batch(split))
+                for split in ("validation", "test")
+            }
+            for dataset in datasets
+        },
     }
+    report["checkpoint_manifest_sha256"] = save_checkpoint(
+        args.checkpoint, result.parameters._asdict(), report
+    )
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
+
+
+def _evaluate_mlp(
+    model: MLPLocalizationModel, parameters: MLPParameters, batch: LocalizationBatch
+) -> dict[str, object]:
+    return asdict(
+        evaluate_localization(
+            model.predict_features(parameters, batch.features),
+            _targets(batch),
+        )
+    )
+
+
+def _git_revision() -> str:
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
 
 
 def main(argv: list[str] | None = None) -> int:
