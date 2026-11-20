@@ -1,16 +1,38 @@
 """Local preprocessing and baseline experiment commands."""
 
 import argparse
+import hashlib
 import json
+import resource
 import subprocess
 import sys
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, cast
 
+import jax
 import numpy as np
 
-from fly_brain.contracts import BrainTargets
+from fly_brain.connectome import (
+    BiologicalStatus,
+    BrainCompiler,
+    BrainModelSpec,
+    BrainParameters,
+    LeakyRateDynamics,
+    MaleCNSLoader,
+    OutputHead,
+    ReceptorInputMap,
+    SynapseCountPolicy,
+    build_first_visual_network,
+    build_receptor_input_map,
+)
+from fly_brain.connectome.visual import (
+    LAMINA_RELAY_TYPES,
+    MEDULLA_RELAY_TYPES,
+    PHOTORECEPTOR_TYPES,
+)
+from fly_brain.contracts import BrainTargets, Eye, SensorLayout
 from fly_brain.datasets import (
     CachedStillDataset,
     StillLabelAuditConfig,
@@ -22,6 +44,10 @@ from fly_brain.datasets import (
 from fly_brain.experiments import save_checkpoint
 from fly_brain.models import (
     CNNLocalizationModel,
+    ConnectomeBatch,
+    ConnectomeLocalizationModel,
+    ConnectomeModelConfig,
+    ConnectomeTrainingConfig,
     LinearLocalizationModel,
     LocalizationBatch,
     MLPLocalizationModel,
@@ -34,6 +60,7 @@ from fly_brain.models import (
     SpatialTrainingConfig,
     build_angular_topology,
     train_cnn,
+    train_connectome,
     train_linear,
     train_mlp,
     train_spatial,
@@ -88,6 +115,13 @@ def _parser() -> argparse.ArgumentParser:
     spatial.add_argument("--config", required=True, type=Path)
     spatial.add_argument("--report", required=True, type=Path)
     spatial.add_argument("--checkpoint", required=True, type=Path)
+    connectome = commands.add_parser("train-connectome")
+    connectome.add_argument("caches", nargs="+", type=Path)
+    connectome.add_argument("--connectome-root", required=True, type=Path)
+    connectome.add_argument("--config", required=True, type=Path)
+    connectome.add_argument("--input-map", required=True, type=Path)
+    connectome.add_argument("--report", required=True, type=Path)
+    connectome.add_argument("--checkpoint", required=True, type=Path)
     return parser
 
 
@@ -427,6 +461,217 @@ def _train_image_cnn(args: argparse.Namespace) -> int:
     return 0
 
 
+def _train_connectome(args: argparse.Namespace) -> int:
+    started = time.perf_counter()
+    model_config, training_config = _load_connectome_config(args.config)
+    datasets = [CachedStillDataset.load(path) for path in args.caches]
+    layout = _cached_sensor_layout(datasets)
+    cell_types = PHOTORECEPTOR_TYPES + LAMINA_RELAY_TYPES + MEDULLA_RELAY_TYPES
+    selector_loader = MaleCNSLoader(
+        args.connectome_root,
+        minimum_synapse_count=model_config.minimum_synapse_count,
+    )
+    selected_ids = selector_loader.annotation_ids(
+        cell_types=cell_types,
+        superclasses=("visual_projection",),
+    )
+    graph = MaleCNSLoader(
+        args.connectome_root,
+        minimum_synapse_count=model_config.minimum_synapse_count,
+        neuron_ids=selected_ids,
+    ).load()
+    network = build_first_visual_network(
+        graph, minimum_synapse_count=model_config.minimum_synapse_count
+    )
+    components = {component.spec.name: component for component in network.components}
+    input_map = build_receptor_input_map(layout, graph, components["photoreceptors"])
+    input_manifest = input_map.to_manifest()
+    input_payload = json.dumps(input_manifest, indent=2, sort_keys=True) + "\n"
+    args.input_map.parent.mkdir(parents=True, exist_ok=True)
+    args.input_map.write_text(input_payload)
+    input_sha256 = hashlib.sha256(input_payload.encode()).hexdigest()
+    spec = BrainModelSpec(
+        network,
+        (input_map.input_port(),),
+        OutputHead(
+            "honey_localisation",
+            components["visual_projection"].neuron_ids,
+            4,
+            BiologicalStatus.LEARNED,
+        ),
+        LeakyRateDynamics(model_config.time_constant, model_config.activation),
+        SynapseCountPolicy(
+            model_config.initial_edge_gain,
+            model_config.train_neuron_bias,
+        ),
+        model_config.dt,
+    )
+    compiler = BrainCompiler(spec)
+    plan = compiler.plan()
+    model = ConnectomeLocalizationModel(compiler.compile(), model_config.settling_steps)
+    train = _connectome_batch(datasets, "train", input_map)
+    validation = _connectome_batch(datasets, "validation", input_map)
+    test = _connectome_batch(datasets, "test", input_map)
+    result = train_connectome(model, train, validation, training_config)
+    validation_prediction = model.predict(
+        result.parameters, validation, batch_size=training_config.batch_size
+    )
+    threshold = _select_presence_threshold(
+        validation_prediction.presence_probability,
+        validation.presence.astype(np.bool_),
+        training_config,
+    )
+    description = network.describe()
+    report: dict[str, object] = {
+        "format": "fly-brain-connectome-report-v1",
+        "git_revision": _git_revision(),
+        "datasets": [dataset.metadata for dataset in datasets],
+        "connectome": {
+            "release_id": graph.release.release_id,
+            "graph_sha256": graph.graph_sha256,
+            "components": dict(description.component_sizes),
+            "anatomical_synapse_count": description.anatomical_synapse_count,
+        },
+        "input_map": {
+            "path": str(args.input_map),
+            "sha256": input_sha256,
+            "method": input_map.method,
+            "biological_status": input_map.biological_status.value,
+            "source_width": input_map.source_width,
+            "target_neuron_count": input_map.target_neuron_ids.size,
+            "assignment_count": input_map.assignment_source_indices.size,
+        },
+        "model": {**asdict(model_config), "compilation": asdict(plan)},
+        "training": {
+            **asdict(training_config),
+            "samples": train.rows,
+            "completed_steps": len(result.losses),
+            "best_step": result.best_step,
+            "initial_loss": result.losses[0],
+            "final_loss": result.losses[-1],
+            "validation_losses": [list(item) for item in result.validation_losses],
+            "selected_presence_threshold": threshold,
+        },
+        "validation": asdict(
+            evaluate_localization(
+                validation_prediction,
+                _connectome_targets(validation),
+                presence_threshold=threshold,
+            )
+        ),
+        "test": _evaluate_connectome(
+            model, result.parameters, test, training_config.batch_size, threshold
+        ),
+        "per_dataset": {
+            str(dataset.metadata["source_dataset_id"]): {
+                split: _evaluate_connectome(
+                    model,
+                    result.parameters,
+                    _connectome_batch([dataset], split, input_map),
+                    training_config.batch_size,
+                    threshold,
+                )
+                for split in ("validation", "test")
+            }
+            for dataset in datasets
+        },
+    }
+    report["runtime"] = {
+        "backend": jax.default_backend(),
+        "devices": [str(device) for device in cast(list[Any], cast(Any, jax).devices())],
+        "wall_seconds": time.perf_counter() - started,
+        "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024,
+    }
+    report["checkpoint_manifest_sha256"] = save_checkpoint(
+        args.checkpoint, result.parameters._asdict(), report
+    )
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0
+
+
+def _load_connectome_config(
+    path: Path,
+) -> tuple[ConnectomeModelConfig, ConnectomeTrainingConfig]:
+    raw_values: Any = json.loads(path.read_text())
+    if not isinstance(raw_values, dict):
+        raise ValueError("connectome experiment config must be a JSON object")
+    values = cast(dict[str, Any], raw_values)
+    if values.get("format") != "fly-brain-connectome-experiment-v1":
+        raise ValueError("unsupported connectome experiment config format")
+    model_values = values.get("model")
+    training_values = values.get("training")
+    if not isinstance(model_values, dict) or not isinstance(training_values, dict):
+        raise ValueError("connectome experiment config requires model and training objects")
+    try:
+        return ConnectomeModelConfig(
+            **cast(dict[str, Any], model_values)
+        ), ConnectomeTrainingConfig(**cast(dict[str, Any], training_values))
+    except TypeError as error:
+        raise ValueError(f"invalid connectome experiment setting: {error}") from error
+
+
+def _cached_sensor_layout(datasets: list[CachedStillDataset]) -> SensorLayout:
+    if not datasets:
+        raise ValueError("at least one cached dataset is required")
+    first = datasets[0]
+    lattice = default_lattice()
+    if first.activations.shape[1] != lattice.ommatidium_id.size:
+        raise ValueError("cached sensor sites do not match the default fly-vision lattice")
+    return SensorLayout(
+        str(first.metadata["layout_id"]),
+        lattice.ommatidium_id.astype(np.int64),
+        tuple(Eye.LEFT if value == "L" else Eye.RIGHT for value in lattice.eye),
+        first.directions,
+        tuple(str(value) for value in lattice.subtype),
+        ("R1_6", "R7", "R8"),
+        "fly-vision-cache-v1",
+        str(first.metadata["layout_id"]),
+        str(first.metadata["sensor_config_hash"]),
+    )
+
+
+def _connectome_batch(
+    datasets: list[CachedStillDataset], split: str, input_map: ReceptorInputMap
+) -> ConnectomeBatch:
+    spatial = _spatial_batch(datasets, split)
+    weighted = spatial.coverage @ spatial.directions
+    norms = np.linalg.norm(weighted, axis=1)
+    direction = np.zeros_like(weighted, dtype=np.float32)
+    nonzero = norms > 0
+    direction[nonzero] = weighted[nonzero] / norms[nonzero, None]
+    return ConnectomeBatch(
+        input_map.transform(spatial.signals, valid=spatial.valid),
+        spatial.presence,
+        direction,
+    )
+
+
+def _connectome_targets(batch: ConnectomeBatch) -> BrainTargets:
+    return BrainTargets(
+        time_mask=np.ones(batch.rows, dtype=np.bool_),
+        honey_present=batch.presence.astype(np.bool_),
+        honey_direction=batch.direction,
+    )
+
+
+def _evaluate_connectome(
+    model: ConnectomeLocalizationModel,
+    parameters: BrainParameters,
+    batch: ConnectomeBatch,
+    batch_size: int,
+    threshold: float,
+) -> dict[str, object]:
+    return asdict(
+        evaluate_localization(
+            model.predict(parameters, batch, batch_size=batch_size),
+            _connectome_targets(batch),
+            presence_threshold=threshold,
+        )
+    )
+
+
 def _train_spatial(args: argparse.Namespace) -> int:
     model_config, training_config = _load_spatial_config(args.config)
     datasets = [CachedStillDataset.load(path) for path in args.caches]
@@ -572,7 +817,7 @@ def _spatial_targets(batch: SpatialBatch) -> BrainTargets:
 def _select_presence_threshold(
     probabilities: np.ndarray,
     truth: np.ndarray,
-    config: SpatialTrainingConfig,
+    config: SpatialTrainingConfig | ConnectomeTrainingConfig,
 ) -> float:
     thresholds = np.linspace(
         config.threshold_search_min,
@@ -648,6 +893,8 @@ def main(argv: list[str] | None = None) -> int:
             return _train_image_cnn(args)
         if args.command == "train-spatial":
             return _train_spatial(args)
+        if args.command == "train-connectome":
+            return _train_connectome(args)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
         print(f"fly-brain: error: {error}", file=sys.stderr)
         return 1

@@ -6,6 +6,14 @@ from fly_brain.models.cnn import (
     CNNTrainingResult,
     train_cnn,
 )
+from fly_brain.models.connectome import (
+    ConnectomeBatch,
+    ConnectomeLocalizationModel,
+    ConnectomeModelConfig,
+    ConnectomeTrainingConfig,
+    ConnectomeTrainingResult,
+    train_connectome,
+)
 from fly_brain.models.linear import (
     LinearLocalizationModel,
     LinearParameters,
@@ -31,6 +39,11 @@ __all__ = [
     "CNNLocalizationModel",
     "CNNParameters",
     "CNNTrainingResult",
+    "ConnectomeBatch",
+    "ConnectomeLocalizationModel",
+    "ConnectomeModelConfig",
+    "ConnectomeTrainingConfig",
+    "ConnectomeTrainingResult",
     "LinearLocalizationModel",
     "LinearParameters",
     "LocalizationBatch",
@@ -48,6 +61,7 @@ __all__ = [
     "build_angular_topology",
     "prepare_localization_batch",
     "train_cnn",
+    "train_connectome",
     "train_linear",
     "train_mlp",
     "train_spatial",

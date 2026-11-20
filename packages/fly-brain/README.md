@@ -16,11 +16,28 @@ Cached `fly-vision` frames can now be assembled into still or temporal examples.
 Factory adapters add causal egocentric movement context and masked teacher-action targets without
 placing world pose or teacher state in model-visible observations.
 
-The framework-independent connectome layer represents a pinned release as canonical immutable
-neuron and directed-synapse tables. It validates endpoints and anatomical counts, creates stable
-graph checksums and induced subgraphs, and reports annotation gaps and in-memory size.
+The connectome layer represents a pinned release as canonical immutable neuron and directed-synapse
+tables. A sparse JAX compiler now adds explicit receptor input ports, leaky-rate dynamics,
+resettable state, parameter policies and learned output heads without mixing those concerns into
+the structural graph.
 
-Connectome loading, training frameworks and executable models follow in later slices of the
+## Connectome-constrained experiment
+
+The first executable circuit uses the reviewed MaleCNS visual components and saves the complete
+approximate virtual-receptor-to-neuron map beside its report and checkpoint.
+
+```bash
+uv run fly-brain train-connectome /path/to/*.fly-brain.npz \
+  --connectome-root /path/to/male-cns-v1.0 \
+  --config packages/fly-brain/configs/connectome-localization-v1.json \
+  --input-map /path/to/connectome-input-map.json \
+  --report /path/to/connectome-report.json \
+  --checkpoint /path/to/connectome-checkpoint.npz
+```
+
+The current parameter policy fixes normalized anatomical weights, learns one global recurrent
+gain and learns a localisation readout. See the
+[first result](../../docs/science/first-connectome-model.md) and the
 [foundation plan](../../docs/superpowers/plans/2026-11-19-fly-brain-foundation.md).
 
 ## Spatial coverage experiment
