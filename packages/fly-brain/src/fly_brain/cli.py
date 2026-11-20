@@ -21,6 +21,7 @@ from fly_brain.datasets import (
 )
 from fly_brain.experiments import save_checkpoint
 from fly_brain.models import (
+    CNNLocalizationModel,
     LinearLocalizationModel,
     LocalizationBatch,
     MLPLocalizationModel,
@@ -32,6 +33,7 @@ from fly_brain.models import (
     SpatialTopology,
     SpatialTrainingConfig,
     build_angular_topology,
+    train_cnn,
     train_linear,
     train_mlp,
     train_spatial,
@@ -75,6 +77,12 @@ def _parser() -> argparse.ArgumentParser:
     image.add_argument("--config", required=True, type=Path)
     image.add_argument("--report", required=True, type=Path)
     image.add_argument("--checkpoint", required=True, type=Path)
+    image_cnn = commands.add_parser("train-image-cnn")
+    image_cnn.add_argument("dataset", type=Path)
+    image_cnn.add_argument("labels", type=Path)
+    image_cnn.add_argument("--config", required=True, type=Path)
+    image_cnn.add_argument("--report", required=True, type=Path)
+    image_cnn.add_argument("--checkpoint", required=True, type=Path)
     spatial = commands.add_parser("train-spatial")
     spatial.add_argument("caches", nargs="+", type=Path)
     spatial.add_argument("--config", required=True, type=Path)
@@ -291,6 +299,97 @@ def _train_image(args: argparse.Namespace) -> int:
             "kind": "raw_image_mlp",
             "input_width": model.input_width,
             "hidden_width": hidden_width,
+            "downsample_factor": downsample_factor,
+        },
+        "training": {
+            "steps": steps,
+            "batch_size": batch_size,
+            "learning_rate": learning_rate,
+            "seed": seed,
+            "samples": train.features.shape[0],
+            "initial_loss": result.losses[0],
+            "final_loss": result.losses[-1],
+            "selected_presence_threshold": threshold,
+        },
+        "validation": asdict(
+            evaluate_localization(
+                validation_prediction, _targets(validation), presence_threshold=threshold
+            )
+        ),
+        "test": asdict(
+            evaluate_localization(
+                model.predict_features(result.parameters, test.features),
+                _targets(test),
+                presence_threshold=threshold,
+            )
+        ),
+    }
+    report["checkpoint_manifest_sha256"] = save_checkpoint(
+        args.checkpoint, result.parameters._asdict(), report
+    )
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0
+
+
+def _train_image_cnn(args: argparse.Namespace) -> int:
+    values = cast(dict[str, Any], json.loads(args.config.read_text()))
+    if values.pop("format", None) != "fly-brain-image-cnn-experiment-v1":
+        raise ValueError("unsupported image CNN experiment config format")
+    downsample_factor = int(values.pop("downsample_factor"))
+    workers = int(values.pop("workers"))
+    channel_widths = tuple(int(value) for value in values.pop("channel_widths"))
+    kernel_sizes = tuple(int(value) for value in values.pop("kernel_sizes"))
+    strides = tuple(int(value) for value in values.pop("strides"))
+    steps = int(values.pop("steps"))
+    batch_size = int(values.pop("batch_size"))
+    learning_rate = float(values.pop("learning_rate"))
+    seed = int(values.pop("seed"))
+    if values:
+        raise ValueError(f"unknown image CNN settings: {sorted(values)}")
+    labels = CachedStillDataset.load(args.labels)
+    batches = load_image_localization_batches(
+        args.dataset,
+        labels,
+        downsample_factor=downsample_factor,
+        workers=workers,
+    )
+    manifest = cast(dict[str, Any], json.loads((args.dataset / "dataset.json").read_text()))
+    capture = cast(dict[str, Any], manifest["capture"])
+    model = CNNLocalizationModel(
+        image_height=int(capture["height"]) // downsample_factor,
+        image_width=int(capture["width"]) // downsample_factor,
+        channel_widths=channel_widths,
+        kernel_sizes=kernel_sizes,
+        strides=strides,
+    )
+    train, validation, test = (batches[name] for name in ("train", "validation", "test"))
+    result = train_cnn(
+        model,
+        train,
+        steps=steps,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        seed=seed,
+    )
+    validation_prediction = model.predict_features(result.parameters, validation.features)
+    threshold = _select_presence_threshold(
+        validation_prediction.presence_probability,
+        validation.presence.astype(np.bool_),
+        SpatialTrainingConfig(),
+    )
+    report: dict[str, object] = {
+        "format": "fly-brain-image-cnn-report-v1",
+        "git_revision": _git_revision(),
+        "dataset": labels.metadata,
+        "model": {
+            "kind": "raw_image_cnn",
+            "input_shape": [model.image_height, model.image_width, 3],
+            "channel_widths": list(channel_widths),
+            "kernel_sizes": list(kernel_sizes),
+            "strides": list(strides),
+            "trainable_parameters": model.trainable_parameter_count,
             "downsample_factor": downsample_factor,
         },
         "training": {
@@ -542,6 +641,8 @@ def main(argv: list[str] | None = None) -> int:
             return _train_deep(args)
         if args.command == "train-image-mlp":
             return _train_image(args)
+        if args.command == "train-image-cnn":
+            return _train_image_cnn(args)
         if args.command == "train-spatial":
             return _train_spatial(args)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:

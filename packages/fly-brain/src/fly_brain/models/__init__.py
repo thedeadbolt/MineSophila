@@ -1,5 +1,11 @@
 """Executable learning models behind framework-independent contracts."""
 
+from fly_brain.models.cnn import (
+    CNNLocalizationModel,
+    CNNParameters,
+    CNNTrainingResult,
+    train_cnn,
+)
 from fly_brain.models.linear import (
     LinearLocalizationModel,
     LinearParameters,
@@ -22,6 +28,9 @@ from fly_brain.models.spatial import (
 )
 
 __all__ = [
+    "CNNLocalizationModel",
+    "CNNParameters",
+    "CNNTrainingResult",
     "LinearLocalizationModel",
     "LinearParameters",
     "LocalizationBatch",
@@ -38,6 +47,7 @@ __all__ = [
     "TrainingResult",
     "build_angular_topology",
     "prepare_localization_batch",
+    "train_cnn",
     "train_linear",
     "train_mlp",
     "train_spatial",
