@@ -36,6 +36,7 @@ class ConnectomeModelConfig:
         "medulla_relays",
         "visual_projection",
     )
+    readout_components: tuple[str, ...] = ("visual_projection",)
 
     def __post_init__(self) -> None:
         if self.minimum_synapse_count < 1 or self.settling_steps < 1:
@@ -58,7 +59,15 @@ class ConnectomeModelConfig:
         required = {"photoreceptors", "visual_projection"}
         if len(components) != len(set(components)) or not required.issubset(components):
             raise ValueError("components must be unique and include input and readout components")
+        readout_components = tuple(self.readout_components)
+        if (
+            not readout_components
+            or len(readout_components) != len(set(readout_components))
+            or not set(readout_components).issubset(components)
+        ):
+            raise ValueError("readout components must be unique selected components")
         object.__setattr__(self, "components", components)
+        object.__setattr__(self, "readout_components", readout_components)
 
 
 @dataclass(frozen=True)

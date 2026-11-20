@@ -487,6 +487,9 @@ def _train_connectome(args: argparse.Namespace) -> int:
     )
     components = {component.spec.name: component for component in network.components}
     input_map = build_receptor_input_map(layout, graph, components["photoreceptors"])
+    readout_neuron_ids = np.unique(
+        np.concatenate([components[name].neuron_ids for name in model_config.readout_components])
+    )
     input_manifest = input_map.to_manifest()
     input_payload = json.dumps(input_manifest, indent=2, sort_keys=True) + "\n"
     args.input_map.parent.mkdir(parents=True, exist_ok=True)
@@ -497,7 +500,7 @@ def _train_connectome(args: argparse.Namespace) -> int:
         (input_map.input_port(),),
         OutputHead(
             "honey_localisation",
-            components["visual_projection"].neuron_ids,
+            readout_neuron_ids,
             4,
             BiologicalStatus.LEARNED,
         ),
