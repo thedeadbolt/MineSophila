@@ -3,6 +3,7 @@
 import hashlib
 import json
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -121,8 +122,11 @@ def convert_honey_factory_dataset(
     output_path: Path,
     *,
     matrix_cache: Path,
+    workers: int = 1,
     progress: Callable[[int, int], None] | None = None,
 ) -> CachedStillDataset:
+    if workers < 1:
+        raise ValueError("workers must be at least 1")
     manifest_path = dataset_dir / "dataset.json"
     manifest = cast(dict[str, Any], json.loads(manifest_path.read_text()))
     if manifest.get("lifecycle") != "complete":
@@ -149,8 +153,12 @@ def convert_honey_factory_dataset(
     scene_ids: list[str] = []
     sample_ids: list[str] = []
     splits: list[str] = []
-    first_frame = None
-    for index, sample in enumerate(samples):
+    if not samples:
+        raise ValueError("dataset contains no samples")
+
+    def paths_and_ids(
+        sample: dict[str, Any],
+    ) -> tuple[Path, Path, str, str, str]:
         files = cast(dict[str, Any], sample["files"])
         rgb = dataset_dir / str(cast(dict[str, Any], files["rgb"])["path"])
         mask = dataset_dir / str(cast(dict[str, Any], files["mask"])["path"])
@@ -158,23 +166,43 @@ def convert_honey_factory_dataset(
         raw_sample_id = str(sample["sample_id"])
         qualified_scene = f"{dataset_id}:{raw_scene_id}"
         qualified_sample = f"{dataset_id}:{raw_sample_id}"
-        frame, labels = eye.sample(
-            load_panorama(rgb),
-            load_mask(mask),
-            SourceRef(qualified_scene, qualified_sample, str(rgb)),
-        )
-        if labels is None:  # pragma: no cover - mask is always supplied above
-            raise RuntimeError("fly-vision did not produce labels")
-        first_frame = frame if first_frame is None else first_frame
-        activations.append(frame.activations)
-        coverage.append(labels.honey_coverage)
-        scene_ids.append(qualified_scene)
-        sample_ids.append(qualified_sample)
-        splits.append(str(sample["split"]))
-        if progress is not None:
-            progress(index + 1, len(samples))
-    if first_frame is None:
-        raise ValueError("dataset contains no samples")
+        return rgb, mask, qualified_scene, qualified_sample, str(sample["split"])
+
+    first_rgb, first_mask, first_scene, first_sample, first_split = paths_and_ids(samples[0])
+    first_frame, first_labels = eye.sample(
+        load_panorama(first_rgb),
+        load_mask(first_mask),
+        SourceRef(first_scene, first_sample, str(first_rgb)),
+    )
+    if first_labels is None:  # pragma: no cover - mask is always supplied above
+        raise RuntimeError("fly-vision did not produce labels")
+    activations.append(first_frame.activations)
+    coverage.append(first_labels.honey_coverage)
+    scene_ids.append(first_scene)
+    sample_ids.append(first_sample)
+    splits.append(first_split)
+    if progress is not None:
+        progress(1, len(samples))
+
+    def convert(
+        sample: dict[str, Any],
+    ) -> tuple[NDArray[np.float32], NDArray[np.float32], str, str, str]:
+        rgb, mask, scene_id, sample_id, split = paths_and_ids(sample)
+        sample_activations, sample_coverage = eye.sample_arrays(load_panorama(rgb), load_mask(mask))
+        return sample_activations, sample_coverage, scene_id, sample_id, split
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        converted = executor.map(convert, samples[1:])
+        for index, (sample_activations, sample_coverage, scene_id, sample_id, split) in enumerate(
+            converted, start=2
+        ):
+            activations.append(sample_activations)
+            coverage.append(sample_coverage)
+            scene_ids.append(scene_id)
+            sample_ids.append(sample_id)
+            splits.append(split)
+            if progress is not None:
+                progress(index, len(samples))
     layout = sensor_layout_from_frame(lattice, first_frame)
     result = CachedStillDataset(
         activations=np.stack(activations),

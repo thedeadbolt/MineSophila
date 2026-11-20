@@ -46,6 +46,7 @@ def _parser() -> argparse.ArgumentParser:
     prepare.add_argument("datasets", nargs="+", type=Path)
     prepare.add_argument("--out", required=True, type=Path)
     prepare.add_argument("--matrix-cache", required=True, type=Path)
+    prepare.add_argument("--workers", type=int, default=1)
     audit = commands.add_parser("audit-stills")
     audit.add_argument("dataset", type=Path)
     audit.add_argument("cache", type=Path)
@@ -87,7 +88,11 @@ def _prepare(args: argparse.Namespace) -> int:
                 print(f"  {done}/{total}", flush=True)
 
         converted = convert_honey_factory_dataset(
-            dataset, output, matrix_cache=args.matrix_cache, progress=progress
+            dataset,
+            output,
+            matrix_cache=args.matrix_cache,
+            workers=args.workers,
+            progress=progress,
         )
         print(f"  wrote {converted.rows} samples", flush=True)
     return 0

@@ -64,6 +64,23 @@ def test_labels_use_same_matrix() -> None:
     assert (lab.honey_coverage <= 1 + 1e-6).all()
 
 
+def test_sample_arrays_matches_provenance_path() -> None:
+    panorama = np.random.default_rng(8).integers(0, 256, (S.height, S.width, 3), dtype=np.uint8)
+    mask = disc(30, 0, 3)
+
+    frame, labels = EYE.sample(panorama, mask, REF)
+    activations, coverage = EYE.sample_arrays(panorama, mask)
+
+    assert labels is not None
+    np.testing.assert_array_equal(activations, frame.activations)
+    np.testing.assert_array_equal(coverage, labels.honey_coverage)
+
+
+def test_sample_arrays_validates_mask_shape() -> None:
+    with pytest.raises(ValueError, match="mask shape"):
+        EYE.sample_arrays(img(), np.zeros((10, 20)))
+
+
 def test_coverage_reflects_what_the_fly_sees() -> None:
     def cov(mask: NDArray[np.float64]) -> NDArray[np.float32]:
         _, lab = EYE.sample(img(), mask, REF)

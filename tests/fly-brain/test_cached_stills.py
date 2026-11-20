@@ -1,8 +1,9 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
-from fly_brain.datasets import CachedStillDataset, combine_batches
+from fly_brain.datasets import CachedStillDataset, combine_batches, convert_honey_factory_dataset
 
 
 def cached_stills() -> CachedStillDataset:
@@ -63,3 +64,10 @@ def test_combine_batches_preserves_optional_coverage() -> None:
     assert combined.features.shape == (2, 6)
     assert combined.coverage is not None
     assert combined.coverage.tolist() == [[1.0, 0.0], [0.5, 0.0]]
+
+
+def test_converter_rejects_non_positive_worker_count(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="workers must be at least 1"):
+        convert_honey_factory_dataset(
+            tmp_path, tmp_path / "cache.npz", matrix_cache=tmp_path, workers=0
+        )
