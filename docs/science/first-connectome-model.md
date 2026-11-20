@@ -15,8 +15,8 @@ established fly-spatial and raw-RGB baselines.
 | Input neurons | 6,091 |
 | Visual-projection readout neurons | 9,201 |
 | Trainable parameters | 36,809 |
-| End-to-end wall time | 60.82 seconds |
-| Peak resident memory | 6,265,729,024 bytes |
+| End-to-end wall time | 61.74 seconds |
+| Peak resident memory | 6,252,523,520 bytes |
 
 Anatomical counts are normalized per target neuron and remain fixed. The first parameter policy
 learns one global recurrent gain plus a four-output linear readout for presence and three-dimensional
@@ -30,7 +30,8 @@ step of 1.0 and time constant of 2.0.
 photoreceptors by eye, receptor class and stable rank. Where anatomy has fewer target neurons than
 virtual receptor values, values are averaged only within that eye and receptor class. Where it has
 more targets, a value fans out. All 5,178 source values participate through 6,829 assignments into
-6,091 target neurons.
+6,091 target neurons. The artifact preserves the source site IDs, channel names and target neuron
+IDs; flattened indexes are only its compact assignment representation.
 
 This is an approximation, not a claim of biological retinotopy. It does not globally pool either
 compound eye. The complete source-to-target assignment is stored alongside the checkpoint and can
