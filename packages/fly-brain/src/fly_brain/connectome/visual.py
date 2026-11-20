@@ -1,6 +1,13 @@
 """Reviewed first visual component selection for MaleCNS v1.0."""
 
-from fly_brain.connectome.components import BiologicalStatus, ComponentRole, ComponentSpec
+from fly_brain.connectome.components import (
+    BiologicalStatus,
+    ComponentResolver,
+    ComponentRole,
+    ComponentSpec,
+)
+from fly_brain.connectome.graph import ConnectomeGraph
+from fly_brain.connectome.network import BrainNetwork, EdgePolicy
 from fly_brain.connectome.selectors import AnnotationEquals
 
 PHOTORECEPTOR_TYPES = (
@@ -50,4 +57,15 @@ def first_visual_component_specs() -> tuple[ComponentSpec, ...]:
             "Curated visual projection neurons available to a learned readout.",
             BiologicalStatus.ANATOMICAL,
         ),
+    )
+
+
+def build_first_visual_network(
+    graph: ConnectomeGraph, *, minimum_synapse_count: int = 5
+) -> BrainNetwork:
+    resolver = ComponentResolver(graph)
+    return BrainNetwork(
+        graph,
+        tuple(resolver.resolve(spec) for spec in first_visual_component_specs()),
+        EdgePolicy(minimum_synapse_count=minimum_synapse_count),
     )
