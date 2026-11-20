@@ -22,6 +22,17 @@ class CNNParameters(NamedTuple):
     output_weights: jax.Array
     output_bias: jax.Array
 
+    def checkpoint_arrays(self) -> dict[str, jax.Array]:
+        """Flatten heterogeneous layer tuples for the generic array checkpoint format."""
+        return {
+            "mean": self.mean,
+            "scale": self.scale,
+            "output_weights": self.output_weights,
+            "output_bias": self.output_bias,
+            **{f"kernel_{index}": value for index, value in enumerate(self.kernels)},
+            **{f"bias_{index}": value for index, value in enumerate(self.biases)},
+        }
+
 
 class CNNTrainingResult(NamedTuple):
     parameters: CNNParameters

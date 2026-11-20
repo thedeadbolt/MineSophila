@@ -1,5 +1,8 @@
+from pathlib import Path
+
 import numpy as np
 
+from fly_brain.experiments import load_checkpoint, save_checkpoint
 from fly_brain.models import CNNLocalizationModel, LocalizationBatch, train_cnn
 
 
@@ -32,3 +35,24 @@ def test_cnn_has_expected_parameter_count_and_learns_bright_target() -> None:
     assert result.losses[-1] < result.losses[0] * 0.2
     np.testing.assert_array_equal(prediction.presence_probability >= 0.5, presence > 0)
     assert np.all(prediction.direction[presence > 0, 0] > 0.99)
+
+
+def test_cnn_parameters_round_trip_through_generic_checkpoint(tmp_path: Path) -> None:
+    model = CNNLocalizationModel(8, 8, (2, 4), (3, 3), (2, 2))
+    parameters = model.initialize(0, np.zeros(3, np.float32), np.ones(3, np.float32))
+    path = tmp_path / "cnn.npz"
+
+    save_checkpoint(path, parameters.checkpoint_arrays(), {"kind": "cnn-fixture"})
+    arrays, manifest = load_checkpoint(path)
+
+    assert set(arrays) == {
+        "mean",
+        "scale",
+        "kernel_0",
+        "kernel_1",
+        "bias_0",
+        "bias_1",
+        "output_weights",
+        "output_bias",
+    }
+    assert manifest == {"kind": "cnn-fixture"}

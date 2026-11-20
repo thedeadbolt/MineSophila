@@ -416,7 +416,7 @@ def _train_image_cnn(args: argparse.Namespace) -> int:
         ),
     }
     report["checkpoint_manifest_sha256"] = save_checkpoint(
-        args.checkpoint, result.parameters._asdict(), report
+        args.checkpoint, result.parameters.checkpoint_arrays(), report
     )
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
