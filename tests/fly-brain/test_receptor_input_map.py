@@ -79,6 +79,8 @@ def test_receptor_map_resolves_explicit_ids_without_global_pooling() -> None:
     manifest = json.loads(json.dumps(mapping.to_manifest()))
     assert manifest["layout_id"] == "fixture-layout"
     assert manifest["method"] == "eye-receptor-stable-rank-v1"
+    assert manifest["source_site_ids"] == [10, 11, 20, 21]
+    assert manifest["source_channel_names"] == ["R1_6", "R7", "R8"]
 
 
 def test_receptor_map_zeros_invalid_sites() -> None:

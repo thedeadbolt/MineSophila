@@ -67,6 +67,8 @@ class ReceptorInputMap:
     assignment_target_indices: NDArray[np.int32]
     assignment_source_indices: NDArray[np.int32]
     assignment_weights: NDArray[np.float32]
+    source_site_ids: NDArray[np.int64]
+    source_channel_names: tuple[str, ...]
     source_width: int
     biological_status: BiologicalStatus = BiologicalStatus.APPROXIMATION
     method: str = "eye-receptor-stable-rank-v1"
@@ -76,6 +78,7 @@ class ReceptorInputMap:
         assignment_targets = np.asarray(self.assignment_target_indices)
         assignment_sources = np.asarray(self.assignment_source_indices)
         assignment_weights = np.asarray(self.assignment_weights, dtype=np.float32)
+        source_site_ids = np.asarray(self.source_site_ids)
         if not self.layout_id.strip() or len(self.graph_sha256) != 64:
             raise ValueError("receptor map must identify one layout and graph")
         if target_ids.ndim != 1 or not np.issubdtype(target_ids.dtype, np.integer):
@@ -107,6 +110,20 @@ class ReceptorInputMap:
             or np.any(assignment_sources >= self.source_width)
         ):
             raise ValueError("receptor map contains an invalid source index")
+        if (
+            source_site_ids.ndim != 1
+            or not np.issubdtype(source_site_ids.dtype, np.integer)
+            or source_site_ids.size == 0
+            or np.unique(source_site_ids).size != source_site_ids.size
+        ):
+            raise ValueError("source_site_ids must be a non-empty unique integer array")
+        if (
+            not self.source_channel_names
+            or len(set(self.source_channel_names)) != len(self.source_channel_names)
+            or any(not name.strip() for name in self.source_channel_names)
+            or source_site_ids.size * len(self.source_channel_names) != self.source_width
+        ):
+            raise ValueError("source IDs and channels must describe every source value")
         if np.unique(assignment_sources).size != self.source_width:
             raise ValueError("every source receptor value must contribute to the map")
         if not np.isfinite(assignment_weights).all() or np.any(assignment_weights <= 0):
@@ -118,12 +135,14 @@ class ReceptorInputMap:
         object.__setattr__(self, "assignment_target_indices", readonly(assignment_targets[order]))
         object.__setattr__(self, "assignment_source_indices", readonly(assignment_sources[order]))
         object.__setattr__(self, "assignment_weights", readonly(assignment_weights[order]))
+        object.__setattr__(self, "source_site_ids", readonly(source_site_ids.astype(np.int64)))
 
     def transform(
         self, activations: NDArray[np.floating], *, valid: NDArray[np.bool_] | None = None
     ) -> NDArray[np.float32]:
         values = np.asarray(activations, dtype=np.float32)
-        if values.ndim < 2 or values.shape[-2] * values.shape[-1] != self.source_width:
+        expected = (self.source_site_ids.size, len(self.source_channel_names))
+        if values.ndim < 2 or values.shape[-2:] != expected:
             raise ValueError("activations do not match the receptor map source width")
         if valid is not None:
             site_valid = np.asarray(valid, dtype=np.bool_)
@@ -153,6 +172,8 @@ class ReceptorInputMap:
             "assignment_target_indices": self.assignment_target_indices.tolist(),
             "assignment_source_indices": self.assignment_source_indices.tolist(),
             "assignment_weights": self.assignment_weights.tolist(),
+            "source_site_ids": self.source_site_ids.tolist(),
+            "source_channel_names": list(self.source_channel_names),
             "source_width": self.source_width,
             "biological_status": self.biological_status.value,
             "method": self.method,
@@ -217,6 +238,8 @@ def build_receptor_input_map(
         np.searchsorted(targets, assigned_target_ids).astype(np.int32),
         np.concatenate(assignment_sources),
         np.concatenate(assignment_weights),
+        layout.site_ids,
+        layout.channel_names,
         layout.site_count * channels,
     )
 
