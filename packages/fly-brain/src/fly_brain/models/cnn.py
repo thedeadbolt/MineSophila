@@ -12,6 +12,7 @@ import numpy as np
 
 from fly_brain.models.linear import LocalizationBatch
 from fly_brain.tasks import HoneyLocalizationPrediction
+from fly_vision.projection import honey_factory_panorama
 
 
 class CNNParameters(NamedTuple):
@@ -46,6 +47,7 @@ class CNNLocalizationModel:
     channel_widths: tuple[int, ...] = (8, 16, 32)
     kernel_sizes: tuple[int, ...] = (5, 3, 3)
     strides: tuple[int, ...] = (2, 2, 2)
+    include_directions: bool = False
 
     def __post_init__(self) -> None:
         counts = {len(self.channel_widths), len(self.kernel_sizes), len(self.strides)}
@@ -62,7 +64,7 @@ class CNNLocalizationModel:
 
     @property
     def trainable_parameter_count(self) -> int:
-        inputs = (3, *self.channel_widths[:-1])
+        inputs = (3 + (3 if self.include_directions else 0), *self.channel_widths[:-1])
         convolutions = sum(
             kernel * kernel * input_channels * output_channels + output_channels
             for kernel, input_channels, output_channels in zip(
@@ -77,7 +79,7 @@ class CNNLocalizationModel:
         keys = jax.random.split(jax.random.key(seed), len(self.channel_widths) + 1)
         kernels: list[jax.Array] = []
         biases: list[jax.Array] = []
-        input_channels = 3
+        input_channels = 3 + (3 if self.include_directions else 0)
         for key, size, output_channels in zip(
             keys[:-1], self.kernel_sizes, self.channel_widths, strict=True
         ):
@@ -196,6 +198,13 @@ def _apply(
 ) -> jax.Array:
     images = features.reshape(-1, model.image_height, model.image_width, 3)
     hidden = (images - parameters.mean) / parameters.scale
+    if model.include_directions:
+        directions = jnp.asarray(
+            honey_factory_panorama(model.image_width, model.image_height).rays(),
+            dtype=hidden.dtype,
+        )
+        directions = jnp.broadcast_to(directions, (hidden.shape[0], *directions.shape))
+        hidden = jnp.concatenate((hidden, directions), axis=3)
     for kernel, bias, stride in zip(
         parameters.kernels, parameters.biases, model.strides, strict=True
     ):

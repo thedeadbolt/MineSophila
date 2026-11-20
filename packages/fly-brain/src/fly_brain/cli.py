@@ -342,6 +342,7 @@ def _train_image_cnn(args: argparse.Namespace) -> int:
     channel_widths = tuple(int(value) for value in values.pop("channel_widths"))
     kernel_sizes = tuple(int(value) for value in values.pop("kernel_sizes"))
     strides = tuple(int(value) for value in values.pop("strides"))
+    include_directions = bool(values.pop("include_directions", False))
     steps = int(values.pop("steps"))
     batch_size = int(values.pop("batch_size"))
     learning_rate = float(values.pop("learning_rate"))
@@ -363,6 +364,7 @@ def _train_image_cnn(args: argparse.Namespace) -> int:
         channel_widths=channel_widths,
         kernel_sizes=kernel_sizes,
         strides=strides,
+        include_directions=include_directions,
     )
     train, validation, test = (batches[name] for name in ("train", "validation", "test"))
     result = train_cnn(
@@ -389,6 +391,7 @@ def _train_image_cnn(args: argparse.Namespace) -> int:
             "channel_widths": list(channel_widths),
             "kernel_sizes": list(kernel_sizes),
             "strides": list(strides),
+            "include_directions": include_directions,
             "trainable_parameters": model.trainable_parameter_count,
             "downsample_factor": downsample_factor,
         },

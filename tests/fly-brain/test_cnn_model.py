@@ -56,3 +56,20 @@ def test_cnn_parameters_round_trip_through_generic_checkpoint(tmp_path: Path) ->
         "output_bias",
     }
     assert manifest == {"kind": "cnn-fixture"}
+
+
+def test_direction_channels_are_counted_and_executable() -> None:
+    model = CNNLocalizationModel(
+        8,
+        8,
+        channel_widths=(2,),
+        kernel_sizes=(3,),
+        strides=(2,),
+        include_directions=True,
+    )
+    parameters = model.initialize(0, np.zeros(3, np.float32), np.ones(3, np.float32))
+
+    prediction = model.predict_features(parameters, np.zeros((1, 8 * 8 * 3), np.float32))
+
+    assert model.trainable_parameter_count == 130
+    assert prediction.presence_probability.shape == (1,)
