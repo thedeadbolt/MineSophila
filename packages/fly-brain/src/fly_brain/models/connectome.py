@@ -27,6 +27,15 @@ class ConnectomeModelConfig:
     activation: DynamicsActivation = "relu"
     initial_edge_gain: float = 1.0
     train_neuron_bias: bool = False
+    edge_gain_mode: Literal["global", "cell_type_pair", "per_edge"] = "global"
+    maximum_edge_gain: float | None = None
+    use_neurotransmitter_signs: bool = False
+    components: tuple[str, ...] = (
+        "photoreceptors",
+        "lamina_relays",
+        "medulla_relays",
+        "visual_projection",
+    )
 
     def __post_init__(self) -> None:
         if self.minimum_synapse_count < 1 or self.settling_steps < 1:
@@ -37,6 +46,19 @@ class ConnectomeModelConfig:
             raise ValueError(f"unsupported connectome activation {self.activation!r}")
         if not np.isfinite(self.initial_edge_gain) or self.initial_edge_gain < 0:
             raise ValueError("connectome initial_edge_gain must be non-negative")
+        if self.edge_gain_mode not in {"global", "cell_type_pair", "per_edge"}:
+            raise ValueError(f"unsupported edge gain mode {self.edge_gain_mode!r}")
+        if self.maximum_edge_gain is not None and (
+            not np.isfinite(self.maximum_edge_gain)
+            or self.maximum_edge_gain <= 0
+            or not 0 < self.initial_edge_gain < self.maximum_edge_gain
+        ):
+            raise ValueError("bounded edge gains require 0 < initial < maximum")
+        components = tuple(self.components)
+        required = {"photoreceptors", "visual_projection"}
+        if len(components) != len(set(components)) or not required.issubset(components):
+            raise ValueError("components must be unique and include input and readout components")
+        object.__setattr__(self, "components", components)
 
 
 @dataclass(frozen=True)

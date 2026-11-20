@@ -481,7 +481,9 @@ def _train_connectome(args: argparse.Namespace) -> int:
         neuron_ids=selected_ids,
     ).load()
     network = build_first_visual_network(
-        graph, minimum_synapse_count=model_config.minimum_synapse_count
+        graph,
+        minimum_synapse_count=model_config.minimum_synapse_count,
+        component_names=model_config.components,
     )
     components = {component.spec.name: component for component in network.components}
     input_map = build_receptor_input_map(layout, graph, components["photoreceptors"])
@@ -503,6 +505,9 @@ def _train_connectome(args: argparse.Namespace) -> int:
         SynapseCountPolicy(
             model_config.initial_edge_gain,
             model_config.train_neuron_bias,
+            model_config.edge_gain_mode,
+            model_config.maximum_edge_gain,
+            model_config.use_neurotransmitter_signs,
         ),
         model_config.dt,
     )

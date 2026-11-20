@@ -61,11 +61,21 @@ def first_visual_component_specs() -> tuple[ComponentSpec, ...]:
 
 
 def build_first_visual_network(
-    graph: ConnectomeGraph, *, minimum_synapse_count: int = 5
+    graph: ConnectomeGraph,
+    *,
+    minimum_synapse_count: int = 5,
+    component_names: tuple[str, ...] | None = None,
 ) -> BrainNetwork:
     resolver = ComponentResolver(graph)
+    specs = first_visual_component_specs()
+    if component_names is not None:
+        known = {spec.name for spec in specs}
+        unknown = set(component_names) - known
+        if unknown:
+            raise ValueError(f"unknown visual components: {sorted(unknown)}")
+        specs = tuple(spec for spec in specs if spec.name in component_names)
     return BrainNetwork(
         graph,
-        tuple(resolver.resolve(spec) for spec in first_visual_component_specs()),
+        tuple(resolver.resolve(spec) for spec in specs),
         EdgePolicy(minimum_synapse_count=minimum_synapse_count),
     )

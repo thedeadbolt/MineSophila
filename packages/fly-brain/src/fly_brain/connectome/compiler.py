@@ -2,7 +2,7 @@
 """Compile an immutable structural network into sparse JAX execution arrays."""
 
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -14,17 +14,30 @@ from fly_brain.connectome.network import BrainNetwork
 from fly_brain.connectome.ports import InjectionRule, InputPort, OutputHead
 from fly_brain.contracts._arrays import readonly
 
+EdgeGainMode = Literal["global", "cell_type_pair", "per_edge"]
+
 
 @dataclass(frozen=True)
 class SynapseCountPolicy:
-    """Use normalized anatomical counts with one learned global recurrent gain."""
+    """Configure trainable gains over normalized anatomical synapse counts."""
 
     initial_edge_gain: float = 1.0
     train_neuron_bias: bool = True
+    edge_gain_mode: EdgeGainMode = "global"
+    maximum_edge_gain: float | None = None
+    use_neurotransmitter_signs: bool = False
 
     def __post_init__(self) -> None:
         if not np.isfinite(self.initial_edge_gain) or self.initial_edge_gain < 0:
             raise ValueError("initial_edge_gain must be finite and non-negative")
+        if self.edge_gain_mode not in {"global", "cell_type_pair", "per_edge"}:
+            raise ValueError(f"unsupported edge gain mode {self.edge_gain_mode!r}")
+        if self.maximum_edge_gain is not None and (
+            not np.isfinite(self.maximum_edge_gain)
+            or self.maximum_edge_gain <= 0
+            or not 0 < self.initial_edge_gain < self.maximum_edge_gain
+        ):
+            raise ValueError("bounded edge gains require 0 < initial < maximum")
 
 
 @dataclass(frozen=True)
@@ -90,6 +103,8 @@ class CompiledBrain:
     source_indexes: NDArray[np.int32]
     target_indexes: NDArray[np.int32]
     anatomical_weights: NDArray[np.float32]
+    edge_group_indexes: NDArray[np.int32]
+    edge_gain_count: int
     port_target_indexes: tuple[NDArray[np.int32], ...]
     port_offsets: tuple[int, ...]
     port_rules: tuple[InjectionRule, ...]
@@ -105,8 +120,12 @@ class CompiledBrain:
         neuron_bias = jnp.zeros(self.neuron_ids.size)
         if not self.parameter_policy.train_neuron_bias:
             neuron_bias = jax.lax.stop_gradient(neuron_bias)
+        initial_gain = self.parameter_policy.initial_edge_gain
+        if self.parameter_policy.maximum_edge_gain is not None:
+            ratio = initial_gain / self.parameter_policy.maximum_edge_gain
+            initial_gain = float(np.log(ratio / (1.0 - ratio)))
         return BrainParameters(
-            edge_gain=jnp.asarray(self.parameter_policy.initial_edge_gain, dtype=jnp.float32),
+            edge_gain=jnp.full(self.edge_gain_count, initial_gain, dtype=jnp.float32),
             neuron_bias=neuron_bias,
             readout_weights=jax.random.normal(key, (self.readout_indexes.size, self.output_width))
             * scale,
@@ -130,10 +149,13 @@ class CompiledBrain:
             raise ValueError(
                 f"external_input must have shape {(state.activity.shape[0], self.input_width)}"
             )
+        edge_gain = parameters.edge_gain[self.edge_group_indexes]
+        if self.parameter_policy.maximum_edge_gain is not None:
+            edge_gain = self.parameter_policy.maximum_edge_gain * jax.nn.sigmoid(edge_gain)
         recurrent = (
             state.activity[:, self.source_indexes]
             * jnp.asarray(self.anatomical_weights)[None, :]
-            * parameters.edge_gain
+            * edge_gain[None, :]
         )
         drive = jnp.zeros_like(state.activity)
         drive = drive.at[:, self.target_indexes].add(recurrent)
@@ -191,8 +213,9 @@ class BrainCompiler:
         )
         input_width = sum(port.neuron_ids.size for port in self.spec.input_ports)
         readout_count = self.spec.output_head.neuron_ids.size
+        edge_gain_count = int(self._edge_groups(graph.neurons.cell_types).max(initial=-1) + 1)
         parameter_count = (
-            1
+            edge_gain_count
             + (graph.neurons.rows if self.spec.parameter_policy.train_neuron_bias else 0)
             + (readout_count + 1) * self.spec.output_head.output_width
         )
@@ -218,6 +241,13 @@ class BrainCompiler:
         incoming = np.zeros(neuron_ids.size, dtype=np.float32)
         np.add.at(incoming, targets, counts)
         weights = counts / np.maximum(incoming[targets], 1.0)
+        if self.spec.parameter_policy.use_neurotransmitter_signs:
+            inhibitory = np.isin(
+                np.char.lower(graph.neurons.neurotransmitters[sources]),
+                ("gaba", "glutamate", "histamine", "his"),
+            )
+            weights = weights * np.where(inhibitory, -1.0, 1.0)
+        edge_groups = self._edge_groups(graph.neurons.cell_types)
         port_indexes = tuple(
             readonly(np.searchsorted(neuron_ids, port.neuron_ids).astype(np.int32))
             for port in self.spec.input_ports
@@ -230,6 +260,8 @@ class BrainCompiler:
             readonly(sources),
             readonly(targets),
             readonly(weights.astype(np.float32)),
+            readonly(edge_groups),
+            int(edge_groups.max(initial=-1) + 1),
             port_indexes,
             tuple(offsets),
             tuple(port.rule for port in self.spec.input_ports),
@@ -241,6 +273,19 @@ class BrainCompiler:
             self.spec.dt,
             self.spec.output_head.output_width,
         )
+
+    def _edge_groups(self, cell_types: NDArray[np.str_]) -> NDArray[np.int32]:
+        graph = self.spec.network.subgraph()
+        mode = self.spec.parameter_policy.edge_gain_mode
+        if mode == "global":
+            return np.zeros(graph.synapses.rows, dtype=np.int32)
+        if mode == "per_edge":
+            return np.arange(graph.synapses.rows, dtype=np.int32)
+        sources = np.searchsorted(graph.neurons.neuron_ids, graph.synapses.source_ids)
+        targets = np.searchsorted(graph.neurons.neuron_ids, graph.synapses.target_ids)
+        pairs = np.stack((cell_types[sources], cell_types[targets]), axis=1)
+        _, inverse = np.unique(pairs, axis=0, return_inverse=True)
+        return inverse.astype(np.int32)
 
     def _validate_ids(self, known_ids: NDArray[np.integer]) -> None:
         for name, ids in (

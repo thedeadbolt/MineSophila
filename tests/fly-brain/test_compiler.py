@@ -22,6 +22,7 @@ from fly_brain.connectome import (
     LeakyRateDynamics,
     NeuronTable,
     OutputHead,
+    SynapseCountPolicy,
     SynapseTable,
 )
 
@@ -139,7 +140,7 @@ def test_compiled_execution_has_finite_nonzero_gradients() -> None:
     gradients = jax.grad(loss)(parameters)
 
     assert all(np.isfinite(np.asarray(value)).all() for value in gradients)
-    assert float(jnp.abs(gradients.edge_gain)) > 0
+    assert float(jnp.linalg.norm(gradients.edge_gain)) > 0
     assert float(jnp.linalg.norm(gradients.readout_weights)) > 0
 
 
@@ -160,3 +161,33 @@ def test_compiler_rejects_neurons_outside_network() -> None:
 
     with np.testing.assert_raises_regex(ValueError, "outside the network"):
         BrainCompiler(spec).plan()
+
+
+def test_compiler_groups_and_bounds_edge_gains() -> None:
+    base = compiled_brain().spec
+    policy = SynapseCountPolicy(
+        initial_edge_gain=1.0,
+        train_neuron_bias=False,
+        edge_gain_mode="cell_type_pair",
+        maximum_edge_gain=2.0,
+        use_neurotransmitter_signs=True,
+    )
+    compiler = BrainCompiler(
+        BrainModelSpec(
+            base.network,
+            base.input_ports,
+            base.output_head,
+            base.dynamics,
+            policy,
+            base.dt,
+        )
+    )
+
+    plan = compiler.plan()
+    model = compiler.compile()
+    parameters = model.initialize_parameters(seed=0)
+
+    assert plan.trainable_parameter_count == 7
+    assert model.edge_gain_count == 3
+    np.testing.assert_allclose(parameters.edge_gain, np.zeros(3), atol=1e-6)
+    np.testing.assert_allclose(model.anatomical_weights, [-0.25, -0.75, 1.0])
