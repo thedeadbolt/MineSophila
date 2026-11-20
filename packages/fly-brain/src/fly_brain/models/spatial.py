@@ -15,6 +15,7 @@ from fly_brain.contracts._arrays import readonly
 from fly_brain.tasks import HoneyLocalizationPrediction
 
 ActivationName = Literal["gelu", "relu", "silu"]
+PresencePooling = Literal["coverage", "hidden_mean_max"]
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,7 @@ class SpatialModelConfig:
     include_directions: bool = True
     activation: ActivationName = "gelu"
     residual: bool = True
+    presence_pooling: PresencePooling = "coverage"
     pooling_temperature: float = 0.25
     coverage_power: float = 2.0
 
@@ -36,6 +38,8 @@ class SpatialModelConfig:
             raise ValueError("spatial neighbor settings must be positive")
         if self.activation not in {"gelu", "relu", "silu"}:
             raise ValueError(f"unsupported activation {self.activation!r}")
+        if self.presence_pooling not in {"coverage", "hidden_mean_max"}:
+            raise ValueError(f"unsupported presence pooling {self.presence_pooling!r}")
         if self.pooling_temperature <= 0 or self.coverage_power <= 0:
             raise ValueError("spatial pooling settings must be positive")
 
@@ -150,6 +154,8 @@ class SpatialParameters(NamedTuple):
     layer_bias: jax.Array
     output_weights: jax.Array
     output_bias: jax.Array
+    presence_weights: jax.Array
+    presence_bias: jax.Array
 
 
 @dataclass(frozen=True)
@@ -175,7 +181,7 @@ class SpatialLocalizationModel:
         return self.channel_count + (3 if self.config.include_directions else 0)
 
     def initialize(self, seed: int) -> SpatialParameters:
-        keys = jax.random.split(jax.random.key(seed), 4)
+        keys = jax.random.split(jax.random.key(seed), 5)
         width = self.config.hidden_width
         layers = self.config.message_passing_layers
         return SpatialParameters(
@@ -185,6 +191,8 @@ class SpatialLocalizationModel:
             jax.random.normal(keys[2], (layers, width, width)) * np.sqrt(1.0 / width),
             jnp.zeros((layers, width)),
             jax.random.normal(keys[3], (width,)) * np.sqrt(1.0 / width),
+            jnp.asarray(0.0),
+            jax.random.normal(keys[4], (2 * width,)) * np.sqrt(1.0 / (2 * width)),
             jnp.asarray(0.0),
         )
 
@@ -408,8 +416,16 @@ def _apply(
     logits = hidden @ parameters.output_weights + parameters.output_bias
     logits = jnp.where(valid[None, :], logits, -30.0)
     coverage = jax.nn.sigmoid(logits)
-    pooling_weights = jax.nn.softmax(logits / config.pooling_temperature, axis=1)
-    presence_logit = jnp.sum(pooling_weights * logits, axis=1)
+    if config.presence_pooling == "hidden_mean_max":
+        valid_hidden = jnp.where(valid[None, :, None], hidden, -jnp.inf)
+        hidden_max = jnp.max(valid_hidden, axis=1)
+        valid_count = jnp.maximum(jnp.sum(valid), 1)
+        hidden_mean = jnp.sum(hidden * valid[None, :, None], axis=1) / valid_count
+        pooled = jnp.concatenate((hidden_mean, hidden_max), axis=1)
+        presence_logit = pooled @ parameters.presence_weights + parameters.presence_bias
+    else:
+        pooling_weights = jax.nn.softmax(logits / config.pooling_temperature, axis=1)
+        presence_logit = jnp.sum(pooling_weights * logits, axis=1)
     presence = jax.nn.sigmoid(presence_logit)
     direction_weights = jnp.power(coverage, config.coverage_power) * valid[None, :]
     direction_raw = direction_weights @ directions

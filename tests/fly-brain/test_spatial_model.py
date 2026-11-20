@@ -54,6 +54,7 @@ def test_spatial_model_learns_local_coverage_and_presence() -> None:
         neighbor_count=2,
         neighbor_radius_deg=70.0,
         include_directions=False,
+        presence_pooling="hidden_mean_max",
         pooling_temperature=0.5,
     )
     training_config = SpatialTrainingConfig(
@@ -87,3 +88,5 @@ def test_spatial_settings_reject_invalid_values() -> None:
         SpatialTrainingConfig(threshold_search_min=0.9, threshold_search_max=0.1)
     with np.testing.assert_raises_regex(ValueError, "unsupported activation"):
         SpatialModelConfig(activation="unknown")  # type: ignore[arg-type]
+    with np.testing.assert_raises_regex(ValueError, "unsupported presence pooling"):
+        SpatialModelConfig(presence_pooling="unknown")  # type: ignore[arg-type]
