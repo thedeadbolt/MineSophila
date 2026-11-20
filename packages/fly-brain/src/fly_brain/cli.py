@@ -17,6 +17,7 @@ from fly_brain.datasets import (
     audit_still_labels,
     combine_batches,
     convert_honey_factory_dataset,
+    load_image_localization_batches,
 )
 from fly_brain.experiments import save_checkpoint
 from fly_brain.models import (
@@ -68,6 +69,12 @@ def _parser() -> argparse.ArgumentParser:
     deep.add_argument("--seed", type=int, default=0)
     deep.add_argument("--report", required=True, type=Path)
     deep.add_argument("--checkpoint", required=True, type=Path)
+    image = commands.add_parser("train-image-mlp")
+    image.add_argument("dataset", type=Path)
+    image.add_argument("labels", type=Path)
+    image.add_argument("--config", required=True, type=Path)
+    image.add_argument("--report", required=True, type=Path)
+    image.add_argument("--checkpoint", required=True, type=Path)
     spatial = commands.add_parser("train-spatial")
     spatial.add_argument("caches", nargs="+", type=Path)
     spatial.add_argument("--config", required=True, type=Path)
@@ -229,6 +236,85 @@ def _train_deep(args: argparse.Namespace) -> int:
             }
             for dataset in datasets
         },
+    }
+    report["checkpoint_manifest_sha256"] = save_checkpoint(
+        args.checkpoint, result.parameters._asdict(), report
+    )
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0
+
+
+def _train_image(args: argparse.Namespace) -> int:
+    values = cast(dict[str, Any], json.loads(args.config.read_text()))
+    if values.pop("format", None) != "fly-brain-image-mlp-experiment-v1":
+        raise ValueError("unsupported image MLP experiment config format")
+    downsample_factor = int(values.pop("downsample_factor"))
+    workers = int(values.pop("workers"))
+    hidden_width = int(values.pop("hidden_width"))
+    steps = int(values.pop("steps"))
+    batch_size = int(values.pop("batch_size"))
+    learning_rate = float(values.pop("learning_rate"))
+    seed = int(values.pop("seed"))
+    if values:
+        raise ValueError(f"unknown image MLP settings: {sorted(values)}")
+    labels = CachedStillDataset.load(args.labels)
+    batches = load_image_localization_batches(
+        args.dataset,
+        labels,
+        downsample_factor=downsample_factor,
+        workers=workers,
+    )
+    train, validation, test = (batches[name] for name in ("train", "validation", "test"))
+    model = MLPLocalizationModel(train.input_width, hidden_width=hidden_width)
+    result = train_mlp(
+        model,
+        train,
+        steps=steps,
+        batch_size=batch_size,
+        learning_rate=learning_rate,
+        seed=seed,
+    )
+    validation_prediction = model.predict_features(result.parameters, validation.features)
+    threshold_config = SpatialTrainingConfig()
+    threshold = _select_presence_threshold(
+        validation_prediction.presence_probability,
+        validation.presence.astype(np.bool_),
+        threshold_config,
+    )
+    report: dict[str, object] = {
+        "format": "fly-brain-image-mlp-report-v1",
+        "git_revision": _git_revision(),
+        "dataset": labels.metadata,
+        "model": {
+            "kind": "raw_image_mlp",
+            "input_width": model.input_width,
+            "hidden_width": hidden_width,
+            "downsample_factor": downsample_factor,
+        },
+        "training": {
+            "steps": steps,
+            "batch_size": batch_size,
+            "learning_rate": learning_rate,
+            "seed": seed,
+            "samples": train.features.shape[0],
+            "initial_loss": result.losses[0],
+            "final_loss": result.losses[-1],
+            "selected_presence_threshold": threshold,
+        },
+        "validation": asdict(
+            evaluate_localization(
+                validation_prediction, _targets(validation), presence_threshold=threshold
+            )
+        ),
+        "test": asdict(
+            evaluate_localization(
+                model.predict_features(result.parameters, test.features),
+                _targets(test),
+                presence_threshold=threshold,
+            )
+        ),
     }
     report["checkpoint_manifest_sha256"] = save_checkpoint(
         args.checkpoint, result.parameters._asdict(), report
@@ -454,6 +540,8 @@ def main(argv: list[str] | None = None) -> int:
             return _train(args)
         if args.command == "train-mlp":
             return _train_deep(args)
+        if args.command == "train-image-mlp":
+            return _train_image(args)
         if args.command == "train-spatial":
             return _train_spatial(args)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
