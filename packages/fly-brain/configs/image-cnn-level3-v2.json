@@ -1,0 +1,13 @@
+{
+  "format": "fly-brain-image-cnn-experiment-v1",
+  "downsample_factor": 20,
+  "workers": 8,
+  "channel_widths": [12, 24, 48],
+  "kernel_sizes": [5, 3, 3],
+  "strides": [2, 2, 2],
+  "include_directions": true,
+  "steps": 3000,
+  "batch_size": 64,
+  "learning_rate": 0.001,
+  "seed": 0
+}
