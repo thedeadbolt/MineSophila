@@ -8,10 +8,12 @@ from fly_brain.models.cnn import (
 )
 from fly_brain.models.connectome import (
     ConnectomeBatch,
+    ConnectomeInputTransform,
     ConnectomeLocalizationModel,
     ConnectomeModelConfig,
     ConnectomeTrainingConfig,
     ConnectomeTrainingResult,
+    ReceptorPoolingInputTransform,
     SpatialCoverageInputTransform,
     train_connectome,
 )
@@ -41,6 +43,7 @@ __all__ = [
     "CNNParameters",
     "CNNTrainingResult",
     "ConnectomeBatch",
+    "ConnectomeInputTransform",
     "ConnectomeLocalizationModel",
     "ConnectomeModelConfig",
     "ConnectomeTrainingConfig",
@@ -51,6 +54,7 @@ __all__ = [
     "MLPLocalizationModel",
     "MLPParameters",
     "MLPTrainingResult",
+    "ReceptorPoolingInputTransform",
     "SpatialBatch",
     "SpatialCoverageInputTransform",
     "SpatialLocalizationModel",

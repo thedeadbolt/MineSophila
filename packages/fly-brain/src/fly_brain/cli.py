@@ -9,7 +9,7 @@ import sys
 import time
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import jax
 import numpy as np
@@ -45,6 +45,7 @@ from fly_brain.experiments import load_checkpoint, save_checkpoint
 from fly_brain.models import (
     CNNLocalizationModel,
     ConnectomeBatch,
+    ConnectomeInputTransform,
     ConnectomeLocalizationModel,
     ConnectomeModelConfig,
     ConnectomeTrainingConfig,
@@ -52,6 +53,7 @@ from fly_brain.models import (
     LocalizationBatch,
     MLPLocalizationModel,
     MLPParameters,
+    ReceptorPoolingInputTransform,
     SpatialBatch,
     SpatialCoverageInputTransform,
     SpatialLocalizationModel,
@@ -650,7 +652,7 @@ def _connectome_batch(
     datasets: list[CachedStillDataset],
     split: str,
     input_map: ReceptorInputMap,
-    frontend: SpatialCoverageInputTransform | None = None,
+    frontend: ConnectomeInputTransform | None = None,
 ) -> ConnectomeBatch:
     spatial = _spatial_batch(datasets, split)
     weighted = spatial.coverage @ spatial.directions
@@ -675,11 +677,29 @@ def _connectome_frontend(
     datasets: list[CachedStillDataset],
     input_map: ReceptorInputMap,
     batch_size: int,
-) -> tuple[SpatialCoverageInputTransform | None, dict[str, object]]:
+) -> tuple[ConnectomeInputTransform | None, dict[str, object]]:
     if config.input_transform == "receptor":
         if checkpoint is not None:
             raise ValueError("frontend checkpoint requires a learned input transform")
         return None, {"kind": "direct_receptor", "biological_status": "approximation"}
+    if config.input_transform in {"per_eye_mean", "regional_mean"}:
+        if checkpoint is not None:
+            raise ValueError("pooling input transforms do not use a frontend checkpoint")
+        layout = _cached_sensor_layout(datasets)
+        transform = ReceptorPoolingInputTransform(
+            cast(Literal["per_eye_mean", "regional_mean"], config.input_transform),
+            layout.eyes,
+            input_map,
+            config.regional_azimuth_bins,
+            config.regional_elevation_bins,
+        )
+        return transform, {
+            "kind": config.input_transform,
+            "biological_status": transform.biological_status.value,
+            "azimuth_bins": config.regional_azimuth_bins,
+            "elevation_bins": config.regional_elevation_bins,
+            "frozen_parameter_count": 0,
+        }
     if checkpoint is None:
         raise ValueError("spatial_coverage input requires --frontend-checkpoint")
     values, manifest = load_checkpoint(checkpoint)

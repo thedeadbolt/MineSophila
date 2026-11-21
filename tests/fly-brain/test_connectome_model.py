@@ -2,6 +2,7 @@ from dataclasses import replace
 
 import numpy as np
 
+from fly_brain import Eye
 from fly_brain.connectome import (
     BiologicalStatus,
     BrainCompiler,
@@ -26,6 +27,7 @@ from fly_brain.models import (
     ConnectomeBatch,
     ConnectomeLocalizationModel,
     ConnectomeTrainingConfig,
+    ReceptorPoolingInputTransform,
     SpatialBatch,
     SpatialCoverageInputTransform,
     SpatialLocalizationModel,
@@ -159,3 +161,46 @@ def test_spatial_coverage_transform_maps_frozen_predictions() -> None:
     np.testing.assert_allclose(values[:, 0:3], np.repeat(values[:, 0:1], 3, axis=1))
     np.testing.assert_allclose(values[:, 3:6], np.repeat(values[:, 3:4], 3, axis=1))
     assert transform.parameter_count == 22
+
+
+def test_receptor_pooling_is_scoped_to_each_eye() -> None:
+    input_map = ReceptorInputMap(
+        "layout",
+        "12" * 32,
+        np.arange(10, 22, dtype=np.int64),
+        np.arange(12, dtype=np.int32),
+        np.arange(12, dtype=np.int32),
+        np.ones(12, dtype=np.float32),
+        np.array([100, 101, 200, 201], dtype=np.int64),
+        ("R1_6", "R7", "R8"),
+        12,
+    )
+    signals = np.repeat(
+        np.array([0.0, 2.0, 10.0, 14.0], dtype=np.float32)[None, :, None],
+        3,
+        axis=2,
+    )
+    batch = SpatialBatch(
+        signals,
+        np.ones(4, dtype=np.bool_),
+        np.zeros((1, 4), dtype=np.float32),
+        np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [-1.0, 0.0, 0.0],
+                [0.0, -1.0, 0.0],
+            ],
+            dtype=np.float32,
+        ),
+    )
+    transform = ReceptorPoolingInputTransform(
+        "per_eye_mean",
+        (Eye.LEFT, Eye.LEFT, Eye.RIGHT, Eye.RIGHT),
+        input_map,
+    )
+
+    values = transform.transform(batch).reshape(1, 4, 3)
+
+    np.testing.assert_allclose(values[:, :2], 1.0)
+    np.testing.assert_allclose(values[:, 2:], 12.0)

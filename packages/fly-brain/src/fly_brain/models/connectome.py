@@ -4,7 +4,7 @@
 
 from dataclasses import dataclass
 from functools import partial
-from typing import Literal, NamedTuple
+from typing import Literal, NamedTuple, Protocol
 
 import jax
 import jax.numpy as jnp
@@ -12,6 +12,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from fly_brain.connectome import BiologicalStatus, BrainParameters, CompiledBrain, ReceptorInputMap
+from fly_brain.contracts import Eye
 from fly_brain.contracts._arrays import readonly
 from fly_brain.models.spatial import (
     SpatialBatch,
@@ -43,7 +44,11 @@ class ConnectomeModelConfig:
         "visual_projection",
     )
     readout_components: tuple[str, ...] = ("visual_projection",)
-    input_transform: Literal["receptor", "spatial_coverage"] = "receptor"
+    input_transform: Literal["receptor", "per_eye_mean", "regional_mean", "spatial_coverage"] = (
+        "receptor"
+    )
+    regional_azimuth_bins: int = 8
+    regional_elevation_bins: int = 4
 
     def __post_init__(self) -> None:
         if self.minimum_synapse_count < 1 or self.settling_steps < 1:
@@ -73,8 +78,15 @@ class ConnectomeModelConfig:
             or not set(readout_components).issubset(components)
         ):
             raise ValueError("readout components must be unique selected components")
-        if self.input_transform not in {"receptor", "spatial_coverage"}:
+        if self.input_transform not in {
+            "receptor",
+            "per_eye_mean",
+            "regional_mean",
+            "spatial_coverage",
+        }:
             raise ValueError(f"unsupported input transform {self.input_transform!r}")
+        if self.regional_azimuth_bins < 1 or self.regional_elevation_bins < 1:
+            raise ValueError("regional pooling bin counts must be positive")
         object.__setattr__(self, "components", components)
         object.__setattr__(self, "readout_components", readout_components)
 
@@ -108,6 +120,68 @@ class ConnectomeBatch:
     @property
     def input_width(self) -> int:
         return self.port_values.shape[1]
+
+
+class ConnectomeInputTransform(Protocol):
+    @property
+    def biological_status(self) -> BiologicalStatus: ...
+
+    def transform(self, batch: SpatialBatch) -> NDArray[np.float32]: ...
+
+    @property
+    def parameter_count(self) -> int: ...
+
+
+@dataclass(frozen=True)
+class ReceptorPoolingInputTransform:
+    """Pool receptor signals within each eye or angular region, then broadcast."""
+
+    mode: Literal["per_eye_mean", "regional_mean"]
+    eyes: tuple[Eye, ...]
+    input_map: ReceptorInputMap
+    azimuth_bins: int = 8
+    elevation_bins: int = 4
+    biological_status: BiologicalStatus = BiologicalStatus.SHORTCUT
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"per_eye_mean", "regional_mean"}:
+            raise ValueError(f"unsupported receptor pooling mode {self.mode!r}")
+        if len(self.eyes) != self.input_map.source_site_ids.size:
+            raise ValueError("pooling eyes must match the receptor map sites")
+        if self.azimuth_bins < 1 or self.elevation_bins < 1:
+            raise ValueError("regional pooling bin counts must be positive")
+
+    def transform(self, batch: SpatialBatch) -> NDArray[np.float32]:
+        if batch.site_count != len(self.eyes):
+            raise ValueError("spatial batch does not match pooling sites")
+        eye_values = np.asarray(self.eyes)
+        if self.mode == "per_eye_mean":
+            groups = eye_values == eye_values[:, None]
+        else:
+            azimuth = np.arctan2(batch.directions[:, 1], batch.directions[:, 0])
+            elevation = np.arcsin(np.clip(batch.directions[:, 2], -1.0, 1.0))
+            azimuth_bin = np.minimum(
+                ((azimuth + np.pi) / (2 * np.pi) * self.azimuth_bins).astype(np.int32),
+                self.azimuth_bins - 1,
+            )
+            elevation_bin = np.minimum(
+                ((elevation + np.pi / 2) / np.pi * self.elevation_bins).astype(np.int32),
+                self.elevation_bins - 1,
+            )
+            groups = (
+                (eye_values == eye_values[:, None])
+                & (azimuth_bin == azimuth_bin[:, None])
+                & (elevation_bin == elevation_bin[:, None])
+            )
+        groups &= batch.valid[None, :]
+        denominator = np.maximum(groups.sum(axis=1), 1)[:, None]
+        pooled = np.einsum("ij,bjc->bic", groups, batch.signals) / denominator[None, :, :]
+        pooled[:, ~batch.valid, :] = 0.0
+        return self.input_map.transform(pooled, valid=batch.valid)
+
+    @property
+    def parameter_count(self) -> int:
+        return 0
 
 
 @dataclass(frozen=True)
