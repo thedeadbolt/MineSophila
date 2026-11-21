@@ -97,3 +97,49 @@ Additional artifacts in the same external directory are:
 - `recurrent-level2-v1.{report.json,checkpoint.npz}`
 - `recurrent-level2-context-v1.{report.json,checkpoint.npz}`
 - `recurrent-actions-level2-v1.{report.json,checkpoint.npz}`
+
+## Visual Kenyon temporal readouts (Slice 9a)
+
+Recorded 2026-11-21 on the level-1 clips above, same splits, evaluator and GRU training settings.
+Values are means ± standard deviation over seeds 0–2. Each Kenyon row reads connectome activity
+from the static `connectome-level1-visual-kenyon-v1` checkpoint (signs off, frozen spatial
+frontend). Each frame settles for four steps from rest, exactly as that model was trained
+(`--state-mode reset`); the memory is therefore in the GRU, not the connectome. The two
+"inputs" rows use the 103 visual-projection neurons that feed the Kenyon cells, with hidden width
+106 so that their parameter counts match the Kenyon rows.
+
+| GRU input | Trainable parameters | Test balanced accuracy | Test bearing error | Occluded bearing error | Visible motion stability error |
+|---|---:|---:|---:|---:|---:|
+| Frontend output (control) | 13,516 | 94.07 ± 4.89% | **2.69 ± 0.30°** | 15.41 ± 3.91° | **0.61°** |
+| Frontend output + egocentric context | 16,232 | **99.12 ± 0.18%** | 2.61 ± 0.09° | 7.96 ± 3.29° | 0.67° |
+| Visual Kenyon cells (284) | 67,836 | 97.07 ± 0.41% | 11.36 ± 0.30° | 35.80 ± 6.21° | 2.77° |
+| Kenyon inputs (103) | 67,414 | 98.55 ± 0.65% | 7.08 ± 0.74° | 65.48 ± 22.19° | 1.63° |
+| Frontend output + Kenyon cells | 68,612 | 95.56 ± 5.75% | 7.38 ± 1.85° | 29.14 ± 10.74° | 2.26° |
+| Frontend output + Kenyon inputs | 68,694 | 97.22 ± 1.70% | 3.21 ± 0.18° | 13.51 ± 2.01° | 1.01° |
+
+Recurrence lifts presence decoding from connectome activity well above the static readout
+(83.2% test balanced accuracy for the same checkpoint), so the connectome pathway retains enough
+evidence for presence. It loses direction. The Kenyon expansion is worse than its own inputs
+for bearing (11.4° against 7.1°, consistent across seeds), and adding either connectome group to
+the frontend output makes bearing worse rather than better. On this task the visual Kenyon
+expansion carries less spatial information than the visual-projection neurons that feed it, and
+it adds nothing to the frontend output.
+
+The occlusion columns are not evidence either way: the held-out split contains six occluded
+frames and one recovery event. The Kenyon row's lower occluded bearing error than its input row is
+within the seed spread of the input row.
+
+An earlier cache carried connectome state across frames without resets. Unsigned, all-excitatory
+ReLU dynamics with an uncapped gain are unstable over long runs, and activity grew from about 0 to
+about 10⁴ (up to 4 × 10⁵) within a clip. Recurrent readouts of that cache reached about 61%
+balanced accuracy with a final training loss of 0.75. Those runs measure the instability, not the
+circuit, and are excluded; see the Slice 9 plan for the dynamics change that addresses them.
+
+Artifacts in the same external directory:
+
+- `temporal-level1-visual-kenyon-framewise-v1.fly-brain.npz` (per-frame reset activity, 387 features)
+- `temporal-level1-frontend-visual-kenyon-framewise-v1.fly-brain.npz` (combined with the frontend
+  output through `fly-brain combine-clip-features`)
+- `recurrent-level1-*-framewise-v1.{report.json,checkpoint.npz}` (seed 0) and
+  `recurrent-level1-seeds-*-s{1,2}.{report.json,checkpoint.npz}` (seeds 1–2, including reruns of
+  the two frontend controls)
