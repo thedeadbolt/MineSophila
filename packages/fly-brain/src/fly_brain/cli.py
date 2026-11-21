@@ -267,11 +267,13 @@ def _train_recurrent(args: argparse.Namespace) -> int:
         "test": _evaluate_temporal(test_prediction, test, threshold),
         "test_visible": _evaluate_temporal(test_prediction, test, threshold, visible),
         "test_occluded": _evaluate_temporal(test_prediction, test, threshold, occluded),
+        "temporal_diagnostics": _temporal_diagnostics(test_prediction, test, visible),
         "static_frontend": {
             "validation": _evaluate_temporal(static_validation, validation, static_threshold),
             "test": _evaluate_temporal(static_test, test, static_threshold),
             "test_visible": _evaluate_temporal(static_test, test, static_threshold, visible),
             "test_occluded": _evaluate_temporal(static_test, test, static_threshold, occluded),
+            "temporal_diagnostics": _temporal_diagnostics(static_test, test, visible),
             "selected_presence_threshold": static_threshold,
         },
         "runtime": {
@@ -363,6 +365,64 @@ def _evaluate_temporal(
         honey_direction=batch.direction.reshape(-1, 3),
     )
     return asdict(evaluate_localization(flat_prediction, targets, presence_threshold=threshold))
+
+
+def _temporal_diagnostics(
+    prediction: TemporalPrediction,
+    batch: TemporalBatch,
+    visible: np.ndarray,
+) -> dict[str, object]:
+    consecutive = (
+        batch.time_mask[:, 1:] & batch.time_mask[:, :-1] & visible[:, 1:] & visible[:, :-1]
+    )
+    predicted_change = _angular_change(prediction.direction[:, :-1], prediction.direction[:, 1:])
+    target_change = _angular_change(batch.direction[:, :-1], batch.direction[:, 1:])
+    stability_error = (
+        float(np.mean(np.abs(predicted_change[consecutive] - target_change[consecutive])))
+        if consecutive.any()
+        else None
+    )
+    recovery_errors: list[list[float]] = [[] for _ in range(5)]
+    recovery_count = 0
+    for row in range(batch.sequences):
+        transitions = (
+            np.flatnonzero(
+                batch.time_mask[row, 1:]
+                & visible[row, 1:]
+                & ~visible[row, :-1]
+                & (batch.presence[row, 1:] > 0.5)
+            )
+            + 1
+        )
+        recovery_count += int(transitions.size)
+        for start in transitions:
+            for horizon in range(5):
+                index = start + horizon
+                if index >= batch.time_steps or not batch.time_mask[row, index]:
+                    break
+                error = _angular_change(
+                    prediction.direction[row, index][None, :],
+                    batch.direction[row, index][None, :],
+                )[0]
+                if np.isfinite(error):
+                    recovery_errors[horizon].append(float(error))
+    return {
+        "visible_motion_stability_error_deg": stability_error,
+        "recovery_event_count": recovery_count,
+        "recovery_bearing_error_deg": [
+            float(np.mean(values)) if values else None for values in recovery_errors
+        ],
+    }
+
+
+def _angular_change(first: np.ndarray, second: np.ndarray) -> np.ndarray:
+    first_norm = np.linalg.norm(first, axis=-1)
+    second_norm = np.linalg.norm(second, axis=-1)
+    usable = (first_norm > 1e-6) & (second_norm > 1e-6)
+    result = np.full(first_norm.shape, np.nan, dtype=np.float32)
+    cosine = np.sum(first * second, axis=-1) / np.maximum(first_norm * second_norm, 1e-12)
+    result[usable] = np.degrees(np.arccos(np.clip(cosine[usable], -1.0, 1.0)))
+    return result
 
 
 def _audit_stills(args: argparse.Namespace) -> int:
