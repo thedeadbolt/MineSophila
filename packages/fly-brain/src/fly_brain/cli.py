@@ -34,6 +34,7 @@ from fly_brain.connectome.visual import (
 )
 from fly_brain.contracts import BrainTargets, Eye, SensorLayout
 from fly_brain.datasets import (
+    CachedClipDataset,
     CachedStillDataset,
     StillLabelAuditConfig,
     audit_still_labels,
@@ -55,6 +56,8 @@ from fly_brain.models import (
     MLPLocalizationModel,
     MLPParameters,
     ReceptorPoolingInputTransform,
+    RecurrentLocalizationModel,
+    RecurrentTrainingConfig,
     SpatialBatch,
     SpatialCoverageInputTransform,
     SpatialLocalizationModel,
@@ -62,14 +65,17 @@ from fly_brain.models import (
     SpatialParameters,
     SpatialTopology,
     SpatialTrainingConfig,
+    TemporalBatch,
+    TemporalPrediction,
     build_angular_topology,
     train_cnn,
     train_connectome,
     train_linear,
     train_mlp,
+    train_recurrent,
     train_spatial,
 )
-from fly_brain.tasks import evaluate_localization
+from fly_brain.tasks import HoneyLocalizationPrediction, evaluate_localization
 from fly_vision.lattice import default_lattice
 from fly_vision.projection import to_unit
 
@@ -89,6 +95,11 @@ def _parser() -> argparse.ArgumentParser:
     prepare_clips.add_argument("--frontend-checkpoint", required=True, type=Path)
     prepare_clips.add_argument("--prediction-batch-size", type=int, default=64)
     prepare_clips.add_argument("--frame-selection", choices=("all", "tick"), default="tick")
+    temporal = commands.add_parser("train-recurrent")
+    temporal.add_argument("cache", type=Path)
+    temporal.add_argument("--config", required=True, type=Path)
+    temporal.add_argument("--report", required=True, type=Path)
+    temporal.add_argument("--checkpoint", required=True, type=Path)
     audit = commands.add_parser("audit-stills")
     audit.add_argument("dataset", type=Path)
     audit.add_argument("cache", type=Path)
@@ -212,6 +223,146 @@ def _load_spatial_frontend(
         radius_deg=config.neighbor_radius_deg,
     )
     return model, parameters, topology
+
+
+def _train_recurrent(args: argparse.Namespace) -> int:
+    started = time.perf_counter()
+    include_context, hidden_width, training_config = _load_recurrent_config(args.config)
+    dataset = CachedClipDataset.load(args.cache)
+    train = dataset.batch("train", include_context=include_context)
+    validation = dataset.batch("validation", include_context=include_context)
+    test = dataset.batch("test", include_context=include_context)
+    model = RecurrentLocalizationModel(train.input_width, hidden_width)
+    result = train_recurrent(model, train, training_config)
+    validation_prediction, _ = model.run(
+        result.parameters, validation.features, validation.time_mask
+    )
+    threshold = _select_temporal_threshold(validation_prediction, validation)
+    test_prediction, _ = model.run(result.parameters, test.features, test.time_mask)
+    static_validation = _static_temporal_prediction(validation)
+    static_threshold = _select_temporal_threshold(static_validation, validation)
+    static_test = _static_temporal_prediction(test)
+    visible = dataset.interval_mask("test", "visible") & test.time_mask
+    occluded = dataset.interval_mask("test", "occluded") & test.time_mask & (test.presence > 0.5)
+    report: dict[str, object] = {
+        "format": "fly-brain-recurrent-report-v1",
+        "git_revision": _git_revision(),
+        "dataset": dataset.metadata,
+        "model": {
+            "kind": "gru_localisation",
+            "input_width": model.input_width,
+            "hidden_width": model.hidden_width,
+            "include_context": include_context,
+            "parameter_count": sum(int(value.size) for value in result.parameters),
+        },
+        "training": {
+            **asdict(training_config),
+            "clips": train.sequences,
+            "frames": int(np.count_nonzero(train.time_mask)),
+            "initial_loss": result.losses[0],
+            "final_loss": result.losses[-1],
+            "selected_presence_threshold": threshold,
+        },
+        "validation": _evaluate_temporal(validation_prediction, validation, threshold),
+        "test": _evaluate_temporal(test_prediction, test, threshold),
+        "test_visible": _evaluate_temporal(test_prediction, test, threshold, visible),
+        "test_occluded": _evaluate_temporal(test_prediction, test, threshold, occluded),
+        "static_frontend": {
+            "validation": _evaluate_temporal(static_validation, validation, static_threshold),
+            "test": _evaluate_temporal(static_test, test, static_threshold),
+            "test_visible": _evaluate_temporal(static_test, test, static_threshold, visible),
+            "test_occluded": _evaluate_temporal(static_test, test, static_threshold, occluded),
+            "selected_presence_threshold": static_threshold,
+        },
+        "runtime": {
+            "backend": jax.default_backend(),
+            "wall_seconds": time.perf_counter() - started,
+            "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024,
+        },
+    }
+    report["checkpoint_manifest_sha256"] = save_checkpoint(
+        args.checkpoint, result.parameters._asdict(), report
+    )
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0
+
+
+def _load_recurrent_config(path: Path) -> tuple[bool, int, RecurrentTrainingConfig]:
+    raw_values: Any = json.loads(path.read_text())
+    if not isinstance(raw_values, dict):
+        raise ValueError("recurrent experiment config must be a JSON object")
+    values = cast(dict[str, Any], raw_values)
+    if values.get("format") != "fly-brain-recurrent-experiment-v1":
+        raise ValueError("unsupported recurrent experiment config format")
+    model_values = values.get("model")
+    training_values = values.get("training")
+    if not isinstance(model_values, dict) or not isinstance(training_values, dict):
+        raise ValueError("recurrent experiment config requires model and training objects")
+    model_config = cast(dict[str, Any], model_values)
+    try:
+        include_context = bool(model_config["include_context"])
+        hidden_width = int(model_config["hidden_width"])
+        training = RecurrentTrainingConfig(**cast(dict[str, Any], training_values))
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(f"invalid recurrent experiment setting: {error}") from error
+    if hidden_width < 1:
+        raise ValueError("recurrent hidden_width must be positive")
+    return include_context, hidden_width, training
+
+
+def _static_temporal_prediction(batch: TemporalBatch) -> TemporalPrediction:
+    if batch.input_width < 4:
+        raise ValueError("temporal cache lacks the four spatial frontend features")
+    directions = batch.features[:, :, 1:4]
+    norms = np.linalg.norm(directions, axis=2, keepdims=True)
+    directions = np.divide(
+        directions,
+        np.maximum(norms, 1e-6),
+        out=np.zeros_like(directions),
+    )
+    return TemporalPrediction(batch.features[:, :, 0], directions, batch.time_mask)
+
+
+def _select_temporal_threshold(prediction: TemporalPrediction, batch: TemporalBatch) -> float:
+    mask = batch.time_mask
+    probabilities = prediction.presence_probability[mask]
+    truth = batch.presence[mask] > 0.5
+    best_threshold = 0.5
+    best_score = -1.0
+    for threshold in np.linspace(0.05, 0.95, 181):
+        predicted = probabilities >= threshold
+        positive = truth
+        negative = ~truth
+        recall = float(np.mean(predicted[positive])) if positive.any() else 0.0
+        specificity = float(np.mean(~predicted[negative])) if negative.any() else 0.0
+        score = (recall + specificity) / 2.0
+        if score > best_score:
+            best_score = score
+            best_threshold = float(threshold)
+    return best_threshold
+
+
+def _evaluate_temporal(
+    prediction: TemporalPrediction,
+    batch: TemporalBatch,
+    threshold: float,
+    interval_mask: np.ndarray | None = None,
+) -> dict[str, object] | None:
+    mask = batch.time_mask if interval_mask is None else batch.time_mask & interval_mask
+    if not mask.any():
+        return None
+    flat_prediction = HoneyLocalizationPrediction(
+        prediction.presence_probability.reshape(-1),
+        prediction.direction.reshape(-1, 3),
+    )
+    targets = BrainTargets(
+        time_mask=mask.reshape(-1),
+        honey_present=(batch.presence > 0.5).reshape(-1),
+        honey_direction=batch.direction.reshape(-1, 3),
+    )
+    return asdict(evaluate_localization(flat_prediction, targets, presence_threshold=threshold))
 
 
 def _audit_stills(args: argparse.Namespace) -> int:
@@ -1045,6 +1196,8 @@ def main(argv: list[str] | None = None) -> int:
             return _prepare(args)
         if args.command == "prepare-clips":
             return _prepare_clips(args)
+        if args.command == "train-recurrent":
+            return _train_recurrent(args)
         if args.command == "audit-stills":
             return _audit_stills(args)
         if args.command == "train-linear":

@@ -14,8 +14,8 @@ from fly_brain.datasets.stills import (
 )
 
 __all__ = [
-    "CachedStillDataset",
     "CachedClipDataset",
+    "CachedStillDataset",
     "StillLabelAuditConfig",
     "StillLabelAuditReport",
     "audit_still_labels",
