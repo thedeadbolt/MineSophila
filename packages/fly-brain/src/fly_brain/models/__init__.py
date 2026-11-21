@@ -37,6 +37,17 @@ from fly_brain.models.spatial import (
     build_angular_topology,
     train_spatial,
 )
+from fly_brain.models.temporal import (
+    RecurrentLocalizationModel,
+    RecurrentParameters,
+    RecurrentState,
+    RecurrentTrainingConfig,
+    RecurrentTrainingResult,
+    TemporalBatch,
+    TemporalPrediction,
+    prepare_temporal_batch,
+    train_recurrent,
+)
 
 __all__ = [
     "CNNLocalizationModel",
@@ -55,6 +66,11 @@ __all__ = [
     "MLPParameters",
     "MLPTrainingResult",
     "ReceptorPoolingInputTransform",
+    "RecurrentLocalizationModel",
+    "RecurrentParameters",
+    "RecurrentState",
+    "RecurrentTrainingConfig",
+    "RecurrentTrainingResult",
     "SpatialBatch",
     "SpatialCoverageInputTransform",
     "SpatialLocalizationModel",
@@ -64,11 +80,15 @@ __all__ = [
     "SpatialTrainingConfig",
     "SpatialTrainingResult",
     "TrainingResult",
+    "TemporalBatch",
+    "TemporalPrediction",
     "build_angular_topology",
     "prepare_localization_batch",
+    "prepare_temporal_batch",
     "train_cnn",
     "train_connectome",
     "train_linear",
     "train_mlp",
+    "train_recurrent",
     "train_spatial",
 ]
