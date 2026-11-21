@@ -88,6 +88,7 @@ def _parser() -> argparse.ArgumentParser:
     prepare_clips.add_argument("--matrix-cache", required=True, type=Path)
     prepare_clips.add_argument("--frontend-checkpoint", required=True, type=Path)
     prepare_clips.add_argument("--prediction-batch-size", type=int, default=64)
+    prepare_clips.add_argument("--frame-selection", choices=("all", "tick"), default="tick")
     audit = commands.add_parser("audit-stills")
     audit.add_argument("dataset", type=Path)
     audit.add_argument("cache", type=Path)
@@ -175,6 +176,7 @@ def _prepare_clips(args: argparse.Namespace) -> int:
         spatial_topology=topology,
         frontend_checkpoint_sha256=_file_sha256(args.frontend_checkpoint),
         prediction_batch_size=args.prediction_batch_size,
+        frame_selection=args.frame_selection,
         progress=progress,
     )
     print(f"  wrote {converted.clip_count} clips and {converted.frame_count} frames", flush=True)

@@ -5,7 +5,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -191,11 +191,14 @@ def convert_honey_factory_clips(
     spatial_topology: SpatialTopology,
     frontend_checkpoint_sha256: str,
     prediction_batch_size: int = 64,
+    frame_selection: Literal["all", "tick"] = "tick",
     progress: Callable[[int, int], None] | None = None,
 ) -> CachedClipDataset:
     """Convert RGB clips through fly-vision and a frozen spatial frontend."""
     if prediction_batch_size < 1:
         raise ValueError("prediction_batch_size must be positive")
+    if frame_selection not in {"all", "tick"}:
+        raise ValueError("frame_selection must be 'all' or 'tick'")
     manifest_path = dataset_dir / "dataset.json"
     manifest = cast(dict[str, Any], json.loads(manifest_path.read_text()))
     if manifest.get("lifecycle") != "complete" or manifest.get("kind") != "clips":
@@ -235,15 +238,16 @@ def convert_honey_factory_clips(
     context_adapter = EgocentricMotionContextAdapter()
     teacher_adapter = TeacherActionTargetAdapter()
     for clip_index, clip in enumerate(clips, start=1):
-        records = clip.labels()
+        records: list[dict[str, Any]] = []
         activations: list[NDArray[np.float32]] = []
         for clip_frame in clip.frames():
+            if frame_selection == "tick" and "tick_labels" not in clip_frame.labels:
+                continue
             rgb = np.asarray(clip_frame.rgb, dtype=np.uint8)
             mask = (np.asarray(clip_frame.visible_mask) > 0).astype(np.float64)
             receptors, _ = eye.sample_arrays(rgb, mask)
             activations.append(receptors)
-        if len(activations) != len(records):
-            raise ValueError(f"clip {clip.record['clip_id']} frame count does not match labels")
+            records.append(clip_frame.labels)
         signal_rows = np.stack(activations)
         spatial_batch = SpatialBatch(
             signal_rows,
@@ -307,6 +311,7 @@ def convert_honey_factory_clips(
                 "direction_z",
             ],
             "frontend_checkpoint_sha256": frontend_checkpoint_sha256,
+            "frame_selection": frame_selection,
         },
     )
     result.save(output_path)
