@@ -258,6 +258,10 @@ def _prepare_connectome_clips(args: argparse.Namespace) -> int:
     neuron_ids = np.unique(
         np.concatenate([components[name].neuron_ids for name in selected])
     )
+    feature_groups = {
+        name: np.searchsorted(neuron_ids, components[name].neuron_ids).tolist()
+        for name in selected
+    }
     encoder = ConnectomeActivityEncoder(
         compiler.compile(), neuron_ids, args.transitions_per_frame
     )
@@ -286,6 +290,8 @@ def _prepare_connectome_clips(args: argparse.Namespace) -> int:
             "components": {
                 name: int(components[name].neuron_ids.size) for name in selected
             },
+            "groups": feature_groups,
+            "neuron_ids": neuron_ids.tolist(),
             "width": encoder.output_width,
             "transitions_per_frame": encoder.transitions_per_frame,
             "connectome_checkpoint_sha256": _file_sha256(args.connectome_checkpoint),
@@ -331,11 +337,17 @@ def _load_spatial_frontend(
 
 def _train_recurrent(args: argparse.Namespace) -> int:
     started = time.perf_counter()
-    include_context, hidden_width, training_config = _load_recurrent_config(args.config)
+    include_context, feature_group, hidden_width, training_config = _load_recurrent_config(
+        args.config
+    )
     dataset = CachedClipDataset.load(args.cache)
-    train = dataset.batch("train", include_context=include_context)
-    validation = dataset.batch("validation", include_context=include_context)
-    test = dataset.batch("test", include_context=include_context)
+    train = dataset.batch(
+        "train", include_context=include_context, feature_group=feature_group
+    )
+    validation = dataset.batch(
+        "validation", include_context=include_context, feature_group=feature_group
+    )
+    test = dataset.batch("test", include_context=include_context, feature_group=feature_group)
     model = RecurrentLocalizationModel(train.input_width, hidden_width)
     result = train_recurrent(model, train, training_config)
     validation_prediction, _ = model.run(
@@ -343,9 +355,6 @@ def _train_recurrent(args: argparse.Namespace) -> int:
     )
     threshold = _select_temporal_threshold(validation_prediction, validation)
     test_prediction, _ = model.run(result.parameters, test.features, test.time_mask)
-    static_validation = _static_temporal_prediction(validation)
-    static_threshold = _select_temporal_threshold(static_validation, validation)
-    static_test = _static_temporal_prediction(test)
     visible = dataset.interval_mask("test", "visible") & test.time_mask
     occluded = dataset.interval_mask("test", "occluded") & test.time_mask & (test.presence > 0.5)
     test_clip_types = sorted(
@@ -355,6 +364,28 @@ def _train_recurrent(args: argparse.Namespace) -> int:
             if split == "test"
         }
     )
+    static_report: dict[str, object] | None = None
+    if feature_group is None:
+        static_validation = _static_temporal_prediction(validation)
+        static_threshold = _select_temporal_threshold(static_validation, validation)
+        static_test = _static_temporal_prediction(test)
+        static_report = {
+            "validation": _evaluate_temporal(static_validation, validation, static_threshold),
+            "test": _evaluate_temporal(static_test, test, static_threshold),
+            "test_visible": _evaluate_temporal(static_test, test, static_threshold, visible),
+            "test_occluded": _evaluate_temporal(static_test, test, static_threshold, occluded),
+            "test_by_clip_type": {
+                clip_type: _evaluate_temporal(
+                    static_test,
+                    test,
+                    static_threshold,
+                    dataset.clip_type_mask("test", clip_type),
+                )
+                for clip_type in test_clip_types
+            },
+            "temporal_diagnostics": _temporal_diagnostics(static_test, test, visible),
+            "selected_presence_threshold": static_threshold,
+        }
     report: dict[str, object] = {
         "format": "fly-brain-recurrent-report-v1",
         "git_revision": _git_revision(),
@@ -364,6 +395,7 @@ def _train_recurrent(args: argparse.Namespace) -> int:
             "input_width": model.input_width,
             "hidden_width": model.hidden_width,
             "include_context": include_context,
+            "feature_group": feature_group,
             "parameter_count": sum(int(value.size) for value in result.parameters),
         },
         "training": {
@@ -388,23 +420,7 @@ def _train_recurrent(args: argparse.Namespace) -> int:
             for clip_type in test_clip_types
         },
         "temporal_diagnostics": _temporal_diagnostics(test_prediction, test, visible),
-        "static_frontend": {
-            "validation": _evaluate_temporal(static_validation, validation, static_threshold),
-            "test": _evaluate_temporal(static_test, test, static_threshold),
-            "test_visible": _evaluate_temporal(static_test, test, static_threshold, visible),
-            "test_occluded": _evaluate_temporal(static_test, test, static_threshold, occluded),
-            "test_by_clip_type": {
-                clip_type: _evaluate_temporal(
-                    static_test,
-                    test,
-                    static_threshold,
-                    dataset.clip_type_mask("test", clip_type),
-                )
-                for clip_type in test_clip_types
-            },
-            "temporal_diagnostics": _temporal_diagnostics(static_test, test, visible),
-            "selected_presence_threshold": static_threshold,
-        },
+        "static_frontend": static_report,
         "runtime": {
             "backend": jax.default_backend(),
             "wall_seconds": time.perf_counter() - started,
@@ -420,7 +436,9 @@ def _train_recurrent(args: argparse.Namespace) -> int:
     return 0
 
 
-def _load_recurrent_config(path: Path) -> tuple[bool, int, RecurrentTrainingConfig]:
+def _load_recurrent_config(
+    path: Path,
+) -> tuple[bool, str | None, int, RecurrentTrainingConfig]:
     raw_values: Any = json.loads(path.read_text())
     if not isinstance(raw_values, dict):
         raise ValueError("recurrent experiment config must be a JSON object")
@@ -434,13 +452,15 @@ def _load_recurrent_config(path: Path) -> tuple[bool, int, RecurrentTrainingConf
     model_config = cast(dict[str, Any], model_values)
     try:
         include_context = bool(model_config["include_context"])
+        raw_feature_group = model_config.get("feature_group")
+        feature_group = None if raw_feature_group is None else str(raw_feature_group)
         hidden_width = int(model_config["hidden_width"])
         training = RecurrentTrainingConfig(**cast(dict[str, Any], training_values))
     except (KeyError, TypeError, ValueError) as error:
         raise ValueError(f"invalid recurrent experiment setting: {error}") from error
     if hidden_width < 1:
         raise ValueError("recurrent hidden_width must be positive")
-    return include_context, hidden_width, training
+    return include_context, feature_group, hidden_width, training
 
 
 def _train_recurrent_actions(args: argparse.Namespace) -> int:

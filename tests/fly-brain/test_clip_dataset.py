@@ -20,7 +20,10 @@ def dataset() -> CachedClipDataset:
         scene_ids=("train-scene", "test-scene"),
         splits=("train", "test"),
         clip_types=("approach", "occlusion"),
-        metadata={"format": "fixture"},
+        metadata={
+            "format": "fixture",
+            "sensory_features": {"groups": {"small": [1, 3]}},
+        },
     )
 
 
@@ -41,6 +44,17 @@ def test_clip_cache_exposes_visible_and_occluded_intervals() -> None:
     assert cached.interval_mask("test", "visible").tolist() == [[False, True, True]]
     assert cached.interval_mask("test", "occluded").tolist() == [[True, False, False]]
     assert cached.clip_type_mask("test", "occlusion").tolist() == [[True, True, True]]
+
+
+def test_clip_cache_selects_named_sensory_feature_groups() -> None:
+    cached = dataset()
+
+    batch = cached.batch("test", feature_group="small")
+
+    assert batch.features.shape == (1, 3, 2)
+    np.testing.assert_array_equal(
+        batch.features[0], cached.sensory_features[2:5][:, [1, 3]]
+    )
 
 
 def test_clip_cache_action_batch_requires_visible_teacher_labels() -> None:

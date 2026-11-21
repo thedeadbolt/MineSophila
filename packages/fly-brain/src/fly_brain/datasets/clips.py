@@ -101,13 +101,42 @@ class CachedClipDataset:
     def frame_count(self) -> int:
         return self.sensory_features.shape[0]
 
-    def batch(self, split: str, *, include_context: bool = False) -> TemporalBatch:
+    def sensory_feature_indexes(self, group: str) -> NDArray[np.int64]:
+        raw_manifest = self.metadata.get("sensory_features")
+        if not isinstance(raw_manifest, dict):
+            raise ValueError("cached sensory features do not define named groups")
+        manifest = cast(dict[str, Any], raw_manifest)
+        if not isinstance(manifest.get("groups"), dict):
+            raise ValueError("cached sensory features do not define named groups")
+        groups = cast(dict[str, Any], manifest["groups"])
+        if group not in groups or not isinstance(groups[group], list):
+            raise ValueError(f"cached sensory features do not define group {group!r}")
+        indexes = np.asarray(groups[group], dtype=np.int64)
+        if (
+            indexes.ndim != 1
+            or indexes.size == 0
+            or np.unique(indexes).size != indexes.size
+            or np.any((indexes < 0) | (indexes >= self.sensory_features.shape[1]))
+        ):
+            raise ValueError(f"cached sensory feature group {group!r} is invalid")
+        return readonly(indexes)
+
+    def batch(
+        self,
+        split: str,
+        *,
+        include_context: bool = False,
+        feature_group: str | None = None,
+    ) -> TemporalBatch:
         selected = [index for index, value in enumerate(self.splits) if value == split]
         if not selected:
             raise ValueError(f"cached clip dataset has no {split!r} clips")
         lengths = [int(self.offsets[index + 1] - self.offsets[index]) for index in selected]
         maximum = max(lengths)
-        width = self.sensory_features.shape[1]
+        feature_indexes = (
+            None if feature_group is None else self.sensory_feature_indexes(feature_group)
+        )
+        width = self.sensory_features.shape[1] if feature_indexes is None else feature_indexes.size
         if include_context:
             width += self.motion_context.shape[1]
         features = np.zeros((len(selected), maximum, width), dtype=np.float32)
@@ -117,6 +146,8 @@ class CachedClipDataset:
         for row, (clip_index, length) in enumerate(zip(selected, lengths, strict=True)):
             start, stop = self.offsets[clip_index : clip_index + 2]
             sensory = self.sensory_features[start:stop]
+            if feature_indexes is not None:
+                sensory = sensory[:, feature_indexes]
             if include_context:
                 features[row, :length] = np.concatenate(
                     [sensory, self.motion_context[start:stop]], axis=1
@@ -158,7 +189,13 @@ class CachedClipDataset:
                 result[row, : stop - start] = True
         return result
 
-    def action_batch(self, split: str, *, include_context: bool = True) -> ActionTemporalBatch:
+    def action_batch(
+        self,
+        split: str,
+        *,
+        include_context: bool = True,
+        feature_group: str | None = None,
+    ) -> ActionTemporalBatch:
         """Batch clips with visible, teacher-labelled action targets."""
         candidates = [index for index, value in enumerate(self.splits) if value == split]
         selected = [
@@ -173,7 +210,10 @@ class CachedClipDataset:
             raise ValueError(f"cached clip dataset has no supervised {split!r} actions")
         lengths = [int(self.offsets[index + 1] - self.offsets[index]) for index in selected]
         maximum = max(lengths)
-        width = self.sensory_features.shape[1]
+        feature_indexes = (
+            None if feature_group is None else self.sensory_feature_indexes(feature_group)
+        )
+        width = self.sensory_features.shape[1] if feature_indexes is None else feature_indexes.size
         if include_context:
             width += self.motion_context.shape[1]
         features = np.zeros((len(selected), maximum, width), dtype=np.float32)
@@ -185,6 +225,8 @@ class CachedClipDataset:
         for row, (clip_index, length) in enumerate(zip(selected, lengths, strict=True)):
             start, stop = self.offsets[clip_index : clip_index + 2]
             sensory = self.sensory_features[start:stop]
+            if feature_indexes is not None:
+                sensory = sensory[:, feature_indexes]
             features[row, :length] = (
                 np.concatenate([sensory, self.motion_context[start:stop]], axis=1)
                 if include_context
