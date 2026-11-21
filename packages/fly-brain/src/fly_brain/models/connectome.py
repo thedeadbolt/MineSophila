@@ -2,7 +2,7 @@
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false
 """Localisation through a compiled connectome with a learned readout."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from typing import Literal, NamedTuple, Protocol
 
@@ -55,8 +55,11 @@ class ConnectomeModelConfig:
     )
     regional_azimuth_bins: int = 8
     regional_elevation_bins: int = 4
+    readout_normalization: Literal["none", "initial"] = "none"
 
     def __post_init__(self) -> None:
+        if self.readout_normalization not in {"none", "initial"}:
+            raise ValueError(f"unsupported readout normalization {self.readout_normalization!r}")
         if self.minimum_synapse_count < 1 or self.settling_steps < 1:
             raise ValueError("connectome model counts must be positive")
         if not np.isfinite(self.time_constant) or not 0 < self.dt <= self.time_constant:
@@ -264,17 +267,68 @@ class ConnectomeTrainingResult(NamedTuple):
 
 @dataclass(frozen=True)
 class ConnectomeLocalizationModel:
+    """Settle a compiled brain on each frame and read localisation from its readout neurons.
+
+    With readout statistics set, the trained readout weights act on z-scored readout activity.
+    ``fold_readout_normalization`` converts such parameters to plain ones for the same brain.
+    """
+
     brain: CompiledBrain
     settling_steps: int = 4
+    readout_mean: NDArray[np.float32] | None = None
+    readout_scale: NDArray[np.float32] | None = None
 
     def __post_init__(self) -> None:
         if self.brain.output_width != 4:
             raise ValueError("localisation output head must have width four")
         if self.settling_steps < 1:
             raise ValueError("settling_steps must be positive")
+        if (self.readout_mean is None) != (self.readout_scale is None):
+            raise ValueError("readout mean and scale must be set together")
+        if self.readout_mean is not None and self.readout_scale is not None:
+            shape = (self.brain.readout_indexes.size,)
+            mean = np.asarray(self.readout_mean, dtype=np.float32)
+            scale = np.asarray(self.readout_scale, dtype=np.float32)
+            if mean.shape != shape or scale.shape != shape:
+                raise ValueError("readout statistics must match the readout neurons")
+            if not np.all(np.isfinite(mean)) or not np.all(np.isfinite(scale) & (scale > 0)):
+                raise ValueError("readout statistics must be finite with positive scale")
+            object.__setattr__(self, "readout_mean", readonly(mean))
+            object.__setattr__(self, "readout_scale", readonly(scale))
 
     def initialize(self, seed: int = 0) -> BrainParameters:
         return self.brain.initialize_parameters(seed)
+
+    def with_readout_normalization(
+        self,
+        parameters: BrainParameters,
+        port_values: NDArray[np.float32],
+        *,
+        batch_size: int = 64,
+    ) -> "ConnectomeLocalizationModel":
+        """Measure settled readout activity under ``parameters`` and z-score it from now on."""
+        values = np.asarray(port_values, dtype=np.float32)
+        if values.ndim != 2 or values.shape[0] == 0 or values.shape[1] != self.brain.input_width:
+            raise ValueError("readout statistics need port values of shape (N, input_width)")
+        settle = jax.jit(partial(_settled_readout, model=self))
+        parts = [
+            np.asarray(
+                jax.device_get(settle(parameters, jnp.asarray(values[start : start + batch_size])))
+            )
+            for start in range(0, values.shape[0], batch_size)
+        ]
+        activity = np.concatenate(parts).astype(np.float64)
+        deviation = activity.std(axis=0)
+        scale = np.where(deviation > 1e-8, deviation, 1.0)
+        return replace(
+            self,
+            readout_mean=activity.mean(axis=0).astype(np.float32),
+            readout_scale=scale.astype(np.float32),
+        )
+
+    def fold_readout_normalization(self, parameters: BrainParameters) -> BrainParameters:
+        """Return plain parameters that give this model's predictions without statistics."""
+        return _effective_parameters(parameters, self)
 
     def predict(
         self, parameters: BrainParameters, batch: ConnectomeBatch, *, batch_size: int = 64
@@ -446,13 +500,36 @@ def _apply(
 ) -> tuple[jax.Array, jax.Array]:
     sequence = jnp.broadcast_to(values, (model.settling_steps, *values.shape))
     raw = model.brain.run(
-        parameters, model.brain.initialize_state(values.shape[0]), sequence
+        _effective_parameters(parameters, model),
+        model.brain.initialize_state(values.shape[0]),
+        sequence,
     ).output[-1]
     presence = jax.nn.sigmoid(raw[:, 0])
     direction_raw = raw[:, 1:]
     norm = jnp.sqrt(jnp.sum(jnp.square(direction_raw), axis=1, keepdims=True) + 1e-12)
     direction = direction_raw / norm
     return presence, direction
+
+
+def _effective_parameters(
+    parameters: BrainParameters, model: ConnectomeLocalizationModel
+) -> BrainParameters:
+    if model.readout_mean is None or model.readout_scale is None:
+        return parameters
+    scale = jnp.asarray(model.readout_scale)[:, None]
+    weights = parameters.readout_weights / scale
+    bias = parameters.readout_bias - jnp.asarray(model.readout_mean) @ weights
+    return parameters._replace(readout_weights=weights, readout_bias=bias)
+
+
+def _settled_readout(
+    parameters: BrainParameters, values: jax.Array, *, model: ConnectomeLocalizationModel
+) -> jax.Array:
+    sequence = jnp.broadcast_to(values, (model.settling_steps, *values.shape))
+    final = model.brain.run(
+        parameters, model.brain.initialize_state(values.shape[0]), sequence
+    ).final_state
+    return final.activity[:, model.brain.readout_indexes]
 
 
 def _encode_activity(

@@ -125,6 +125,32 @@ def test_connectome_readout_learns_presence() -> None:
     assert prediction.coverage is None
 
 
+def test_connectome_readout_normalization_folds_into_plain_parameters() -> None:
+    compiled = compiled_brain().compile()
+    model = ConnectomeLocalizationModel(compiled, settling_steps=3)
+    parameters = model.initialize(seed=5)
+    values = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]] * 4, dtype=np.float32)
+    batch = ConnectomeBatch(
+        values, np.zeros(values.shape[0], np.float32), np.zeros((values.shape[0], 3), np.float32)
+    )
+
+    normalized = model.with_readout_normalization(parameters, values)
+    folded = normalized.fold_readout_normalization(parameters)
+    expected = normalized.predict(parameters, batch, batch_size=8)
+    actual = model.predict(folded, batch, batch_size=8)
+
+    assert normalized.readout_mean is not None
+    assert normalized.readout_scale is not None
+    assert normalized.readout_mean.shape == (compiled.readout_indexes.size,)
+    assert np.all(normalized.readout_scale > 0)
+    np.testing.assert_allclose(
+        actual.presence_probability, expected.presence_probability, rtol=1e-5
+    )
+    np.testing.assert_allclose(actual.direction, expected.direction, atol=1e-5)
+    unchanged = model.fold_readout_normalization(parameters)
+    np.testing.assert_array_equal(unchanged.readout_weights, parameters.readout_weights)
+
+
 def test_connectome_activity_encoder_retains_state_and_holds_padding() -> None:
     brain = compiled_brain().compile()
     encoder = ConnectomeActivityEncoder(brain, np.array([1, 3]), transitions_per_frame=1)

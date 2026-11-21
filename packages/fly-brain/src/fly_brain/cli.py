@@ -7,7 +7,7 @@ import resource
 import subprocess
 import sys
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -1153,7 +1153,27 @@ def _train_connectome(args: argparse.Namespace) -> int:
     train = _connectome_batch(datasets, "train", input_map, frontend)
     validation = _connectome_batch(datasets, "validation", input_map, frontend)
     test = _connectome_batch(datasets, "test", input_map, frontend)
+    readout_statistics: dict[str, object] = {"mode": model_config.readout_normalization}
+    if model_config.readout_normalization == "initial":
+        sample = np.random.default_rng(training_config.seed).permutation(train.rows)[:2048]
+        model = model.with_readout_normalization(
+            model.initialize(training_config.seed),
+            train.port_values[np.sort(sample)],
+            batch_size=training_config.batch_size,
+        )
+        assert model.readout_scale is not None
+        readout_statistics.update(
+            {
+                "samples": int(sample.size),
+                "scale_min": float(np.min(model.readout_scale)),
+                "scale_median": float(np.median(model.readout_scale)),
+                "scale_max": float(np.max(model.readout_scale)),
+            }
+        )
     result = train_connectome(model, train, validation, training_config)
+    # Fold any readout normalisation so the checkpoint holds plain parameters.
+    result = result._replace(parameters=model.fold_readout_normalization(result.parameters))
+    model = replace(model, readout_mean=None, readout_scale=None)
     validation_prediction = model.predict(
         result.parameters, validation, batch_size=training_config.batch_size
     )
@@ -1183,7 +1203,11 @@ def _train_connectome(args: argparse.Namespace) -> int:
             "assignment_count": input_map.assignment_source_indices.size,
         },
         "frontend": frontend_manifest,
-        "model": {**asdict(model_config), "compilation": asdict(plan)},
+        "model": {
+            **asdict(model_config),
+            "compilation": asdict(plan),
+            "readout_statistics": readout_statistics,
+        },
         "training": {
             **asdict(training_config),
             "samples": train.rows,
