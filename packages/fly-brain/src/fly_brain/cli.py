@@ -15,6 +15,7 @@ import jax
 import numpy as np
 
 from fly_brain.connectome import (
+    CENTRAL_COMPLEX_COMPONENTS,
     BiologicalStatus,
     BrainCompiler,
     BrainModelSpec,
@@ -29,6 +30,7 @@ from fly_brain.connectome import (
     SynapseCountPolicy,
     build_first_visual_network,
     build_receptor_input_map,
+    central_complex_cell_types,
 )
 from fly_brain.connectome.visual import (
     LAMINA_RELAY_TYPES,
@@ -1290,6 +1292,8 @@ def _build_connectome(
     BrainCompiler,
 ]:
     cell_types = PHOTORECEPTOR_TYPES + LAMINA_RELAY_TYPES + MEDULLA_RELAY_TYPES
+    if set(CENTRAL_COMPLEX_COMPONENTS).intersection(config.components):
+        cell_types += central_complex_cell_types()
     selector_loader = MaleCNSLoader(
         connectome_root,
         minimum_synapse_count=config.minimum_synapse_count,

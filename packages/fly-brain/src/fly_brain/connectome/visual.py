@@ -1,5 +1,6 @@
 """Reviewed first visual component selection for MaleCNS v1.0."""
 
+from fly_brain.connectome.central_complex import central_complex_component_specs
 from fly_brain.connectome.components import (
     BiologicalStatus,
     ComponentResolver,
@@ -101,19 +102,16 @@ def build_first_visual_network(
     component_names: tuple[str, ...] | None = None,
 ) -> BrainNetwork:
     resolver = ComponentResolver(graph)
-    specs = first_visual_component_specs()
-    if component_names is not None and VISUAL_KENYON_INPUT_COMPONENT in component_names:
-        specs = (*specs, visual_kenyon_input_component_spec(minimum_synapse_count))
-    if component_names is not None and VISUAL_KENYON_COMPONENT in component_names:
-        specs = (*specs, visual_kenyon_component_spec(minimum_synapse_count))
-    if component_names is not None:
-        available_specs = (
-            *first_visual_component_specs(),
-            visual_kenyon_input_component_spec(),
-            visual_kenyon_component_spec(),
-        )
-        known = {spec.name for spec in available_specs}
-        unknown = set(component_names) - known
+    specs = (
+        *first_visual_component_specs(),
+        visual_kenyon_input_component_spec(minimum_synapse_count),
+        visual_kenyon_component_spec(minimum_synapse_count),
+        *central_complex_component_specs(),
+    )
+    if component_names is None:
+        specs = first_visual_component_specs()
+    else:
+        unknown = set(component_names) - {spec.name for spec in specs}
         if unknown:
             raise ValueError(f"unknown visual components: {sorted(unknown)}")
         specs = tuple(spec for spec in specs if spec.name in component_names)
