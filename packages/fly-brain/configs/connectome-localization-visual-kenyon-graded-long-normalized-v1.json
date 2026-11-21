@@ -7,7 +7,7 @@
     "dt": 1.0,
     "activation": "graded",
     "initial_edge_gain": 1.0,
-    "train_neuron_bias": true,
+    "train_neuron_bias": false,
     "edge_gain_mode": "cell_type_pair",
     "maximum_edge_gain": 4.0,
     "use_neurotransmitter_signs": true,

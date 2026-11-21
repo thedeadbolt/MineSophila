@@ -70,6 +70,11 @@ Add a second, named dynamics policy and keep the current one as the legacy contr
 - The input itself varies little between frames (coverage std about 0.02), and the linear
   readout reads unnormalised activity of order 10⁻⁴. Readout normalisation is a separate,
   policy-independent experiment and must be applied to both policies when compared.
+- Learned rest conflicts with normalised readouts. Readout neurons vary by about 10⁻⁵ between
+  frames, so one Adam step of 10⁻³ on a neuron's rest moves its normalised activity by about 100
+  and saturates the readout. Both policies collapse to chance when rest is trained under a
+  normalised readout, and graded reaches 91.8% in 300 steps with rest frozen. Until rest has its
+  own step size or parameter scale, normalised-readout experiments keep rest frozen at zero.
 - Unresolved: per-cell-type versus per-neuron rest; how
   to treat the few transmitters with mixed or unknown sign; and whether glutamate needs a
   receptor-specific exception for known excitatory synapses.
