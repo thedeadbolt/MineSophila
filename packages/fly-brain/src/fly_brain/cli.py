@@ -44,6 +44,7 @@ from fly_brain.datasets import (
     StillLabelAuditConfig,
     audit_still_labels,
     combine_batches,
+    combine_clip_features,
     convert_honey_factory_clips,
     convert_honey_factory_dataset,
     load_image_localization_batches,
@@ -129,6 +130,18 @@ def _parser() -> argparse.ArgumentParser:
     prepare_connectome_clips.add_argument(
         "--frame-selection", choices=("all", "tick"), default="tick"
     )
+    combine_clips = commands.add_parser("combine-clip-features")
+    combine_clips.add_argument(
+        "--part", action="append", required=True, metavar="NAME=CACHE", help="named clip cache"
+    )
+    combine_clips.add_argument(
+        "--group",
+        action="append",
+        default=[],
+        metavar="NAME=GROUP[,GROUP...]",
+        help="composite feature group concatenating existing groups",
+    )
+    combine_clips.add_argument("--out", required=True, type=Path)
     temporal = commands.add_parser("train-recurrent")
     temporal.add_argument("cache", type=Path)
     temporal.add_argument("--config", required=True, type=Path)
@@ -310,6 +323,37 @@ def _prepare_connectome_clips(args: argparse.Namespace) -> int:
         progress=progress,
     )
     print(f"  wrote {converted.clip_count} clips and {converted.frame_count} frames", flush=True)
+    return 0
+
+
+def _named_option(value: str, option: str) -> tuple[str, str]:
+    name, separator, rest = value.partition("=")
+    if not separator or not name or not rest:
+        raise ValueError(f"{option} must have the form NAME=VALUE, got {value!r}")
+    return name, rest
+
+
+def _combine_clip_features(args: argparse.Namespace) -> int:
+    parts: list[tuple[str, CachedClipDataset]] = []
+    for value in args.part:
+        name, path = _named_option(value, "--part")
+        parts.append((name, CachedClipDataset.load(Path(path))))
+    composites: dict[str, tuple[str, ...]] = {}
+    for value in args.group:
+        name, members = _named_option(value, "--group")
+        composites[name] = tuple(member for member in members.split(",") if member)
+    combined = combine_clip_features(parts, composites)
+    combined.metadata["sensory_features"]["source_paths"] = {
+        name: str(Path(path).resolve())
+        for name, path in (_named_option(value, "--part") for value in args.part)
+    }
+    combined.save(args.out)
+    groups = combined.metadata["sensory_features"]["groups"]
+    print(
+        f"wrote {combined.frame_count} frames x {combined.sensory_features.shape[1]} features "
+        f"with groups {sorted(groups)} -> {args.out}",
+        flush=True,
+    )
     return 0
 
 
@@ -1525,6 +1569,8 @@ def main(argv: list[str] | None = None) -> int:
             return _prepare_clips(args)
         if args.command == "prepare-connectome-clips":
             return _prepare_connectome_clips(args)
+        if args.command == "combine-clip-features":
+            return _combine_clip_features(args)
         if args.command == "train-recurrent":
             return _train_recurrent(args)
         if args.command == "train-recurrent-actions":

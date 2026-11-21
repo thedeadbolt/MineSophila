@@ -1,8 +1,10 @@
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
+import pytest
 
-from fly_brain.datasets import CachedClipDataset
+from fly_brain.datasets import CachedClipDataset, combine_clip_features
 
 
 def dataset() -> CachedClipDataset:
@@ -75,3 +77,69 @@ def test_clip_cache_round_trips_without_pickle(tmp_path: Path) -> None:
     assert loaded.clip_ids == original.clip_ids
     assert loaded.metadata == original.metadata
     np.testing.assert_array_equal(loaded.sensory_features, original.sensory_features)
+
+
+def test_combined_clip_features_name_each_part_and_composite_groups() -> None:
+    connectome = dataset()
+    frontend = replace(
+        connectome,
+        sensory_features=-np.arange(10, dtype=np.float32).reshape(5, 2),
+        metadata={"format": "fixture", "sensory_features": ["a", "b"]},
+    )
+
+    combined = combine_clip_features(
+        [("frontend", frontend), ("connectome", connectome)],
+        {"frontend_small": ("frontend", "small")},
+    )
+
+    assert combined.sensory_features.shape == (5, 6)
+    np.testing.assert_array_equal(
+        combined.batch("test", feature_group="frontend").features[0],
+        frontend.sensory_features[2:5],
+    )
+    np.testing.assert_array_equal(
+        combined.batch("test", feature_group="small").features[0],
+        connectome.sensory_features[2:5][:, [1, 3]],
+    )
+    assert combined.sensory_feature_indexes("connectome").tolist() == [2, 3, 4, 5]
+    assert combined.sensory_feature_indexes("frontend_small").tolist() == [0, 1, 3, 5]
+
+
+def test_combined_clip_features_reject_misaligned_targets() -> None:
+    first = dataset()
+    shifted = replace(first, presence=np.array([1, 0, 0, 1, 1], dtype=np.float32))
+
+    with pytest.raises(ValueError, match="presence"):
+        combine_clip_features([("a", first), ("b", shifted)], {})
+
+
+def test_combine_clip_features_command_round_trips(tmp_path: Path) -> None:
+    from fly_brain.cli import main
+
+    connectome = dataset()
+    frontend = replace(
+        connectome,
+        sensory_features=np.zeros((5, 2), dtype=np.float32),
+        metadata={"format": "fixture", "sensory_features": ["a", "b"]},
+    )
+    connectome.save(tmp_path / "connectome.npz")
+    frontend.save(tmp_path / "frontend.npz")
+    out = tmp_path / "combined.npz"
+
+    status = main(
+        [
+            "combine-clip-features",
+            "--part",
+            f"frontend={tmp_path / 'frontend.npz'}",
+            "--part",
+            f"connectome={tmp_path / 'connectome.npz'}",
+            "--group",
+            "frontend_small=frontend,small",
+            "--out",
+            str(out),
+        ]
+    )
+
+    combined = CachedClipDataset.load(out)
+    assert status == 0
+    assert combined.sensory_feature_indexes("frontend_small").tolist() == [0, 1, 3, 5]

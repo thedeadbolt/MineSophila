@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -276,6 +276,96 @@ class CachedClipDataset:
                 clip_types=tuple(str(value) for value in values["clip_types"]),
                 metadata=json.loads(str(values["metadata"])),
             )
+
+
+_ALIGNED_CLIP_FIELDS = (
+    "motion_context",
+    "presence",
+    "direction",
+    "visible",
+    "teacher_actions",
+    "teacher_action_mask",
+    "offsets",
+    "clip_ids",
+    "scene_ids",
+    "splits",
+    "clip_types",
+)
+
+
+def combine_clip_features(
+    parts: Sequence[tuple[str, CachedClipDataset]],
+    composite_groups: Mapping[str, Sequence[str]],
+) -> CachedClipDataset:
+    """Concatenate sensory features from caches of the same clips into named groups.
+
+    Every part becomes a group of its own name, and named groups inside a part are kept with
+    shifted column indexes. Composite groups concatenate existing groups in the given order.
+    Targets, context, offsets and clip identities must match exactly.
+    """
+    if not parts:
+        raise ValueError("combine_clip_features requires at least one part")
+    first = parts[0][1]
+    for name, part in parts[1:]:
+        for field in _ALIGNED_CLIP_FIELDS:
+            if not np.array_equal(
+                np.asarray(getattr(first, field)), np.asarray(getattr(part, field))
+            ):
+                raise ValueError(f"clip cache part {name!r} differs in {field}")
+    groups: dict[str, list[int]] = {}
+    sources: dict[str, Any] = {}
+    start = 0
+    for name, part in parts:
+        width = part.sensory_features.shape[1]
+        own: dict[str, list[int]] = {name: list(range(start, start + width))}
+        manifest = part.metadata.get("sensory_features")
+        part_groups = (
+            cast(dict[str, Any], manifest).get("groups") if isinstance(manifest, dict) else None
+        )
+        if isinstance(part_groups, dict):
+            for group in cast(dict[str, Any], part_groups):
+                indexes = part.sensory_feature_indexes(group)
+                own[group] = (indexes + start).tolist()
+        for group, indexes in own.items():
+            if group in groups:
+                raise ValueError(f"sensory feature group {group!r} is defined twice")
+            groups[group] = indexes
+        sources[name] = part.metadata
+        start += width
+    for name, members in composite_groups.items():
+        if name in groups:
+            raise ValueError(f"sensory feature group {name!r} is defined twice")
+        missing = [member for member in members if member not in groups]
+        if missing or not members:
+            raise ValueError(f"composite group {name!r} references unknown groups {missing}")
+        indexes = [index for member in members for index in groups[member]]
+        if len(set(indexes)) != len(indexes):
+            raise ValueError(f"composite group {name!r} repeats feature columns")
+        groups[name] = indexes
+    metadata = {key: value for key, value in first.metadata.items() if key != "sensory_features"}
+    metadata["sensory_features"] = {
+        "kind": "combined_clip_features",
+        "parts": [name for name, _ in parts],
+        "composites": {name: list(members) for name, members in composite_groups.items()},
+        "groups": groups,
+        "width": start,
+        "sources": sources,
+    }
+    return CachedClipDataset(
+        sensory_features=np.concatenate([part.sensory_features for _, part in parts], axis=1),
+        motion_context=first.motion_context,
+        presence=first.presence,
+        direction=first.direction,
+        visible=first.visible,
+        teacher_actions=first.teacher_actions,
+        teacher_action_mask=first.teacher_action_mask,
+        offsets=first.offsets,
+        clip_ids=first.clip_ids,
+        scene_ids=first.scene_ids,
+        splits=first.splits,
+        clip_types=first.clip_types,
+        metadata=metadata,
+    )
 
 
 def convert_honey_factory_clips(
