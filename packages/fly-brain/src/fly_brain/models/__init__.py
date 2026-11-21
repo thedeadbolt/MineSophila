@@ -12,6 +12,7 @@ from fly_brain.models.connectome import (
     ConnectomeModelConfig,
     ConnectomeTrainingConfig,
     ConnectomeTrainingResult,
+    SpatialCoverageInputTransform,
     train_connectome,
 )
 from fly_brain.models.linear import (
@@ -51,6 +52,7 @@ __all__ = [
     "MLPParameters",
     "MLPTrainingResult",
     "SpatialBatch",
+    "SpatialCoverageInputTransform",
     "SpatialLocalizationModel",
     "SpatialModelConfig",
     "SpatialParameters",

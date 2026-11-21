@@ -11,8 +11,14 @@ import jax.numpy as jnp
 import numpy as np
 from numpy.typing import NDArray
 
-from fly_brain.connectome import BrainParameters, CompiledBrain
+from fly_brain.connectome import BiologicalStatus, BrainParameters, CompiledBrain, ReceptorInputMap
 from fly_brain.contracts._arrays import readonly
+from fly_brain.models.spatial import (
+    SpatialBatch,
+    SpatialLocalizationModel,
+    SpatialParameters,
+    SpatialTopology,
+)
 from fly_brain.tasks import HoneyLocalizationPrediction
 
 DynamicsActivation = Literal["relu", "tanh"]
@@ -37,6 +43,7 @@ class ConnectomeModelConfig:
         "visual_projection",
     )
     readout_components: tuple[str, ...] = ("visual_projection",)
+    input_transform: Literal["receptor", "spatial_coverage"] = "receptor"
 
     def __post_init__(self) -> None:
         if self.minimum_synapse_count < 1 or self.settling_steps < 1:
@@ -66,6 +73,8 @@ class ConnectomeModelConfig:
             or not set(readout_components).issubset(components)
         ):
             raise ValueError("readout components must be unique selected components")
+        if self.input_transform not in {"receptor", "spatial_coverage"}:
+            raise ValueError(f"unsupported input transform {self.input_transform!r}")
         object.__setattr__(self, "components", components)
         object.__setattr__(self, "readout_components", readout_components)
 
@@ -99,6 +108,35 @@ class ConnectomeBatch:
     @property
     def input_width(self) -> int:
         return self.port_values.shape[1]
+
+
+@dataclass(frozen=True)
+class SpatialCoverageInputTransform:
+    """Use a frozen spatial model as an explicit learned sensory shortcut."""
+
+    model: SpatialLocalizationModel
+    parameters: SpatialParameters
+    topology: SpatialTopology
+    input_map: ReceptorInputMap
+    batch_size: int = 64
+    biological_status: BiologicalStatus = BiologicalStatus.SHORTCUT
+
+    def transform(self, batch: SpatialBatch) -> NDArray[np.float32]:
+        prediction = self.model.predict(
+            self.parameters,
+            batch,
+            self.topology,
+            batch_size=self.batch_size,
+        )
+        if prediction.coverage is None:
+            raise ValueError("spatial coverage transform requires coverage predictions")
+        channels = len(self.input_map.source_channel_names)
+        signals = np.repeat(prediction.coverage[:, :, None], channels, axis=2)
+        return self.input_map.transform(signals, valid=batch.valid)
+
+    @property
+    def parameter_count(self) -> int:
+        return sum(int(value.size) for value in self.parameters)
 
 
 @dataclass(frozen=True)

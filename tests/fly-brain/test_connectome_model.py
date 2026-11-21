@@ -18,6 +18,7 @@ from fly_brain.connectome import (
     LeakyRateDynamics,
     NeuronTable,
     OutputHead,
+    ReceptorInputMap,
     SynapseCountPolicy,
     SynapseTable,
 )
@@ -25,6 +26,11 @@ from fly_brain.models import (
     ConnectomeBatch,
     ConnectomeLocalizationModel,
     ConnectomeTrainingConfig,
+    SpatialBatch,
+    SpatialCoverageInputTransform,
+    SpatialLocalizationModel,
+    SpatialModelConfig,
+    SpatialTopology,
     train_connectome,
 )
 
@@ -112,3 +118,44 @@ def test_connectome_readout_learns_presence() -> None:
     assert result.losses[-1] < result.losses[0] * 0.5
     np.testing.assert_array_equal(prediction.presence_probability >= 0.5, presence > 0)
     assert prediction.coverage is None
+
+
+def test_spatial_coverage_transform_maps_frozen_predictions() -> None:
+    spatial_model = SpatialLocalizationModel(
+        3,
+        2,
+        SpatialModelConfig(hidden_width=2, message_passing_layers=0),
+    )
+    spatial_parameters = spatial_model.initialize(seed=2)
+    topology = SpatialTopology(
+        np.array([[1], [0]], dtype=np.int32),
+        np.ones((2, 1), dtype=np.bool_),
+    )
+    input_map = ReceptorInputMap(
+        "layout",
+        "12" * 32,
+        np.arange(10, 16, dtype=np.int64),
+        np.arange(6, dtype=np.int32),
+        np.arange(6, dtype=np.int32),
+        np.ones(6, dtype=np.float32),
+        np.array([100, 200], dtype=np.int64),
+        ("R1_6", "R7", "R8"),
+        6,
+    )
+    batch = SpatialBatch(
+        np.ones((1, 2, 3), dtype=np.float32),
+        np.ones(2, dtype=np.bool_),
+        np.zeros((1, 2), dtype=np.float32),
+        np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float32),
+    )
+    transform = SpatialCoverageInputTransform(
+        spatial_model, spatial_parameters, topology, input_map
+    )
+
+    values = transform.transform(batch)
+
+    assert values.shape == (1, 6)
+    assert np.isfinite(values).all()
+    np.testing.assert_allclose(values[:, 0:3], np.repeat(values[:, 0:1], 3, axis=1))
+    np.testing.assert_allclose(values[:, 3:6], np.repeat(values[:, 3:4], 3, axis=1))
+    assert transform.parameter_count == 22

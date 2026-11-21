@@ -41,7 +41,7 @@ from fly_brain.datasets import (
     convert_honey_factory_dataset,
     load_image_localization_batches,
 )
-from fly_brain.experiments import save_checkpoint
+from fly_brain.experiments import load_checkpoint, save_checkpoint
 from fly_brain.models import (
     CNNLocalizationModel,
     ConnectomeBatch,
@@ -53,6 +53,7 @@ from fly_brain.models import (
     MLPLocalizationModel,
     MLPParameters,
     SpatialBatch,
+    SpatialCoverageInputTransform,
     SpatialLocalizationModel,
     SpatialModelConfig,
     SpatialParameters,
@@ -122,6 +123,7 @@ def _parser() -> argparse.ArgumentParser:
     connectome.add_argument("--input-map", required=True, type=Path)
     connectome.add_argument("--report", required=True, type=Path)
     connectome.add_argument("--checkpoint", required=True, type=Path)
+    connectome.add_argument("--frontend-checkpoint", type=Path)
     return parser
 
 
@@ -517,9 +519,12 @@ def _train_connectome(args: argparse.Namespace) -> int:
     compiler = BrainCompiler(spec)
     plan = compiler.plan()
     model = ConnectomeLocalizationModel(compiler.compile(), model_config.settling_steps)
-    train = _connectome_batch(datasets, "train", input_map)
-    validation = _connectome_batch(datasets, "validation", input_map)
-    test = _connectome_batch(datasets, "test", input_map)
+    frontend, frontend_manifest = _connectome_frontend(
+        model_config, args.frontend_checkpoint, datasets, input_map, training_config.batch_size
+    )
+    train = _connectome_batch(datasets, "train", input_map, frontend)
+    validation = _connectome_batch(datasets, "validation", input_map, frontend)
+    test = _connectome_batch(datasets, "test", input_map, frontend)
     result = train_connectome(model, train, validation, training_config)
     validation_prediction = model.predict(
         result.parameters, validation, batch_size=training_config.batch_size
@@ -549,6 +554,7 @@ def _train_connectome(args: argparse.Namespace) -> int:
             "target_neuron_count": input_map.target_neuron_ids.size,
             "assignment_count": input_map.assignment_source_indices.size,
         },
+        "frontend": frontend_manifest,
         "model": {**asdict(model_config), "compilation": asdict(plan)},
         "training": {
             **asdict(training_config),
@@ -575,7 +581,7 @@ def _train_connectome(args: argparse.Namespace) -> int:
                 split: _evaluate_connectome(
                     model,
                     result.parameters,
-                    _connectome_batch([dataset], split, input_map),
+                    _connectome_batch([dataset], split, input_map, frontend),
                     training_config.batch_size,
                     threshold,
                 )
@@ -641,7 +647,10 @@ def _cached_sensor_layout(datasets: list[CachedStillDataset]) -> SensorLayout:
 
 
 def _connectome_batch(
-    datasets: list[CachedStillDataset], split: str, input_map: ReceptorInputMap
+    datasets: list[CachedStillDataset],
+    split: str,
+    input_map: ReceptorInputMap,
+    frontend: SpatialCoverageInputTransform | None = None,
 ) -> ConnectomeBatch:
     spatial = _spatial_batch(datasets, split)
     weighted = spatial.coverage @ spatial.directions
@@ -650,10 +659,72 @@ def _connectome_batch(
     nonzero = norms > 0
     direction[nonzero] = weighted[nonzero] / norms[nonzero, None]
     return ConnectomeBatch(
-        input_map.transform(spatial.signals, valid=spatial.valid),
+        (
+            input_map.transform(spatial.signals, valid=spatial.valid)
+            if frontend is None
+            else frontend.transform(spatial)
+        ),
         spatial.presence,
         direction,
     )
+
+
+def _connectome_frontend(
+    config: ConnectomeModelConfig,
+    checkpoint: Path | None,
+    datasets: list[CachedStillDataset],
+    input_map: ReceptorInputMap,
+    batch_size: int,
+) -> tuple[SpatialCoverageInputTransform | None, dict[str, object]]:
+    if config.input_transform == "receptor":
+        if checkpoint is not None:
+            raise ValueError("frontend checkpoint requires a learned input transform")
+        return None, {"kind": "direct_receptor", "biological_status": "approximation"}
+    if checkpoint is None:
+        raise ValueError("spatial_coverage input requires --frontend-checkpoint")
+    values, manifest = load_checkpoint(checkpoint)
+    raw_model_values = manifest.get("model")
+    if not isinstance(raw_model_values, dict):
+        raise ValueError("frontend checkpoint is not a spatial coverage model")
+    model_values = cast(dict[str, Any], raw_model_values)
+    if model_values.get("kind") != ("spatial_coverage_localisation"):
+        raise ValueError("frontend checkpoint is not a spatial coverage model")
+    spatial = _spatial_batch(datasets, "train")
+    config_fields = SpatialModelConfig.__dataclass_fields__
+    spatial_config = SpatialModelConfig(
+        **{name: value for name, value in model_values.items() if name in config_fields}
+    )
+    spatial_model = SpatialLocalizationModel(
+        int(model_values["channel_count"]),
+        int(model_values["site_count"]),
+        spatial_config,
+    )
+    parameters = SpatialParameters(**cast(Any, values))
+    lattice = default_lattice()
+    topology = build_angular_topology(
+        spatial.directions,
+        lattice.eye,
+        neighbor_count=spatial_config.neighbor_count,
+        radius_deg=spatial_config.neighbor_radius_deg,
+    )
+    transform = SpatialCoverageInputTransform(
+        spatial_model, parameters, topology, input_map, batch_size
+    )
+    return transform, {
+        "kind": "frozen_spatial_coverage",
+        "biological_status": transform.biological_status.value,
+        "checkpoint": str(checkpoint),
+        "checkpoint_sha256": _file_sha256(checkpoint),
+        "frozen_parameter_count": transform.parameter_count,
+    }
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while block := stream.read(1024 * 1024):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def _connectome_targets(batch: ConnectomeBatch) -> BrainTargets:
