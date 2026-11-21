@@ -581,7 +581,7 @@ descending outputs and action heads, as originally planned.
   ceiling). The static models' ~83% ceiling is their unnormalised linear readout. The loss is
   anatomical and specific to the Kenyon branch: 103 Kenyon-input neurons give 6.8–7.3°, and
   Kenyon cells give 11.7–12.2°.
-- **9c proposed.** ADR 0027, with centred graded release.
+- **9c done.** ADR 0027 accepted 2026-11-21, with centred graded release.
 - **9d passed.** The graded signed policy keeps information as well as the legacy policy and
   stays bounded over the longest clip (|activity| ≤ 0.31, against about 4 × 10⁵ for legacy).
 

@@ -1,6 +1,6 @@
 # 0027: Signed, resting-potential connectome dynamics
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-21
 
 ## Context
