@@ -24,6 +24,7 @@ from fly_brain.connectome import (
     SynapseTable,
 )
 from fly_brain.models import (
+    ConnectomeActivityEncoder,
     ConnectomeBatch,
     ConnectomeLocalizationModel,
     ConnectomeTrainingConfig,
@@ -120,6 +121,25 @@ def test_connectome_readout_learns_presence() -> None:
     assert result.losses[-1] < result.losses[0] * 0.5
     np.testing.assert_array_equal(prediction.presence_probability >= 0.5, presence > 0)
     assert prediction.coverage is None
+
+
+def test_connectome_activity_encoder_retains_state_and_holds_padding() -> None:
+    brain = compiled_brain().compile()
+    encoder = ConnectomeActivityEncoder(brain, np.array([1, 3]), transitions_per_frame=1)
+    parameters = brain.initialize_parameters(seed=3)
+    values = np.array([[[1.0, 0.0], [0.0, 0.0], [0.0, 0.0]]], dtype=np.float32)
+    mask = np.array([[True, False, True]])
+
+    activity, final_state = encoder.run(parameters, values, mask)
+    first, first_state = encoder.run(parameters, values[:, :2], mask[:, :2])
+    second, continued_state = encoder.run(
+        parameters, values[:, 2:], mask[:, 2:], state=first_state
+    )
+
+    assert activity.shape == (1, 3, 2)
+    np.testing.assert_array_equal(activity[:, 1], activity[:, 0])
+    np.testing.assert_allclose(np.concatenate([first, second], axis=1), activity)
+    np.testing.assert_allclose(continued_state.activity, final_state.activity)
 
 
 def test_spatial_coverage_transform_maps_frozen_predictions() -> None:

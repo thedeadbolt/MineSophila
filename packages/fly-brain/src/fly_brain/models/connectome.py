@@ -11,7 +11,13 @@ import jax.numpy as jnp
 import numpy as np
 from numpy.typing import NDArray
 
-from fly_brain.connectome import BiologicalStatus, BrainParameters, CompiledBrain, ReceptorInputMap
+from fly_brain.connectome import (
+    BiologicalStatus,
+    BrainParameters,
+    BrainState,
+    CompiledBrain,
+    ReceptorInputMap,
+)
 from fly_brain.contracts import Eye
 from fly_brain.contracts._arrays import readonly
 from fly_brain.models.spatial import (
@@ -292,6 +298,51 @@ class ConnectomeLocalizationModel:
         )
 
 
+@dataclass(frozen=True)
+class ConnectomeActivityEncoder:
+    """Expose selected connectome activity while retaining state across frames."""
+
+    brain: CompiledBrain
+    neuron_ids: NDArray[np.int64]
+    transitions_per_frame: int = 1
+
+    def __post_init__(self) -> None:
+        neuron_ids = np.unique(np.asarray(self.neuron_ids, dtype=np.int64))
+        if neuron_ids.size == 0 or not np.isin(neuron_ids, self.brain.neuron_ids).all():
+            raise ValueError("activity encoder neurons must be a non-empty brain subset")
+        if self.transitions_per_frame < 1:
+            raise ValueError("transitions_per_frame must be positive")
+        object.__setattr__(self, "neuron_ids", readonly(neuron_ids))
+
+    @property
+    def output_width(self) -> int:
+        return self.neuron_ids.size
+
+    def run(
+        self,
+        parameters: BrainParameters,
+        port_values: NDArray[np.float32],
+        time_mask: NDArray[np.bool_],
+        state: BrainState | None = None,
+    ) -> tuple[NDArray[np.float32], BrainState]:
+        values = np.asarray(port_values, dtype=np.float32)
+        mask = np.asarray(time_mask, dtype=np.bool_)
+        if values.ndim != 3 or values.shape[2] != self.brain.input_width:
+            raise ValueError("activity inputs must have shape (B, T, brain.input_width)")
+        if mask.shape != values.shape[:2]:
+            raise ValueError("activity time mask must match (B, T)")
+        initial = state or self.brain.initialize_state(values.shape[0])
+        expected_state_shape = (values.shape[0], self.brain.neuron_ids.size)
+        if initial.activity.shape != expected_state_shape:
+            raise ValueError("activity state does not match the input batch")
+        indexes = np.searchsorted(self.brain.neuron_ids, self.neuron_ids).astype(np.int32)
+        function = jax.jit(partial(_encode_activity, encoder=self, indexes=indexes))
+        activity, final_state = jax.device_get(
+            function(parameters, jnp.asarray(values), jnp.asarray(mask), initial)
+        )
+        return np.asarray(activity, dtype=np.float32), final_state
+
+
 def train_connectome(
     model: ConnectomeLocalizationModel,
     train: ConnectomeBatch,
@@ -378,6 +429,37 @@ def _apply(
     norm = jnp.sqrt(jnp.sum(jnp.square(direction_raw), axis=1, keepdims=True) + 1e-12)
     direction = direction_raw / norm
     return presence, direction
+
+
+def _encode_activity(
+    parameters: BrainParameters,
+    values: jax.Array,
+    time_mask: jax.Array,
+    state: BrainState,
+    *,
+    encoder: ConnectomeActivityEncoder,
+    indexes: NDArray[np.int32],
+) -> tuple[jax.Array, BrainState]:
+    def scan_step(current: BrainState, item: tuple[jax.Array, jax.Array]):
+        frame_values, active = item
+
+        def transition(_: int, inner_state: BrainState) -> BrainState:
+            return encoder.brain.step(parameters, inner_state, frame_values).state
+
+        updated = jax.lax.fori_loop(
+            0, encoder.transitions_per_frame, transition, current
+        )
+        next_state = BrainState(
+            jnp.where(active[:, None], updated.activity, current.activity)
+        )
+        return next_state, next_state.activity[:, indexes]
+
+    final_state, activity = jax.lax.scan(
+        scan_step,
+        state,
+        (jnp.swapaxes(values, 0, 1), jnp.swapaxes(time_mask, 0, 1)),
+    )
+    return jnp.swapaxes(activity, 0, 1), final_state
 
 
 def _loss(
