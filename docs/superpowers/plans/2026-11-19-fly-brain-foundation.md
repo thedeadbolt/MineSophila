@@ -572,6 +572,45 @@ Steps, each with its own exit:
 Only after 9g: candidate mushroom-body output or central-complex memory components, then
 descending outputs and action heads, as originally planned.
 
+#### Slice 9 status after 9a–9d (2026-11-21)
+
+- **9a done.** Framewise Kenyon GRU readouts are in `docs/science/temporal-learning-results.md`.
+  Kenyon cells decode bearing worse than their own inputs and add nothing to the frontend output.
+- **9b done.** See `docs/science/pathway-information-ladder.md`. The optic-lobe pathway keeps the
+  task information through the visual-projection neurons (2.8–2.9° bearing against a 2.3°
+  ceiling). The static models' ~83% ceiling is their unnormalised linear readout. The loss is
+  anatomical and specific to the Kenyon branch: 103 Kenyon-input neurons give 6.8–7.3°, and
+  Kenyon cells give 11.7–12.2°.
+- **9c proposed.** ADR 0027, with centred graded release.
+- **9d passed.** The graded signed policy keeps information as well as the legacy policy and
+  stays bounded over the longest clip (|activity| ≤ 0.31, against about 4 × 10⁵ for legacy).
+
+These results change the remaining steps:
+
+- **9e (retention loss) is deprioritised.** The circuit already retains the information up to the
+  visual-projection output. A retention loss at the Kenyon stage would fight the anatomy rather
+  than fix an approximation. It is replaced by **normalised readouts** for compiled models: a
+  fixed z-scoring of readout activity, applied to both policies, so that static comparisons
+  measure circuits rather than activity scale.
+- **9g changes circuit.** Target-direction memory is a heading and position problem, so the
+  candidate is the central complex rather than the mushroom body. MaleCNS v1.0 annotates the
+  anterior visual pathway and compass end to end:
+  - MeTu: 13 types, 1,009 neurons
+  - TuBu: 10 types, 156 neurons
+  - ER ring neurons: 26 types, 282 neurons
+  - EPG, PEN, PEG and Delta7: 148 neurons
+  - hDelta and FB: about 790 neurons
+  - PFL1–3: 50 neurons
+
+  In the fly this circuit holds heading across darkness, and PFL3 steers toward a stored goal
+  direction. It is about 2,500 neurons. Kenyon cells stay a candidate for remembering what was
+  seen (presence or identity), not where.
+- **9f is unchanged** and still needs explicit approval for a game run.
+
+Revised order: normalised readouts → central-complex components (named, reviewed as in Slice 4)
+→ 9f occlusion-rich clips → 9g clip-trained graded central-complex memory against the GRU
+control.
+
 ### Slice 10 — Close the live loop
 
 **Goal:** Drive Honey Factory through the existing lock-step protocol.
