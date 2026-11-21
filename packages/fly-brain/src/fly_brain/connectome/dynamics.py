@@ -16,8 +16,9 @@ class LeakyRateDynamics:
 
     ``relu`` and ``tanh`` are rate policies: state relaxes toward ``f(drive)`` and the state is
     itself the presynaptic signal. ``graded`` is a signed potential policy (ADR 0027): state
-    relaxes toward the drive, may fall below rest, and drives targets through bounded logistic
-    release with tonic release at rest, so hyperpolarisation reduces downstream drive.
+    relaxes toward the drive and may fall below rest. Targets receive release measured relative to
+    tonic release at rest, ``0.5 * tanh(2 * state)``: bounded, unit slope at rest and signed, so
+    hyperpolarisation reduces downstream drive and small signals pass at the edge gain.
     """
 
     time_constant: float = 2.0
@@ -44,5 +45,5 @@ class LeakyRateDynamics:
     def release(self, state: jax.Array) -> jax.Array:
         """Return the presynaptic signal that a neuron's state sends along its edges."""
         if self.activation == "graded":
-            return jax.nn.sigmoid(state)
+            return 0.5 * jnp.tanh(2.0 * state)
         return state

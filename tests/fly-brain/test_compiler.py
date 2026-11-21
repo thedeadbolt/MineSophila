@@ -239,8 +239,8 @@ def test_graded_dynamics_carry_inhibition_that_zero_baseline_relu_loses() -> Non
     graded = _signed_compiler(graph(), "graded", 1.0)
     relu = _signed_compiler(graph(), "relu", 1.0)
 
-    dim, bright = (_settled_activity(graded, value, 8)[-1, 0] for value in (0.0, 2.0))
-    relu_dim, relu_bright = (_settled_activity(relu, value, 8)[-1, 0] for value in (0.0, 2.0))
+    dim, bright = (_settled_activity(graded, value, 8)[-1, 0] for value in (0.5, 2.0))
+    relu_dim, relu_bright = (_settled_activity(relu, value, 8)[-1, 0] for value in (0.5, 2.0))
 
     # Histaminergic receptors inhibit the relay: brighter input hyperpolarises it further.
     assert bright[2] < dim[2] < 0
@@ -272,5 +272,5 @@ def test_graded_dynamics_stay_bounded_where_relu_loops_diverge() -> None:
     relu = _settled_activity(relu_model, 1.0, 400)
 
     assert np.isfinite(graded).all()
-    assert np.abs(graded[:, 0, 2:]).max() <= 1.59 + 1e-5
+    assert np.abs(graded[:, 0, 2:]).max() <= 0.5 * 1.59 + 1e-5
     assert relu[-1, 0, 2:].max() > 1e6
