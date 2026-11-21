@@ -67,3 +67,38 @@ uv run fly-brain audit-stills /path/to/dataset /path/to/dataset.fly-brain.npz \
   --matrix-cache /path/to/fly-vision-cache \
   --report /path/to/label-audit.json
 ```
+
+## Temporal learning
+
+Clip preprocessing streams Honey Factory videos through `fly-vision` and the selected frozen
+spatial checkpoint. The compact cache contains only static sensory predictions and causal
+egocentric context as model inputs. True bearing, visibility and teacher commands remain separate
+targets. Tick-aligned conversion is the default; use `--frame-selection all` for every rendered
+subframe.
+
+```bash
+uv run fly-brain prepare-clips /path/to/clip-dataset \
+  --out /path/to/clips.fly-brain.npz \
+  --matrix-cache /path/to/fly-vision-cache \
+  --frontend-checkpoint /path/to/spatial-checkpoint.npz
+```
+
+The two localisation configs differ only in whether they include the legal movement context.
+Training carries explicit recurrent state through each clip and detaches it only at configured
+truncation boundaries.
+
+```bash
+uv run fly-brain train-recurrent /path/to/clips.fly-brain.npz \
+  --config packages/fly-brain/configs/recurrent-localization-level1-v1.json \
+  --report /path/to/recurrent-report.json \
+  --checkpoint /path/to/recurrent-checkpoint.npz
+
+uv run fly-brain train-recurrent-actions /path/to/clips.fly-brain.npz \
+  --config packages/fly-brain/configs/recurrent-actions-level1-v1.json \
+  --report /path/to/action-report.json \
+  --checkpoint /path/to/action-checkpoint.npz
+```
+
+Action imitation updates recurrent state on every real frame but applies loss only where a teacher
+command exists and honey is visible. Teacher commands and world-truth bearing are never model
+features.
