@@ -15,6 +15,7 @@ from fly_brain.contracts import BrainTargets
 from fly_brain.contracts._arrays import readonly
 from fly_brain.models import (
     ActionTemporalBatch,
+    LocalizationBatch,
     SpatialBatch,
     SpatialLocalizationModel,
     SpatialParameters,
@@ -158,6 +159,28 @@ class CachedClipDataset:
             presence[row, :length] = self.presence[start:stop]
             direction[row, :length] = self.direction[start:stop]
         return TemporalBatch(features, mask, presence, direction)
+
+    def frame_batch(self, split: str, *, feature_group: str | None = None) -> LocalizationBatch:
+        """Flatten every frame of a split's clips into independent localisation samples."""
+        selected = [index for index, value in enumerate(self.splits) if value == split]
+        if not selected:
+            raise ValueError(f"cached clip dataset has no {split!r} clips")
+        spans: list[NDArray[np.int64]] = [
+            np.arange(int(self.offsets[index]), int(self.offsets[index + 1]), dtype=np.int64)
+            for index in selected
+        ]
+        rows = np.concatenate(spans)
+        features = self.sensory_features[rows]
+        if feature_group is not None:
+            features = features[:, self.sensory_feature_indexes(feature_group)]
+        return LocalizationBatch(
+            features=features,
+            time_mask=np.ones(rows.size, dtype=np.bool_),
+            presence=self.presence[rows],
+            direction=self.direction[rows],
+            coverage=None,
+            site_count=1,
+        )
 
     def interval_mask(self, split: str, kind: str) -> NDArray[np.bool_]:
         """Return a padded visibility or occlusion mask aligned with ``batch(split)``."""

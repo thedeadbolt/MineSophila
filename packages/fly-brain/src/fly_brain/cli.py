@@ -142,6 +142,19 @@ def _parser() -> argparse.ArgumentParser:
         help="composite feature group concatenating existing groups",
     )
     combine_clips.add_argument("--out", required=True, type=Path)
+    probe = commands.add_parser(
+        "probe-clip-features",
+        help="decode presence and bearing from each feature group with the same framewise MLP",
+    )
+    probe.add_argument("cache", type=Path)
+    probe.add_argument("--groups", nargs="+", required=True)
+    probe.add_argument("--steps", type=int, default=3_000)
+    probe.add_argument("--batch-size", type=int, default=128)
+    probe.add_argument("--hidden-width", type=int, default=64)
+    probe.add_argument("--learning-rate", type=float, default=1e-3)
+    probe.add_argument("--seeds", type=int, nargs="+", default=[0])
+    probe.add_argument("--evaluation-split", default="test")
+    probe.add_argument("--report", required=True, type=Path)
     temporal = commands.add_parser("train-recurrent")
     temporal.add_argument("cache", type=Path)
     temporal.add_argument("--config", required=True, type=Path)
@@ -354,6 +367,98 @@ def _combine_clip_features(args: argparse.Namespace) -> int:
         f"with groups {sorted(groups)} -> {args.out}",
         flush=True,
     )
+    return 0
+
+
+def _balanced_threshold(probabilities: np.ndarray, truth: np.ndarray) -> float:
+    best_threshold, best_score = 0.5, -1.0
+    for threshold in np.linspace(0.05, 0.95, 181):
+        predicted = probabilities >= threshold
+        recall = float(np.mean(predicted[truth])) if truth.any() else 0.0
+        specificity = float(np.mean(~predicted[~truth])) if (~truth).any() else 0.0
+        score = (recall + specificity) / 2.0
+        if score > best_score:
+            best_threshold, best_score = float(threshold), score
+    return best_threshold
+
+
+def _probe_clip_features(args: argparse.Namespace) -> int:
+    dataset = CachedClipDataset.load(args.cache)
+    entries: list[dict[str, Any]] = []
+    for group in args.groups:
+        train = dataset.frame_batch("train", feature_group=group)
+        validation = dataset.frame_batch("validation", feature_group=group)
+        evaluation = dataset.frame_batch(args.evaluation_split, feature_group=group)
+        model = MLPLocalizationModel(train.input_width, hidden_width=args.hidden_width)
+        seeds: list[dict[str, Any]] = []
+        for seed in args.seeds:
+            started = time.perf_counter()
+            result = train_mlp(
+                model,
+                train,
+                steps=args.steps,
+                batch_size=args.batch_size,
+                learning_rate=args.learning_rate,
+                seed=seed,
+            )
+            validation_prediction = model.predict_features(result.parameters, validation.features)
+            threshold = _balanced_threshold(
+                validation_prediction.presence_probability, validation.presence > 0.5
+            )
+            metrics = evaluate_localization(
+                model.predict_features(result.parameters, evaluation.features),
+                _targets(evaluation),
+                presence_threshold=threshold,
+            )
+            seeds.append(
+                {
+                    "seed": seed,
+                    "selected_presence_threshold": threshold,
+                    "initial_loss": result.losses[0],
+                    "final_loss": result.losses[-1],
+                    "wall_seconds": time.perf_counter() - started,
+                    args.evaluation_split: asdict(metrics),
+                }
+            )
+        balanced = [entry[args.evaluation_split]["presence_balanced_accuracy"] for entry in seeds]
+        bearing = [entry[args.evaluation_split]["mean_bearing_error_deg"] for entry in seeds]
+        entries.append(
+            {
+                "group": group,
+                "input_width": train.input_width,
+                "train_frames": train.features.shape[0],
+                "evaluation_frames": evaluation.features.shape[0],
+                "mean_presence_balanced_accuracy": float(np.mean(balanced)),
+                "std_presence_balanced_accuracy": float(np.std(balanced)),
+                "mean_bearing_error_deg": float(np.mean(bearing)),
+                "std_bearing_error_deg": float(np.std(bearing)),
+                "seeds": seeds,
+            }
+        )
+        print(
+            f"{group}: width {train.input_width}, balanced "
+            f"{100 * np.mean(balanced):.2f}%, bearing {np.mean(bearing):.2f} deg",
+            flush=True,
+        )
+    report = {
+        "format": "fly-brain-clip-feature-probe-v1",
+        "git_revision": _git_revision(),
+        "dataset": dataset.metadata,
+        "cache_sha256": _file_sha256(args.cache),
+        "decoder": {
+            "kind": "framewise_mlp_localisation",
+            "hidden_width": args.hidden_width,
+            "hidden_layers": 2,
+            "steps": args.steps,
+            "batch_size": args.batch_size,
+            "learning_rate": args.learning_rate,
+            "threshold": "validation balanced accuracy",
+        },
+        "evaluation_split": args.evaluation_split,
+        "groups": entries,
+    }
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     return 0
 
 
@@ -1571,6 +1676,8 @@ def main(argv: list[str] | None = None) -> int:
             return _prepare_connectome_clips(args)
         if args.command == "combine-clip-features":
             return _combine_clip_features(args)
+        if args.command == "probe-clip-features":
+            return _probe_clip_features(args)
         if args.command == "train-recurrent":
             return _train_recurrent(args)
         if args.command == "train-recurrent-actions":

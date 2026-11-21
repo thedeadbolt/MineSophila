@@ -143,3 +143,54 @@ def test_combine_clip_features_command_round_trips(tmp_path: Path) -> None:
     combined = CachedClipDataset.load(out)
     assert status == 0
     assert combined.sensory_feature_indexes("frontend_small").tolist() == [0, 1, 3, 5]
+
+
+def test_clip_cache_flattens_split_frames_for_framewise_probes() -> None:
+    cached = dataset()
+
+    frames = cached.frame_batch("test", feature_group="small")
+
+    assert frames.features.shape == (3, 2)
+    np.testing.assert_array_equal(frames.features, cached.sensory_features[2:5][:, [1, 3]])
+    assert frames.presence.tolist() == [0.0, 1.0, 1.0]
+    assert frames.time_mask.all()
+    assert frames.coverage is None
+
+
+def test_probe_clip_features_command_reports_each_group(tmp_path: Path) -> None:
+    import json
+
+    from fly_brain.cli import main
+
+    cached = replace(
+        dataset(),
+        splits=("train", "validation"),
+        metadata={"format": "fixture", "sensory_features": {"groups": {"a": [0], "b": [1, 2]}}},
+    )
+    cached.save(tmp_path / "cache.npz")
+    report = tmp_path / "probe.json"
+
+    status = main(
+        [
+            "probe-clip-features",
+            str(tmp_path / "cache.npz"),
+            "--groups",
+            "a",
+            "b",
+            "--steps",
+            "5",
+            "--seeds",
+            "0",
+            "1",
+            "--evaluation-split",
+            "validation",
+            "--report",
+            str(report),
+        ]
+    )
+
+    written = json.loads(report.read_text())
+    assert status == 0
+    assert [entry["group"] for entry in written["groups"]] == ["a", "b"]
+    assert [entry["input_width"] for entry in written["groups"]] == [1, 2]
+    assert len(written["groups"][0]["seeds"]) == 2
