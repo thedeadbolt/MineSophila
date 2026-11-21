@@ -253,6 +253,13 @@ def _train_recurrent(args: argparse.Namespace) -> int:
     static_test = _static_temporal_prediction(test)
     visible = dataset.interval_mask("test", "visible") & test.time_mask
     occluded = dataset.interval_mask("test", "occluded") & test.time_mask & (test.presence > 0.5)
+    test_clip_types = sorted(
+        {
+            value
+            for value, split in zip(dataset.clip_types, dataset.splits, strict=True)
+            if split == "test"
+        }
+    )
     report: dict[str, object] = {
         "format": "fly-brain-recurrent-report-v1",
         "git_revision": _git_revision(),
@@ -276,12 +283,30 @@ def _train_recurrent(args: argparse.Namespace) -> int:
         "test": _evaluate_temporal(test_prediction, test, threshold),
         "test_visible": _evaluate_temporal(test_prediction, test, threshold, visible),
         "test_occluded": _evaluate_temporal(test_prediction, test, threshold, occluded),
+        "test_by_clip_type": {
+            clip_type: _evaluate_temporal(
+                test_prediction,
+                test,
+                threshold,
+                dataset.clip_type_mask("test", clip_type),
+            )
+            for clip_type in test_clip_types
+        },
         "temporal_diagnostics": _temporal_diagnostics(test_prediction, test, visible),
         "static_frontend": {
             "validation": _evaluate_temporal(static_validation, validation, static_threshold),
             "test": _evaluate_temporal(static_test, test, static_threshold),
             "test_visible": _evaluate_temporal(static_test, test, static_threshold, visible),
             "test_occluded": _evaluate_temporal(static_test, test, static_threshold, occluded),
+            "test_by_clip_type": {
+                clip_type: _evaluate_temporal(
+                    static_test,
+                    test,
+                    static_threshold,
+                    dataset.clip_type_mask("test", clip_type),
+                )
+                for clip_type in test_clip_types
+            },
             "temporal_diagnostics": _temporal_diagnostics(static_test, test, visible),
             "selected_presence_threshold": static_threshold,
         },

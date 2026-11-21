@@ -40,6 +40,7 @@ def test_clip_cache_exposes_visible_and_occluded_intervals() -> None:
 
     assert cached.interval_mask("test", "visible").tolist() == [[False, True, True]]
     assert cached.interval_mask("test", "occluded").tolist() == [[True, False, False]]
+    assert cached.clip_type_mask("test", "occlusion").tolist() == [[True, True, True]]
 
 
 def test_clip_cache_action_batch_requires_visible_teacher_labels() -> None:

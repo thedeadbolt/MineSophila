@@ -143,6 +143,21 @@ class CachedClipDataset:
             result[row, : values.size] = values if kind == "visible" else ~values
         return result
 
+    def clip_type_mask(self, split: str, clip_type: str) -> NDArray[np.bool_]:
+        """Return a padded mask selecting every frame of one held-out clip type."""
+        selected = [index for index, value in enumerate(self.splits) if value == split]
+        if not selected:
+            raise ValueError(f"cached clip dataset has no {split!r} clips")
+        if not any(self.clip_types[index] == clip_type for index in selected):
+            raise ValueError(f"cached {split!r} split has no {clip_type!r} clips")
+        maximum = max(int(self.offsets[index + 1] - self.offsets[index]) for index in selected)
+        result = np.zeros((len(selected), maximum), dtype=np.bool_)
+        for row, clip_index in enumerate(selected):
+            if self.clip_types[clip_index] == clip_type:
+                start, stop = self.offsets[clip_index : clip_index + 2]
+                result[row, : stop - start] = True
+        return result
+
     def action_batch(self, split: str, *, include_context: bool = True) -> ActionTemporalBatch:
         """Batch clips with visible, teacher-labelled action targets."""
         candidates = [index for index, value in enumerate(self.splits) if value == split]
