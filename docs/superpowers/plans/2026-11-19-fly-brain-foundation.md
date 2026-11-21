@@ -508,6 +508,70 @@ the agreed static or recurrent baseline where expected.
 **Exit:** Offline predictions demonstrate useful memory and action imitation with documented
 component ablations.
 
+#### Slice 9 progress and revised order (2026-11-21)
+
+**Done:** visual Kenyon component (284 cells) and its matched 103-neuron input group; static
+ablation (neutral, as expected with per-frame resets); clip activity caching; component feature
+groups for recurrent readouts.
+
+**Finding that changes the order.** The first stateful Kenyon clip cache is invalid. The connectome
+was trained on four settling steps from rest, with unsigned (all-excitatory) ReLU dynamics,
+incoming-normalised weights and an uncapped global gain. Carried across a clip, activity grows from
+≈0 to ≈10⁴ (some clips ≈4×10⁵), and the recurrent readouts trained on it reach 61% balanced
+accuracy with training loss stuck at 0.75 (GRU control: 0.003). Those runs must not be reported as
+a biological result.
+
+Three further problems limit any memory claim:
+
+- **Information loss through the pathway.** Readout accuracy falls from 97.5% (frontend output) to
+  87.7% at the photoreceptors and ≈83% after the circuit. Readouts of Kenyon activity therefore
+  start from a weaker representation than the GRU control, which reads the frontend output.
+- **Inhibition is not modelled in the selected models.** Signs are off everywhere except two
+  ablations, which collapse to chance because histaminergic photoreceptor drive is negative and a
+  zero-baseline ReLU clips it to zero at the first synapse.
+- **Too few occlusions.** Held-out splits contain 6 (level 1) and 9 (level 2) occluded frames.
+
+**Goal for the rest of the slice:** a connectome pathway that retains the task-relevant information
+(presence, bearing and, over time, target memory) rather than one that is bypassed by a shortcut.
+
+Steps, each with its own exit:
+
+- **9a. Framewise Kenyon baseline.** Cache activity with `--state-mode reset` (four settling
+  steps from rest per frame, matching training). Compare GRUs on Kenyon activity, the matched
+  103 inputs (equal parameter count), frontend output alone and frontend output + Kenyon.
+  *Exit:* valid level-1 table in `docs/science/temporal-learning-results.md`, negative results
+  included; the invalid carried-state runs are noted as invalid, not tabulated.
+- **9b. Information ladder.** Train the same frozen-feature decoder (small MLP, same splits,
+  seeds and evaluator) on activity from photoreceptors, lamina, medulla, visual projection,
+  Kenyon inputs and Kenyon cells, with the frontend output as the ceiling. *Exit:* a per-stage
+  table showing where presence and bearing information is lost under the current unsigned model.
+  This is the baseline every later dynamics change is measured against.
+- **9c. ADR 0027: signed, resting-potential, bounded dynamics.** Record: state relative to a
+  resting potential so hyperpolarisation carries information; neurotransmitter signs on
+  (GABA, glutamate, histamine inhibitory; glutamate as an approximation; unlabelled neurons
+  default excitatory and are counted); bounded edge gains and a saturating or bounded
+  activation so carried state stays bounded; a measured stability criterion (spectral radius
+  or long-run activity bound) checked before training. Status labels: anatomical (wiring, signs),
+  approximate (signs from predicted transmitters, dynamics), learned (gains, rest, leak).
+- **9d. Stability check before retraining.** Run the new dynamics over full clips with initial
+  and trained parameters; activity must stay bounded for the longest clip without resets.
+  *Exit:* recorded activity bounds; no training until this passes.
+- **9e. Retrain with a retention objective.** Retrain the static connectome under the new
+  dynamics, adding an auxiliary loss requiring Kenyon (and optionally each stage) activity to
+  decode the frozen frontend output alongside the task loss. *Exit:* rerun the 9b ladder; the
+  Kenyon stage should approach the frontend ceiling, or the remaining gap is documented as
+  approximation versus anatomical limit.
+- **9f. Occlusion-rich clips.** Generate clips with the Honey Factory teacher-driven search clip
+  and longer occlusions (implemented in M12, commit 961c09d). Requires a game run, so it needs
+  explicit approval. *Exit:* held-out splits with enough occluded frames to measure memory.
+- **9g. Stateful connectome memory.** Train the stable connectome across clips (truncated
+  backpropagation through time) so state carries target memory in the circuit; compare with the
+  GRU control, frontend + Kenyon GRU and the 9a baselines on occluded recall and bearing.
+  *Exit:* a measured positive or documented negative memory result.
+
+Only after 9g: candidate mushroom-body output or central-complex memory components, then
+descending outputs and action heads, as originally planned.
+
 ### Slice 10 — Close the live loop
 
 **Goal:** Drive Honey Factory through the existing lock-step protocol.
@@ -704,10 +768,12 @@ contracts or substantial evaluation work.
 
 Expected follow-up PR sequence rather than one large PR:
 
-1. Visual Kenyon-cell component and offline ablation.
-2. Candidate mushroom-body output or central-complex memory component.
-3. Candidate descending-neuron component and action head.
-4. Consolidated offline memory/action report.
+1. Visual Kenyon-cell component and offline ablation (steps 9a–9b).
+2. Signed resting-potential dynamics, stability check and retention retraining (9c–9e).
+3. Stateful connectome memory on occlusion-rich clips (9f–9g).
+4. Candidate mushroom-body output or central-complex memory component.
+5. Candidate descending-neuron component and action head.
+6. Consolidated offline memory/action report.
 
 Example titles:
 
