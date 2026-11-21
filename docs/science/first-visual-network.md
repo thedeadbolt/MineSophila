@@ -40,3 +40,9 @@ receive 672 represented visual-projection edges containing 9,410 anatomical syna
 expanded five-component network contains 42,113 neurons, 318,418 directed edges and 4,431,091
 represented synapses. This establishes anatomical membership and connectivity only; whether the
 component improves learned temporal localisation must be established by the Slice 9 ablation.
+
+`visual_kenyon_inputs` names the matched upstream side of those same thresholded edges: 103
+visual-projection neurons. It overlaps the broader `visual_projection` component and therefore
+does not add neurons or edges to the compiled graph. Its purpose is experimental control: temporal
+readouts can compare the immediate 103-neuron input representation with the 284-neuron Kenyon
+expansion without using all 9,201 visual-projection neurons.
