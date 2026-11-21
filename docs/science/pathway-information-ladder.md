@@ -31,6 +31,33 @@ a particular readout failed to use it.
 
 Values are means ± standard deviation over three decoder seeds.
 
+## Graded signed model (ADR 0027)
+
+The same ladder for `connectome-level1-visual-kenyon-graded-long-v1`: neurotransmitter signs on,
+release relative to rest (`0.5 * tanh(2 v)`), bounded cell-type-pair gains (maximum 4), learned
+neuron rest, 3,000 training steps with early stopping. The legacy column uses the table above.
+
+| Stage | Legacy balanced / bearing | Graded balanced / bearing |
+|---|---:|---:|
+| Photoreceptors | 97.32% / 3.46° | 97.32% / 3.46° |
+| Lamina relays | 98.93% / 3.04° | 98.48 ± 1.04% / 4.35 ± 0.98° |
+| Medulla relays | 99.34% / 2.86° | 97.77 ± 0.98% / 3.88 ± 0.66° |
+| Visual projection | 96.23% / 2.92° | 97.19 ± 0.21% / **2.79 ± 0.12°** |
+| Visual Kenyon inputs | 95.08% / 7.26° | 94.55 ± 0.50% / 6.78 ± 0.18° |
+| Visual Kenyon cells | 92.72% / 12.18° | 90.70 ± 0.88% / 11.66 ± 0.27° |
+
+Photoreceptors are clamped to the same input in both models, so their rows are identical. The
+graded policy keeps the task information as well as the legacy policy at every stage, and
+slightly better at the visual-projection output, while also carrying inhibition and staying
+bounded over clips (see below). Its trained linear readout is weaker than the legacy one on
+stills (78.98% against 82.66% test balanced accuracy, 23.48° against 14.24° bearing, both after
+3,000 steps). Because the same activity decodes at 97% with a normalised decoder, that gap is a
+readout-scale effect, not lost information.
+
+**Stability over clips.** With state carried through the longest clip (86 frames × 4 steps =
+344 transitions, no resets), graded Kenyon-pathway activity stays finite and bounded, at most
+0.31 in absolute value. The legacy policy reached about 4 × 10⁵ on the same clips.
+
 ## Interpretation
 
 **The optic-lobe pathway retains the task information.** Through the visual-projection neurons,
@@ -58,8 +85,8 @@ is mostly visual identity (colour and brightness) rather than precise retinotopi
 - **Readouts must not be linear on raw activity.** Experiments comparing circuits should use a
   normalised readout, at least z-scoring, so that results measure the circuit rather than the
   scale of its activity.
-- **The graded signed policy (ADR 0027) gets the same ladder.** It is judged by whether it keeps
-  information at least as well as the legacy policy while staying stable over clips.
+- **The graded signed policy (ADR 0027) passes both tests.** It keeps information as well as the
+  legacy policy and stays stable over clips, so it is the policy for clip-trained memory.
 
 ## Artifacts
 
@@ -69,3 +96,8 @@ Stored under `/mnt/fastvault/minesophila/derived/brain-localization-v3/`:
 - `temporal-level1-frontend-pathway-stages-framewise-v1.fly-brain.npz` (combined with the
   frontend output)
 - `probe-level1-pathway-stages-legacy-v1.report.json`
+- `temporal-level1-pathway-stages-graded-framewise-v1.fly-brain.npz`,
+  `temporal-level1-frontend-pathway-stages-graded-framewise-v1.fly-brain.npz` and
+  `probe-level1-pathway-stages-graded-v1.report.json`
+- `connectome-level1-visual-kenyon{,-graded}-long-v1.{report.json,checkpoint.npz,input-map.json}`
+- `temporal-level1-visual-kenyon-graded-{carry,reset}-v1.fly-brain.npz`

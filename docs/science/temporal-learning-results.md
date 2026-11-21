@@ -129,6 +129,17 @@ The occlusion columns are not evidence either way: the held-out split contains s
 frames and one recovery event. The Kenyon row's lower occluded bearing error than its input row is
 within the seed spread of the input row.
 
+The same readouts on the graded signed model (ADR 0027), seeds 0–2:
+
+| GRU input | Per-frame reset bearing | Carried state bearing |
+|---|---:|---:|
+| Visual Kenyon cells | 11.04 ± 0.43° | 12.58 ± 0.35° |
+| Kenyon inputs (103) | 7.31 ± 0.85° | 9.30 ± 0.62° |
+
+Per-frame graded activity matches the legacy rows above. Carrying graded state across frames is
+stable but slightly worse, as expected: the connectome was trained only on independent frames, so
+its carried state blurs the current frame without having learned to remember anything.
+
 An earlier cache carried connectome state across frames without resets. Unsigned, all-excitatory
 ReLU dynamics with an uncapped gain are unstable over long runs, and activity grew from about 0 to
 about 10⁴ (up to 4 × 10⁵) within a clip. Recurrent readouts of that cache reached about 61%
