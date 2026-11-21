@@ -155,7 +155,7 @@ def test_connectome_activity_encoder_can_settle_each_frame_from_rest() -> None:
     activity, _ = encoder.run(parameters, values, mask)
     indexes = np.searchsorted(brain.neuron_ids, neuron_ids)
     for frame in range(3):
-        sequence = jnp.tile(jnp.array(values[:, frame].tolist()), (4, 1, 1))
+        sequence = jnp.tile(jnp.array(values[:, frame].tolist()), (4, 1, 1))  # pyright: ignore[reportUnknownMemberType]
         settled = brain.run(parameters, brain.initialize_state(1), sequence).final_state
         np.testing.assert_allclose(
             activity[:, frame], np.asarray(settled.activity)[:, indexes], rtol=1e-6

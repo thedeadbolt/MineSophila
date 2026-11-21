@@ -28,7 +28,7 @@ from fly_brain.models.spatial import (
 )
 from fly_brain.tasks import HoneyLocalizationPrediction
 
-DynamicsActivation = Literal["relu", "tanh"]
+DynamicsActivation = Literal["relu", "tanh", "graded"]
 
 
 @dataclass(frozen=True)
@@ -61,7 +61,7 @@ class ConnectomeModelConfig:
             raise ValueError("connectome model counts must be positive")
         if not np.isfinite(self.time_constant) or not 0 < self.dt <= self.time_constant:
             raise ValueError("connectome model requires 0 < dt <= time_constant")
-        if self.activation not in {"relu", "tanh"}:
+        if self.activation not in {"relu", "tanh", "graded"}:
             raise ValueError(f"unsupported connectome activation {self.activation!r}")
         if not np.isfinite(self.initial_edge_gain) or self.initial_edge_gain < 0:
             raise ValueError("connectome initial_edge_gain must be non-negative")

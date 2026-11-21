@@ -153,7 +153,7 @@ class CompiledBrain:
         if self.parameter_policy.maximum_edge_gain is not None:
             edge_gain = self.parameter_policy.maximum_edge_gain * jax.nn.sigmoid(edge_gain)
         recurrent = (
-            state.activity[:, self.source_indexes]
+            self.dynamics.release(state.activity)[:, self.source_indexes]
             * jnp.asarray(self.anatomical_weights)[None, :]
             * edge_gain[None, :]
         )

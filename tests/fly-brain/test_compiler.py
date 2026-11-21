@@ -25,6 +25,7 @@ from fly_brain.connectome import (
     SynapseCountPolicy,
     SynapseTable,
 )
+from fly_brain.connectome.dynamics import ActivationName
 
 
 def graph() -> ConnectomeGraph:
@@ -191,3 +192,85 @@ def test_compiler_groups_and_bounds_edge_gains() -> None:
     assert model.edge_gain_count == 3
     np.testing.assert_allclose(parameters.edge_gain, np.zeros(3), atol=1e-6)
     np.testing.assert_allclose(model.anatomical_weights, [-0.25, -0.75, 1.0])
+
+
+def _loop_graph() -> ConnectomeGraph:
+    base = graph()
+    return ConnectomeGraph(
+        base.release,
+        base.neurons,
+        SynapseTable(
+            source_ids=np.array([1, 2, 3, 4]),
+            target_ids=np.array([3, 3, 4, 3]),
+            # The 4 -> 3 edge carries 80% of relay input, so the loop gain is 0.8 * gain**2.
+            counts=np.array([1, 1, 4, 8]),
+        ),
+    )
+
+
+def _signed_compiler(
+    source: ConnectomeGraph, activation: ActivationName, gain: float
+) -> BrainCompiler:
+    spec = BrainModelSpec(
+        network(source),
+        (
+            InputPort(
+                "receptors",
+                np.array([1, 2]),
+                InjectionRule.CLAMPED,
+                BiologicalStatus.APPROXIMATION,
+            ),
+        ),
+        OutputHead("localisation", np.array([4]), 2),
+        LeakyRateDynamics(time_constant=2.0, activation=activation),
+        SynapseCountPolicy(initial_edge_gain=gain, use_neurotransmitter_signs=True),
+    )
+    return BrainCompiler(spec)
+
+
+def _settled_activity(compiler: BrainCompiler, receptor_value: float, steps: int) -> np.ndarray:
+    model = compiler.compile()
+    parameters = model.initialize_parameters(seed=0)
+    inputs = jnp.full((steps, 1, 2), receptor_value, dtype=jnp.float32)
+    return np.asarray(model.run(parameters, model.initialize_state(1), inputs).activity)
+
+
+def test_graded_dynamics_carry_inhibition_that_zero_baseline_relu_loses() -> None:
+    graded = _signed_compiler(graph(), "graded", 1.0)
+    relu = _signed_compiler(graph(), "relu", 1.0)
+
+    dim, bright = (_settled_activity(graded, value, 8)[-1, 0] for value in (0.0, 2.0))
+    relu_dim, relu_bright = (_settled_activity(relu, value, 8)[-1, 0] for value in (0.0, 2.0))
+
+    # Histaminergic receptors inhibit the relay: brighter input hyperpolarises it further.
+    assert bright[2] < dim[2] < 0
+    # The excitatory relay passes that difference on to the output neuron.
+    assert bright[3] < dim[3]
+    # Zero-baseline ReLU clips the inhibited relay to zero for both inputs.
+    assert relu_dim[2] == relu_bright[2] == 0
+    assert relu_dim[3] == relu_bright[3]
+
+
+def test_graded_dynamics_stay_bounded_where_relu_loops_diverge() -> None:
+    graded = _settled_activity(_signed_compiler(_loop_graph(), "graded", 1.59), 1.0, 400)
+    relu_model = BrainCompiler(
+        BrainModelSpec(
+            network(_loop_graph()),
+            (
+                InputPort(
+                    "receptors",
+                    np.array([1, 2]),
+                    InjectionRule.CLAMPED,
+                    BiologicalStatus.APPROXIMATION,
+                ),
+            ),
+            OutputHead("localisation", np.array([4]), 2),
+            LeakyRateDynamics(time_constant=2.0, activation="relu"),
+            SynapseCountPolicy(initial_edge_gain=1.59),
+        )
+    )
+    relu = _settled_activity(relu_model, 1.0, 400)
+
+    assert np.isfinite(graded).all()
+    assert np.abs(graded[:, 0, 2:]).max() <= 1.59 + 1e-5
+    assert relu[-1, 0, 2:].max() > 1e6
