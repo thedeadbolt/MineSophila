@@ -38,6 +38,9 @@ from fly_brain.models.spatial import (
     train_spatial,
 )
 from fly_brain.models.temporal import (
+    ActionPrediction,
+    ActionTemporalBatch,
+    RecurrentActionModel,
     RecurrentLocalizationModel,
     RecurrentParameters,
     RecurrentState,
@@ -47,9 +50,12 @@ from fly_brain.models.temporal import (
     TemporalPrediction,
     prepare_temporal_batch,
     train_recurrent,
+    train_recurrent_actions,
 )
 
 __all__ = [
+    "ActionPrediction",
+    "ActionTemporalBatch",
     "CNNLocalizationModel",
     "CNNParameters",
     "CNNTrainingResult",
@@ -66,6 +72,7 @@ __all__ = [
     "MLPParameters",
     "MLPTrainingResult",
     "ReceptorPoolingInputTransform",
+    "RecurrentActionModel",
     "RecurrentLocalizationModel",
     "RecurrentParameters",
     "RecurrentState",
@@ -90,5 +97,6 @@ __all__ = [
     "train_linear",
     "train_mlp",
     "train_recurrent",
+    "train_recurrent_actions",
     "train_spatial",
 ]

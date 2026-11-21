@@ -14,6 +14,7 @@ from fly_brain.adapters import EgocentricMotionContextAdapter, TeacherActionTarg
 from fly_brain.contracts import BrainTargets
 from fly_brain.contracts._arrays import readonly
 from fly_brain.models import (
+    ActionTemporalBatch,
     SpatialBatch,
     SpatialLocalizationModel,
     SpatialParameters,
@@ -141,6 +142,45 @@ class CachedClipDataset:
             values = self.visible[start:stop]
             result[row, : values.size] = values if kind == "visible" else ~values
         return result
+
+    def action_batch(self, split: str, *, include_context: bool = True) -> ActionTemporalBatch:
+        """Batch clips with visible, teacher-labelled action targets."""
+        candidates = [index for index, value in enumerate(self.splits) if value == split]
+        selected = [
+            index
+            for index in candidates
+            if np.any(
+                self.teacher_action_mask[self.offsets[index] : self.offsets[index + 1]]
+                & self.visible[self.offsets[index] : self.offsets[index + 1]]
+            )
+        ]
+        if not selected:
+            raise ValueError(f"cached clip dataset has no supervised {split!r} actions")
+        lengths = [int(self.offsets[index + 1] - self.offsets[index]) for index in selected]
+        maximum = max(lengths)
+        width = self.sensory_features.shape[1]
+        if include_context:
+            width += self.motion_context.shape[1]
+        features = np.zeros((len(selected), maximum, width), dtype=np.float32)
+        sequence_mask = np.zeros((len(selected), maximum), dtype=np.bool_)
+        action_mask = np.zeros((len(selected), maximum), dtype=np.bool_)
+        actions = np.zeros(
+            (len(selected), maximum, self.teacher_actions.shape[1]), dtype=np.float32
+        )
+        for row, (clip_index, length) in enumerate(zip(selected, lengths, strict=True)):
+            start, stop = self.offsets[clip_index : clip_index + 2]
+            sensory = self.sensory_features[start:stop]
+            features[row, :length] = (
+                np.concatenate([sensory, self.motion_context[start:stop]], axis=1)
+                if include_context
+                else sensory
+            )
+            sequence_mask[row, :length] = True
+            action_mask[row, :length] = (
+                self.teacher_action_mask[start:stop] & self.visible[start:stop]
+            )
+            actions[row, :length] = self.teacher_actions[start:stop]
+        return ActionTemporalBatch(features, sequence_mask, action_mask, actions)
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

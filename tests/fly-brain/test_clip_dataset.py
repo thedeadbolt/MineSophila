@@ -42,6 +42,16 @@ def test_clip_cache_exposes_visible_and_occluded_intervals() -> None:
     assert cached.interval_mask("test", "occluded").tolist() == [[True, False, False]]
 
 
+def test_clip_cache_action_batch_requires_visible_teacher_labels() -> None:
+    cached = dataset()
+
+    batch = cached.action_batch("test")
+
+    assert batch.features.shape == (1, 3, 6)
+    assert batch.sequence_mask.tolist() == [[True, True, True]]
+    assert batch.action_mask.tolist() == [[False, True, False]]
+
+
 def test_clip_cache_round_trips_without_pickle(tmp_path: Path) -> None:
     original = dataset()
     path = tmp_path / "clips.npz"

@@ -14,10 +14,13 @@ from fly_brain.contracts import (
     SensorLayout,
 )
 from fly_brain.models import (
+    ActionTemporalBatch,
+    RecurrentActionModel,
     RecurrentLocalizationModel,
     RecurrentTrainingConfig,
     prepare_temporal_batch,
     train_recurrent,
+    train_recurrent_actions,
 )
 
 
@@ -164,3 +167,31 @@ def test_padding_does_not_change_recurrent_state(sensor_layout: SensorLayout) ->
     _, valid_state = model.run(parameters, padded.features[:, :2], padded.time_mask[:, :2])
 
     np.testing.assert_allclose(full_state.hidden, valid_state.hidden, rtol=1e-6)
+
+
+def test_recurrent_action_head_learns_masked_teacher_commands() -> None:
+    features = np.tile(
+        np.array([[[-1.0], [-0.5], [0.5], [1.0]]], dtype=np.float32),
+        (8, 1, 1),
+    )
+    actions = np.concatenate([features, -features], axis=2)
+    mask = np.ones((8, 4), dtype=np.bool_)
+    mask[:, 0] = False
+    batch = ActionTemporalBatch(features, np.ones_like(mask), mask, actions)
+    model = RecurrentActionModel(1, (1.0, 1.0), hidden_width=8)
+
+    result = train_recurrent_actions(
+        model,
+        batch,
+        RecurrentTrainingConfig(
+            steps=200,
+            batch_size=4,
+            learning_rate=0.02,
+            truncation_steps=2,
+            seed=2,
+        ),
+    )
+    prediction, _ = model.run(result.parameters, features, np.ones_like(mask))
+
+    assert result.losses[-1] < result.losses[0] * 0.2
+    np.testing.assert_allclose(prediction.values[mask], actions[mask], atol=0.15)
