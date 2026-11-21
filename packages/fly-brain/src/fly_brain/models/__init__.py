@@ -9,6 +9,7 @@ from fly_brain.models.cnn import (
 from fly_brain.models.connectome import (
     ConnectomeActivityEncoder,
     ConnectomeBatch,
+    ConnectomeClipActivityTransform,
     ConnectomeInputTransform,
     ConnectomeLocalizationModel,
     ConnectomeModelConfig,
@@ -62,6 +63,7 @@ __all__ = [
     "CNNTrainingResult",
     "ConnectomeActivityEncoder",
     "ConnectomeBatch",
+    "ConnectomeClipActivityTransform",
     "ConnectomeInputTransform",
     "ConnectomeLocalizationModel",
     "ConnectomeModelConfig",

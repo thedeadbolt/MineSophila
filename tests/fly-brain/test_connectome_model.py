@@ -26,6 +26,7 @@ from fly_brain.connectome import (
 from fly_brain.models import (
     ConnectomeActivityEncoder,
     ConnectomeBatch,
+    ConnectomeClipActivityTransform,
     ConnectomeLocalizationModel,
     ConnectomeTrainingConfig,
     ReceptorPoolingInputTransform,
@@ -140,6 +141,32 @@ def test_connectome_activity_encoder_retains_state_and_holds_padding() -> None:
     np.testing.assert_array_equal(activity[:, 1], activity[:, 0])
     np.testing.assert_allclose(np.concatenate([first, second], axis=1), activity)
     np.testing.assert_allclose(continued_state.activity, final_state.activity)
+
+
+def test_connectome_clip_transform_resets_and_encodes_one_clip() -> None:
+    class FlatFrontend:
+        biological_status = BiologicalStatus.SHORTCUT
+        parameter_count = 0
+
+        def transform(self, batch: SpatialBatch):
+            return batch.signals.reshape(batch.rows, -1)
+
+    brain = compiled_brain().compile()
+    parameters = brain.initialize_parameters(seed=4)
+    encoder = ConnectomeActivityEncoder(brain, np.array([1, 3]), transitions_per_frame=1)
+    transform = ConnectomeClipActivityTransform(FlatFrontend(), encoder, parameters)
+    batch = SpatialBatch(
+        np.array([[[1.0], [0.0]], [[0.0], [0.0]]], dtype=np.float32),
+        np.ones(2, dtype=np.bool_),
+        np.zeros((2, 2), dtype=np.float32),
+        np.array([[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]], dtype=np.float32),
+    )
+
+    first = transform.transform(batch)
+    second = transform.transform(batch)
+
+    assert first.shape == (2, 2)
+    np.testing.assert_array_equal(first, second)
 
 
 def test_spatial_coverage_transform_maps_frozen_predictions() -> None:

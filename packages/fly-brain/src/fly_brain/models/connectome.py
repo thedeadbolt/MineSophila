@@ -343,6 +343,25 @@ class ConnectomeActivityEncoder:
         return np.asarray(activity, dtype=np.float32), final_state
 
 
+@dataclass(frozen=True)
+class ConnectomeClipActivityTransform:
+    """Convert one spatial clip into causal activity features for selected neurons."""
+
+    frontend: ConnectomeInputTransform
+    encoder: ConnectomeActivityEncoder
+    parameters: BrainParameters
+
+    def transform(self, batch: SpatialBatch) -> NDArray[np.float32]:
+        port_values = self.frontend.transform(batch)
+        mask = np.ones((1, batch.rows), dtype=np.bool_)
+        activity, _ = self.encoder.run(
+            self.parameters,
+            port_values[None, :, :],
+            mask,
+        )
+        return activity[0]
+
+
 def train_connectome(
     model: ConnectomeLocalizationModel,
     train: ConnectomeBatch,

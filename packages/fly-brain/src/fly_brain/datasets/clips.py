@@ -247,6 +247,8 @@ def convert_honey_factory_clips(
     frontend_checkpoint_sha256: str,
     prediction_batch_size: int = 64,
     frame_selection: Literal["all", "tick"] = "tick",
+    sensory_transform: Callable[[SpatialBatch], NDArray[np.float32]] | None = None,
+    sensory_feature_manifest: object | None = None,
     progress: Callable[[int, int], None] | None = None,
 ) -> CachedClipDataset:
     """Convert RGB clips through fly-vision and a frozen spatial frontend."""
@@ -254,6 +256,8 @@ def convert_honey_factory_clips(
         raise ValueError("prediction_batch_size must be positive")
     if frame_selection not in {"all", "tick"}:
         raise ValueError("frame_selection must be 'all' or 'tick'")
+    if sensory_transform is not None and sensory_feature_manifest is None:
+        raise ValueError("a custom sensory transform requires a feature manifest")
     manifest_path = dataset_dir / "dataset.json"
     manifest = cast(dict[str, Any], json.loads(manifest_path.read_text()))
     if manifest.get("lifecycle") != "complete" or manifest.get("kind") != "clips":
@@ -310,15 +314,21 @@ def convert_honey_factory_clips(
             np.zeros((signal_rows.shape[0], spatial_model.site_count), dtype=np.float32),
             directions,
         )
-        prediction = spatial_model.predict(
-            spatial_parameters,
-            spatial_batch,
-            spatial_topology,
-            batch_size=prediction_batch_size,
-        )
-        sensory_rows.append(
-            np.concatenate([prediction.presence_probability[:, None], prediction.direction], axis=1)
-        )
+        if sensory_transform is None:
+            prediction = spatial_model.predict(
+                spatial_parameters,
+                spatial_batch,
+                spatial_topology,
+                batch_size=prediction_batch_size,
+            )
+            sensory = np.concatenate(
+                [prediction.presence_probability[:, None], prediction.direction], axis=1
+            )
+        else:
+            sensory = np.asarray(sensory_transform(spatial_batch), dtype=np.float32)
+            if sensory.ndim != 2 or sensory.shape[0] != len(records):
+                raise ValueError("clip sensory transform must return shape (frames, features)")
+        sensory_rows.append(sensory)
         context = context_adapter.convert(records)
         context_rows.append(context.values)
         presence, direction, visible = _clip_localisation_targets(records)
@@ -359,12 +369,11 @@ def convert_honey_factory_clips(
             "source_clips_sha256": manifest["integrity"]["indexes"]["clips"]["sha256"],
             "lattice_hash": lattice_hash(lattice),
             "sensor_config_hash": config_hash(vision_config),
-            "sensory_features": [
-                "presence_probability",
-                "direction_x",
-                "direction_y",
-                "direction_z",
-            ],
+            "sensory_features": (
+                ["presence_probability", "direction_x", "direction_y", "direction_z"]
+                if sensory_transform is None
+                else sensory_feature_manifest
+            ),
             "frontend_checkpoint_sha256": frontend_checkpoint_sha256,
             "frame_selection": frame_selection,
         },

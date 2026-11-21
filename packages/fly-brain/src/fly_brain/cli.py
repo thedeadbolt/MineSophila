@@ -18,9 +18,12 @@ from fly_brain.connectome import (
     BiologicalStatus,
     BrainCompiler,
     BrainModelSpec,
+    BrainNetwork,
     BrainParameters,
+    ConnectomeGraph,
     LeakyRateDynamics,
     MaleCNSLoader,
+    NetworkComponent,
     OutputHead,
     ReceptorInputMap,
     SynapseCountPolicy,
@@ -49,7 +52,9 @@ from fly_brain.models import (
     ActionPrediction,
     ActionTemporalBatch,
     CNNLocalizationModel,
+    ConnectomeActivityEncoder,
     ConnectomeBatch,
+    ConnectomeClipActivityTransform,
     ConnectomeInputTransform,
     ConnectomeLocalizationModel,
     ConnectomeModelConfig,
@@ -100,6 +105,23 @@ def _parser() -> argparse.ArgumentParser:
     prepare_clips.add_argument("--frontend-checkpoint", required=True, type=Path)
     prepare_clips.add_argument("--prediction-batch-size", type=int, default=64)
     prepare_clips.add_argument("--frame-selection", choices=("all", "tick"), default="tick")
+    prepare_connectome_clips = commands.add_parser("prepare-connectome-clips")
+    prepare_connectome_clips.add_argument("dataset", type=Path)
+    prepare_connectome_clips.add_argument("--out", required=True, type=Path)
+    prepare_connectome_clips.add_argument("--matrix-cache", required=True, type=Path)
+    prepare_connectome_clips.add_argument("--layout-cache", required=True, type=Path)
+    prepare_connectome_clips.add_argument("--connectome-root", required=True, type=Path)
+    prepare_connectome_clips.add_argument("--config", required=True, type=Path)
+    prepare_connectome_clips.add_argument("--connectome-checkpoint", required=True, type=Path)
+    prepare_connectome_clips.add_argument("--frontend-checkpoint", required=True, type=Path)
+    prepare_connectome_clips.add_argument(
+        "--activity-components", nargs="+", default=[VISUAL_KENYON_COMPONENT]
+    )
+    prepare_connectome_clips.add_argument("--transitions-per-frame", type=int, default=1)
+    prepare_connectome_clips.add_argument("--prediction-batch-size", type=int, default=64)
+    prepare_connectome_clips.add_argument(
+        "--frame-selection", choices=("all", "tick"), default="tick"
+    )
     temporal = commands.add_parser("train-recurrent")
     temporal.add_argument("cache", type=Path)
     temporal.add_argument("--config", required=True, type=Path)
@@ -198,6 +220,77 @@ def _prepare_clips(args: argparse.Namespace) -> int:
         frontend_checkpoint_sha256=_file_sha256(args.frontend_checkpoint),
         prediction_batch_size=args.prediction_batch_size,
         frame_selection=args.frame_selection,
+        progress=progress,
+    )
+    print(f"  wrote {converted.clip_count} clips and {converted.frame_count} frames", flush=True)
+    return 0
+
+
+def _prepare_connectome_clips(args: argparse.Namespace) -> int:
+    model_config, training_config = _load_connectome_config(args.config)
+    layout_dataset = CachedStillDataset.load(args.layout_cache)
+    layout = _cached_sensor_layout([layout_dataset])
+    graph, _, components, input_map, compiler = _build_connectome(
+        layout, args.connectome_root, model_config
+    )
+    unknown = set(args.activity_components) - set(components)
+    if unknown:
+        raise ValueError(f"unknown activity components: {sorted(unknown)}")
+    parameter_values, checkpoint_manifest = load_checkpoint(args.connectome_checkpoint)
+    checkpoint_connectome = checkpoint_manifest.get("connectome")
+    if not isinstance(checkpoint_connectome, dict):
+        raise ValueError("connectome checkpoint lacks its graph manifest")
+    checkpoint_graph = cast(dict[str, Any], checkpoint_connectome).get("graph_sha256")
+    if checkpoint_graph != graph.graph_sha256:
+        raise ValueError("connectome checkpoint graph does not match the compiled graph")
+    parameters = BrainParameters(**cast(Any, parameter_values))
+    frontend, frontend_manifest = _connectome_frontend(
+        model_config,
+        args.frontend_checkpoint,
+        [layout_dataset],
+        input_map,
+        training_config.batch_size,
+    )
+    if frontend is None:
+        raise ValueError("connectome clip activity requires an explicit input transform")
+    selected = tuple(args.activity_components)
+    neuron_ids = np.unique(
+        np.concatenate([components[name].neuron_ids for name in selected])
+    )
+    encoder = ConnectomeActivityEncoder(
+        compiler.compile(), neuron_ids, args.transitions_per_frame
+    )
+    transform = ConnectomeClipActivityTransform(frontend, encoder, parameters)
+    spatial_model, spatial_parameters, spatial_topology = _load_spatial_frontend(
+        args.frontend_checkpoint
+    )
+    print(f"preparing connectome clips from {args.dataset} -> {args.out}", flush=True)
+
+    def progress(done: int, total: int) -> None:
+        print(f"  {done}/{total} clips", flush=True)
+
+    converted = convert_honey_factory_clips(
+        args.dataset,
+        args.out,
+        matrix_cache=args.matrix_cache,
+        spatial_model=spatial_model,
+        spatial_parameters=spatial_parameters,
+        spatial_topology=spatial_topology,
+        frontend_checkpoint_sha256=_file_sha256(args.frontend_checkpoint),
+        prediction_batch_size=args.prediction_batch_size,
+        frame_selection=args.frame_selection,
+        sensory_transform=transform.transform,
+        sensory_feature_manifest={
+            "kind": "stateful_connectome_activity",
+            "components": {
+                name: int(components[name].neuron_ids.size) for name in selected
+            },
+            "width": encoder.output_width,
+            "transitions_per_frame": encoder.transitions_per_frame,
+            "connectome_checkpoint_sha256": _file_sha256(args.connectome_checkpoint),
+            "graph_sha256": graph.graph_sha256,
+            "frontend": frontend_manifest,
+        },
         progress=progress,
     )
     print(f"  wrote {converted.clip_count} clips and {converted.frame_count} frames", flush=True)
@@ -867,56 +960,14 @@ def _train_connectome(args: argparse.Namespace) -> int:
     model_config, training_config = _load_connectome_config(args.config)
     datasets = [CachedStillDataset.load(path) for path in args.caches]
     layout = _cached_sensor_layout(datasets)
-    cell_types = PHOTORECEPTOR_TYPES + LAMINA_RELAY_TYPES + MEDULLA_RELAY_TYPES
-    selector_loader = MaleCNSLoader(
-        args.connectome_root,
-        minimum_synapse_count=model_config.minimum_synapse_count,
-    )
-    selected_ids = selector_loader.annotation_ids(
-        cell_types=cell_types,
-        classes=("Kenyon_Cell",) if VISUAL_KENYON_COMPONENT in model_config.components else (),
-        superclasses=("visual_projection",),
-    )
-    graph = MaleCNSLoader(
-        args.connectome_root,
-        minimum_synapse_count=model_config.minimum_synapse_count,
-        neuron_ids=selected_ids,
-    ).load()
-    network = build_first_visual_network(
-        graph,
-        minimum_synapse_count=model_config.minimum_synapse_count,
-        component_names=model_config.components,
-    )
-    components = {component.spec.name: component for component in network.components}
-    input_map = build_receptor_input_map(layout, graph, components["photoreceptors"])
-    readout_neuron_ids = np.unique(
-        np.concatenate([components[name].neuron_ids for name in model_config.readout_components])
+    graph, network, _, input_map, compiler = _build_connectome(
+        layout, args.connectome_root, model_config
     )
     input_manifest = input_map.to_manifest()
     input_payload = json.dumps(input_manifest, indent=2, sort_keys=True) + "\n"
     args.input_map.parent.mkdir(parents=True, exist_ok=True)
     args.input_map.write_text(input_payload)
     input_sha256 = hashlib.sha256(input_payload.encode()).hexdigest()
-    spec = BrainModelSpec(
-        network,
-        (input_map.input_port(),),
-        OutputHead(
-            "honey_localisation",
-            readout_neuron_ids,
-            4,
-            BiologicalStatus.LEARNED,
-        ),
-        LeakyRateDynamics(model_config.time_constant, model_config.activation),
-        SynapseCountPolicy(
-            model_config.initial_edge_gain,
-            model_config.train_neuron_bias,
-            model_config.edge_gain_mode,
-            model_config.maximum_edge_gain,
-            model_config.use_neurotransmitter_signs,
-        ),
-        model_config.dt,
-    )
-    compiler = BrainCompiler(spec)
     plan = compiler.plan()
     model = ConnectomeLocalizationModel(compiler.compile(), model_config.settling_steps)
     frontend, frontend_manifest = _connectome_frontend(
@@ -1024,6 +1075,64 @@ def _load_connectome_config(
         ), ConnectomeTrainingConfig(**cast(dict[str, Any], training_values))
     except TypeError as error:
         raise ValueError(f"invalid connectome experiment setting: {error}") from error
+
+
+def _build_connectome(
+    layout: SensorLayout,
+    connectome_root: Path,
+    config: ConnectomeModelConfig,
+) -> tuple[
+    ConnectomeGraph,
+    BrainNetwork,
+    dict[str, NetworkComponent],
+    ReceptorInputMap,
+    BrainCompiler,
+]:
+    cell_types = PHOTORECEPTOR_TYPES + LAMINA_RELAY_TYPES + MEDULLA_RELAY_TYPES
+    selector_loader = MaleCNSLoader(
+        connectome_root,
+        minimum_synapse_count=config.minimum_synapse_count,
+    )
+    selected_ids = selector_loader.annotation_ids(
+        cell_types=cell_types,
+        classes=("Kenyon_Cell",) if VISUAL_KENYON_COMPONENT in config.components else (),
+        superclasses=("visual_projection",),
+    )
+    graph = MaleCNSLoader(
+        connectome_root,
+        minimum_synapse_count=config.minimum_synapse_count,
+        neuron_ids=selected_ids,
+    ).load()
+    network = build_first_visual_network(
+        graph,
+        minimum_synapse_count=config.minimum_synapse_count,
+        component_names=config.components,
+    )
+    components = {component.spec.name: component for component in network.components}
+    input_map = build_receptor_input_map(layout, graph, components["photoreceptors"])
+    readout_neuron_ids = np.unique(
+        np.concatenate([components[name].neuron_ids for name in config.readout_components])
+    )
+    spec = BrainModelSpec(
+        network,
+        (input_map.input_port(),),
+        OutputHead(
+            "honey_localisation",
+            readout_neuron_ids,
+            4,
+            BiologicalStatus.LEARNED,
+        ),
+        LeakyRateDynamics(config.time_constant, config.activation),
+        SynapseCountPolicy(
+            config.initial_edge_gain,
+            config.train_neuron_bias,
+            config.edge_gain_mode,
+            config.maximum_edge_gain,
+            config.use_neurotransmitter_signs,
+        ),
+        config.dt,
+    )
+    return graph, network, components, input_map, BrainCompiler(spec)
 
 
 def _cached_sensor_layout(datasets: list[CachedStillDataset]) -> SensorLayout:
@@ -1380,6 +1489,8 @@ def main(argv: list[str] | None = None) -> int:
             return _prepare(args)
         if args.command == "prepare-clips":
             return _prepare_clips(args)
+        if args.command == "prepare-connectome-clips":
+            return _prepare_connectome_clips(args)
         if args.command == "train-recurrent":
             return _train_recurrent(args)
         if args.command == "train-recurrent-actions":
