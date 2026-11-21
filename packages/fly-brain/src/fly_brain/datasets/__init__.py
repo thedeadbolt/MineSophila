@@ -5,6 +5,7 @@ from fly_brain.datasets.audit import (
     StillLabelAuditReport,
     audit_still_labels,
 )
+from fly_brain.datasets.clips import CachedClipDataset
 from fly_brain.datasets.images import downsample_panorama, load_image_localization_batches
 from fly_brain.datasets.stills import (
     CachedStillDataset,
@@ -14,6 +15,7 @@ from fly_brain.datasets.stills import (
 
 __all__ = [
     "CachedStillDataset",
+    "CachedClipDataset",
     "StillLabelAuditConfig",
     "StillLabelAuditReport",
     "audit_still_labels",
