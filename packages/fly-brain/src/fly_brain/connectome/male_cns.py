@@ -56,15 +56,18 @@ class MaleCNSLoader:
         self,
         *,
         cell_types: tuple[str, ...] = (),
+        classes: tuple[str, ...] = (),
         superclasses: tuple[str, ...] = (),
     ) -> tuple[int, ...]:
         path = self.root / _FILES["annotations"][0]
         annotations = feather.read_table(
-            path, columns=["bodyId", "type", "superclass"], memory_map=True
+            path, columns=["bodyId", "type", "class", "superclass"], memory_map=True
         )
         mask = np.zeros(annotations.num_rows, dtype=np.bool_)
         if cell_types:
             mask |= np.isin(_strings(annotations["type"]), cell_types)
+        if classes:
+            mask |= np.isin(_strings(annotations["class"]), classes)
         if superclasses:
             mask |= np.isin(_strings(annotations["superclass"]), superclasses)
         if not mask.any():

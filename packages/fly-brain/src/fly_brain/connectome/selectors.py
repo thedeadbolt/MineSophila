@@ -66,6 +66,39 @@ class AnnotationEquals:
 
 
 @dataclass(frozen=True)
+class SynapticTargets:
+    """Select candidate neurons receiving sufficiently strong edges from a source set."""
+
+    sources: NeuronSelector
+    candidates: NeuronSelector
+    minimum_synapse_count: int = 1
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.minimum_synapse_count, bool)
+            or self.minimum_synapse_count < 1
+        ):
+            raise ValueError("minimum_synapse_count must be a positive integer")
+
+    def resolve(self, graph: ConnectomeGraph) -> NDArray[np.int64]:
+        edges = graph.synapses
+        mask = (
+            np.isin(edges.source_ids, self.sources.resolve(graph))
+            & np.isin(edges.target_ids, self.candidates.resolve(graph))
+            & (edges.counts >= self.minimum_synapse_count)
+        )
+        return np.unique(edges.target_ids[mask]).astype(np.int64, copy=False)
+
+    def to_manifest(self) -> SelectorManifest:
+        return {
+            "kind": "synaptic_targets",
+            "sources": self.sources.to_manifest(),
+            "candidates": self.candidates.to_manifest(),
+            "minimum_synapse_count": self.minimum_synapse_count,
+        }
+
+
+@dataclass(frozen=True)
 class Union:
     selectors: tuple[NeuronSelector, ...]
 
@@ -120,4 +153,4 @@ class Exclude:
         }
 
 
-type Selector = ExplicitIds | AnnotationEquals | Union | Intersection | Exclude
+type Selector = ExplicitIds | AnnotationEquals | SynapticTargets | Union | Intersection | Exclude

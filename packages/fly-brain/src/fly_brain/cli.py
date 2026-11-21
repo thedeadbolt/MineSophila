@@ -31,6 +31,7 @@ from fly_brain.connectome.visual import (
     LAMINA_RELAY_TYPES,
     MEDULLA_RELAY_TYPES,
     PHOTORECEPTOR_TYPES,
+    VISUAL_KENYON_COMPONENT,
 )
 from fly_brain.contracts import BrainTargets, Eye, SensorLayout
 from fly_brain.datasets import (
@@ -873,6 +874,7 @@ def _train_connectome(args: argparse.Namespace) -> int:
     )
     selected_ids = selector_loader.annotation_ids(
         cell_types=cell_types,
+        classes=("Kenyon_Cell",) if VISUAL_KENYON_COMPONENT in model_config.components else (),
         superclasses=("visual_projection",),
     )
     graph = MaleCNSLoader(

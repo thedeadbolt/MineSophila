@@ -61,4 +61,5 @@ def test_male_cns_annotation_selection_precedes_edge_materialization(tmp_path: P
     loader = MaleCNSLoader(tmp_path, verify_checksums=False)
 
     assert loader.annotation_ids(cell_types=("photoreceptor",)) == (10,)
+    assert loader.annotation_ids(classes=("visual",)) == (20,)
     assert loader.annotation_ids(superclasses=("visual_projection",)) == (20,)

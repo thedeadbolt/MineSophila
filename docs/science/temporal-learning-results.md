@@ -70,3 +70,30 @@ Artifacts live outside Git under
 
 The reports pin the source manifest and clip-index hashes, frozen frontend checkpoint hash, Git
 revision, model/training configuration, selected threshold, runtime and held-out metrics.
+
+## Level-2 validation
+
+The same 64-unit models were rerun without architecture changes on 200 level-2 clips (8,592
+frames). This set contains 164 present-but-occluded frames overall and nine in the held-out split.
+
+| Model | Trainable parameters | Test balanced accuracy | Test bearing error | Occluded recall | Occluded bearing error | Visible motion stability error |
+|---|---:|---:|---:|---:|---:|---:|
+| Frozen spatial frontend | 0 | 78.03% | 28.80° | 0% | 124.47° | 4.50° |
+| GRU, vision only | 13,516 | 94.92% | 20.11° | 100% | 114.19° | 3.20° |
+| GRU + egocentric context | 16,232 | **95.50%** | **14.05°** | 100% | 163.97° | **2.40°** |
+
+Recurrence substantially improves ordinary level-2 localisation, but neither recurrent model
+retains a usable target direction through the held-out occlusions. The context model also varies
+sharply by clip type: its approach bearing error is 4.57°, while pass-by and scan errors are
+45.79° and 43.85°. These failures motivate testing a separately named visual Kenyon memory
+component rather than treating the GRU result as evidence for robust target memory.
+
+The level-2 action model evaluates on 719 teacher-labelled frames. Its test MAEs are 0.091 forward,
+0.020 strafe, 1.148°/tick turn, 0.238°/tick pitch, 0.016 jump and 0.013 ticks delay.
+
+Additional artifacts in the same external directory are:
+
+- `temporal-level2-tick-v1.fly-brain.npz`
+- `recurrent-level2-v1.{report.json,checkpoint.npz}`
+- `recurrent-level2-context-v1.{report.json,checkpoint.npz}`
+- `recurrent-actions-level2-v1.{report.json,checkpoint.npz}`

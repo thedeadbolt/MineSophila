@@ -43,10 +43,15 @@ from fly_brain.connectome.selectors import (
     ExplicitIds,
     Intersection,
     NeuronSelector,
+    SynapticTargets,
     Union,
 )
 from fly_brain.connectome.tables import NeuronTable, SynapseTable
-from fly_brain.connectome.visual import build_first_visual_network, first_visual_component_specs
+from fly_brain.connectome.visual import (
+    build_first_visual_network,
+    first_visual_component_specs,
+    visual_kenyon_component_spec,
+)
 
 __all__ = [
     "MALE_CNS_V1_RELEASE",
@@ -86,8 +91,10 @@ __all__ = [
     "ReceptorInputMap",
     "SynapseCountPolicy",
     "SynapseTable",
+    "SynapticTargets",
     "Union",
     "build_first_visual_network",
     "build_receptor_input_map",
     "first_visual_component_specs",
+    "visual_kenyon_component_spec",
 ]

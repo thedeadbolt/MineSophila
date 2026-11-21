@@ -12,6 +12,7 @@ from fly_brain.connectome import (
     Intersection,
     NeuronTable,
     SynapseTable,
+    SynapticTargets,
     Union,
 )
 
@@ -61,3 +62,18 @@ def test_selector_manifest_is_json_serializable(graph: ConnectomeGraph) -> None:
 
     assert selector.resolve(graph).tolist() == [1, 3]
     assert json.loads(json.dumps(selector.to_manifest()))["kind"] == "exclude"
+
+
+def test_synaptic_targets_apply_source_candidate_and_strength_filters(
+    graph: ConnectomeGraph,
+) -> None:
+    selector = SynapticTargets(
+        AnnotationEquals("classes", ("sensory",)),
+        AnnotationEquals("classes", ("interneuron", "descending")),
+        minimum_synapse_count=6,
+    )
+
+    assert selector.resolve(graph).tolist() == [3]
+    manifest = json.loads(json.dumps(selector.to_manifest()))
+    assert manifest["kind"] == "synaptic_targets"
+    assert manifest["minimum_synapse_count"] == 6

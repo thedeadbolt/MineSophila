@@ -8,7 +8,7 @@ from fly_brain.connectome.components import (
 )
 from fly_brain.connectome.graph import ConnectomeGraph
 from fly_brain.connectome.network import BrainNetwork, EdgePolicy
-from fly_brain.connectome.selectors import AnnotationEquals
+from fly_brain.connectome.selectors import AnnotationEquals, SynapticTargets
 
 PHOTORECEPTOR_TYPES = (
     "HBeyelet",
@@ -25,6 +25,7 @@ PHOTORECEPTOR_TYPES = (
 )
 LAMINA_RELAY_TYPES = ("L1", "L2", "L3", "L4", "L5")
 MEDULLA_RELAY_TYPES = ("Mi1", "Mi4", "Mi9", "Tm1", "Tm2", "Tm3", "Tm4", "Tm6", "Tm9", "Tm20")
+VISUAL_KENYON_COMPONENT = "visual_kenyon"
 
 
 def first_visual_component_specs() -> tuple[ComponentSpec, ...]:
@@ -60,6 +61,22 @@ def first_visual_component_specs() -> tuple[ComponentSpec, ...]:
     )
 
 
+def visual_kenyon_component_spec(minimum_synapse_count: int = 5) -> ComponentSpec:
+    """Select Kenyon cells directly downstream of visual-projection neurons."""
+
+    return ComponentSpec(
+        VISUAL_KENYON_COMPONENT,
+        SynapticTargets(
+            AnnotationEquals("classes", ("visual_projection",)),
+            AnnotationEquals("classes", ("Kenyon_Cell",)),
+            minimum_synapse_count,
+        ),
+        ComponentRole.MEMORY,
+        "Kenyon cells receiving direct visual-projection input at the edge threshold.",
+        BiologicalStatus.ANATOMICAL,
+    )
+
+
 def build_first_visual_network(
     graph: ConnectomeGraph,
     *,
@@ -68,8 +85,11 @@ def build_first_visual_network(
 ) -> BrainNetwork:
     resolver = ComponentResolver(graph)
     specs = first_visual_component_specs()
+    if component_names is not None and VISUAL_KENYON_COMPONENT in component_names:
+        specs = (*specs, visual_kenyon_component_spec(minimum_synapse_count))
     if component_names is not None:
-        known = {spec.name for spec in specs}
+        available_specs = (*first_visual_component_specs(), visual_kenyon_component_spec())
+        known = {spec.name for spec in available_specs}
         unknown = set(component_names) - known
         if unknown:
             raise ValueError(f"unknown visual components: {sorted(unknown)}")
