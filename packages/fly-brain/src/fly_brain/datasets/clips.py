@@ -1,15 +1,30 @@
 """Compact temporal caches derived from Honey Factory clips."""
 
+import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from numpy.typing import NDArray
 
+from fly_brain.adapters import EgocentricMotionContextAdapter, TeacherActionTargetAdapter
+from fly_brain.contracts import BrainTargets
 from fly_brain.contracts._arrays import readonly
-from fly_brain.models import TemporalBatch
+from fly_brain.models import (
+    SpatialBatch,
+    SpatialLocalizationModel,
+    SpatialParameters,
+    SpatialTopology,
+    TemporalBatch,
+)
+from fly_vision.config import FlyVisionConfig, config_hash
+from fly_vision.eye import FlyEye
+from fly_vision.lattice import default_lattice, lattice_hash
+from fly_vision.projection import honey_factory_panorama, to_unit
+from honey_factory_tools.clips import iter_clips
 
 
 @dataclass(frozen=True)
@@ -164,3 +179,155 @@ class CachedClipDataset:
                 clip_types=tuple(str(value) for value in values["clip_types"]),
                 metadata=json.loads(str(values["metadata"])),
             )
+
+
+def convert_honey_factory_clips(
+    dataset_dir: Path,
+    output_path: Path,
+    *,
+    matrix_cache: Path,
+    spatial_model: SpatialLocalizationModel,
+    spatial_parameters: SpatialParameters,
+    spatial_topology: SpatialTopology,
+    frontend_checkpoint_sha256: str,
+    prediction_batch_size: int = 64,
+    progress: Callable[[int, int], None] | None = None,
+) -> CachedClipDataset:
+    """Convert RGB clips through fly-vision and a frozen spatial frontend."""
+    if prediction_batch_size < 1:
+        raise ValueError("prediction_batch_size must be positive")
+    manifest_path = dataset_dir / "dataset.json"
+    manifest = cast(dict[str, Any], json.loads(manifest_path.read_text()))
+    if manifest.get("lifecycle") != "complete" or manifest.get("kind") != "clips":
+        raise ValueError(f"{dataset_dir} is not a complete clip dataset")
+    capture = cast(dict[str, Any], manifest["capture"])
+    if capture.get("mode") != "PANORAMA_310":
+        raise ValueError("clip conversion currently requires PANORAMA_310")
+    width, height = int(capture["width"]), int(capture["height"])
+    lattice = default_lattice()
+    vision_config = FlyVisionConfig()
+    eye = FlyEye(
+        lattice,
+        honey_factory_panorama(width, height),
+        vision_config,
+        cache_dir=matrix_cache,
+    )
+    directions = to_unit(lattice.direction_deg[:, 0], lattice.direction_deg[:, 1]).astype(
+        np.float32
+    )
+    if spatial_model.site_count != lattice.ommatidium_id.size:
+        raise ValueError("spatial frontend sites do not match the fly-vision lattice")
+    clips = list(iter_clips(dataset_dir))
+    if not clips:
+        raise ValueError("dataset contains no clips")
+    sensory_rows: list[NDArray[np.float32]] = []
+    context_rows: list[NDArray[np.float32]] = []
+    presence_rows: list[NDArray[np.float32]] = []
+    direction_rows: list[NDArray[np.float32]] = []
+    visible_rows: list[NDArray[np.bool_]] = []
+    action_rows: list[NDArray[np.float32]] = []
+    action_mask_rows: list[NDArray[np.bool_]] = []
+    offsets = [0]
+    clip_ids: list[str] = []
+    scene_ids: list[str] = []
+    splits: list[str] = []
+    clip_types: list[str] = []
+    context_adapter = EgocentricMotionContextAdapter()
+    teacher_adapter = TeacherActionTargetAdapter()
+    for clip_index, clip in enumerate(clips, start=1):
+        records = clip.labels()
+        activations: list[NDArray[np.float32]] = []
+        for clip_frame in clip.frames():
+            rgb = np.asarray(clip_frame.rgb, dtype=np.uint8)
+            mask = (np.asarray(clip_frame.visible_mask) > 0).astype(np.float64)
+            receptors, _ = eye.sample_arrays(rgb, mask)
+            activations.append(receptors)
+        if len(activations) != len(records):
+            raise ValueError(f"clip {clip.record['clip_id']} frame count does not match labels")
+        signal_rows = np.stack(activations)
+        spatial_batch = SpatialBatch(
+            signal_rows,
+            eye.sm.valid,
+            np.zeros((signal_rows.shape[0], spatial_model.site_count), dtype=np.float32),
+            directions,
+        )
+        prediction = spatial_model.predict(
+            spatial_parameters,
+            spatial_batch,
+            spatial_topology,
+            batch_size=prediction_batch_size,
+        )
+        sensory_rows.append(
+            np.concatenate([prediction.presence_probability[:, None], prediction.direction], axis=1)
+        )
+        context = context_adapter.convert(records)
+        context_rows.append(context.values)
+        presence, direction, visible = _clip_localisation_targets(records)
+        presence_rows.append(presence)
+        direction_rows.append(direction)
+        visible_rows.append(visible)
+        teacher = teacher_adapter.add_to(
+            BrainTargets(time_mask=np.ones(len(records), dtype=np.bool_)), records
+        )
+        assert teacher.teacher_actions is not None
+        assert teacher.teacher_action_mask is not None
+        action_rows.append(teacher.teacher_actions.values)
+        action_mask_rows.append(teacher.teacher_action_mask)
+        offsets.append(offsets[-1] + len(records))
+        clip_ids.append(str(clip.record["clip_id"]))
+        scene_ids.append(str(clip.record["scene_id"]))
+        splits.append(str(clip.record["split"]))
+        clip_types.append(str(clip.record["clip_type"]))
+        if progress is not None:
+            progress(clip_index, len(clips))
+    result = CachedClipDataset(
+        sensory_features=np.concatenate(sensory_rows),
+        motion_context=np.concatenate(context_rows),
+        presence=np.concatenate(presence_rows),
+        direction=np.concatenate(direction_rows),
+        visible=np.concatenate(visible_rows),
+        teacher_actions=np.concatenate(action_rows),
+        teacher_action_mask=np.concatenate(action_mask_rows),
+        offsets=np.asarray(offsets, dtype=np.int64),
+        clip_ids=tuple(clip_ids),
+        scene_ids=tuple(scene_ids),
+        splits=tuple(splits),
+        clip_types=tuple(clip_types),
+        metadata={
+            "format": "fly-brain-cached-clips-v1",
+            "source_dataset_id": str(manifest["dataset_id"]),
+            "source_manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+            "source_clips_sha256": manifest["integrity"]["indexes"]["clips"]["sha256"],
+            "lattice_hash": lattice_hash(lattice),
+            "sensor_config_hash": config_hash(vision_config),
+            "sensory_features": [
+                "presence_probability",
+                "direction_x",
+                "direction_y",
+                "direction_z",
+            ],
+            "frontend_checkpoint_sha256": frontend_checkpoint_sha256,
+        },
+    )
+    result.save(output_path)
+    return result
+
+
+def _clip_localisation_targets(
+    records: list[dict[str, Any]],
+) -> tuple[NDArray[np.float32], NDArray[np.float32], NDArray[np.bool_]]:
+    presence = np.zeros(len(records), dtype=np.float32)
+    direction = np.zeros((len(records), 3), dtype=np.float32)
+    visible = np.zeros(len(records), dtype=np.bool_)
+    for index, record in enumerate(records):
+        target = cast(dict[str, Any], record["target"])
+        presence[index] = float(bool(target["target_present"]))
+        visible[index] = int(target["visible_pixels"]) > 0
+        bearing = record.get("bearing")
+        if presence[index] and isinstance(bearing, dict):
+            bearing_values = cast(dict[str, Any], bearing)
+            direction[index] = to_unit(
+                np.asarray(float(bearing_values["azimuth_degrees"])),
+                np.asarray(float(bearing_values["elevation_degrees"])),
+            )
+    return presence, direction, visible

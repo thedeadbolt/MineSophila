@@ -38,6 +38,7 @@ from fly_brain.datasets import (
     StillLabelAuditConfig,
     audit_still_labels,
     combine_batches,
+    convert_honey_factory_clips,
     convert_honey_factory_dataset,
     load_image_localization_batches,
 )
@@ -70,6 +71,7 @@ from fly_brain.models import (
 )
 from fly_brain.tasks import evaluate_localization
 from fly_vision.lattice import default_lattice
+from fly_vision.projection import to_unit
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -80,6 +82,12 @@ def _parser() -> argparse.ArgumentParser:
     prepare.add_argument("--out", required=True, type=Path)
     prepare.add_argument("--matrix-cache", required=True, type=Path)
     prepare.add_argument("--workers", type=int, default=1)
+    prepare_clips = commands.add_parser("prepare-clips")
+    prepare_clips.add_argument("dataset", type=Path)
+    prepare_clips.add_argument("--out", required=True, type=Path)
+    prepare_clips.add_argument("--matrix-cache", required=True, type=Path)
+    prepare_clips.add_argument("--frontend-checkpoint", required=True, type=Path)
+    prepare_clips.add_argument("--prediction-batch-size", type=int, default=64)
     audit = commands.add_parser("audit-stills")
     audit.add_argument("dataset", type=Path)
     audit.add_argument("cache", type=Path)
@@ -149,6 +157,59 @@ def _prepare(args: argparse.Namespace) -> int:
         )
         print(f"  wrote {converted.rows} samples", flush=True)
     return 0
+
+
+def _prepare_clips(args: argparse.Namespace) -> int:
+    model, parameters, topology = _load_spatial_frontend(args.frontend_checkpoint)
+    print(f"preparing clips from {args.dataset} -> {args.out}", flush=True)
+
+    def progress(done: int, total: int) -> None:
+        print(f"  {done}/{total} clips", flush=True)
+
+    converted = convert_honey_factory_clips(
+        args.dataset,
+        args.out,
+        matrix_cache=args.matrix_cache,
+        spatial_model=model,
+        spatial_parameters=parameters,
+        spatial_topology=topology,
+        frontend_checkpoint_sha256=_file_sha256(args.frontend_checkpoint),
+        prediction_batch_size=args.prediction_batch_size,
+        progress=progress,
+    )
+    print(f"  wrote {converted.clip_count} clips and {converted.frame_count} frames", flush=True)
+    return 0
+
+
+def _load_spatial_frontend(
+    checkpoint: Path,
+) -> tuple[SpatialLocalizationModel, SpatialParameters, SpatialTopology]:
+    values, manifest = load_checkpoint(checkpoint)
+    raw_model = manifest.get("model")
+    if not isinstance(raw_model, dict):
+        raise ValueError("frontend checkpoint is not a spatial coverage model")
+    model_values = cast(dict[str, Any], raw_model)
+    if model_values.get("kind") != "spatial_coverage_localisation":
+        raise ValueError("frontend checkpoint is not a spatial coverage model")
+    config_fields = SpatialModelConfig.__dataclass_fields__
+    config = SpatialModelConfig(
+        **{name: value for name, value in model_values.items() if name in config_fields}
+    )
+    model = SpatialLocalizationModel(
+        int(model_values["channel_count"]), int(model_values["site_count"]), config
+    )
+    parameters = SpatialParameters(**cast(Any, values))
+    lattice = default_lattice()
+    directions = to_unit(lattice.direction_deg[:, 0], lattice.direction_deg[:, 1]).astype(
+        np.float32
+    )
+    topology = build_angular_topology(
+        directions,
+        lattice.eye,
+        neighbor_count=config.neighbor_count,
+        radius_deg=config.neighbor_radius_deg,
+    )
+    return model, parameters, topology
 
 
 def _audit_stills(args: argparse.Namespace) -> int:
@@ -980,6 +1041,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "prepare-stills":
             return _prepare(args)
+        if args.command == "prepare-clips":
+            return _prepare_clips(args)
         if args.command == "audit-stills":
             return _audit_stills(args)
         if args.command == "train-linear":
