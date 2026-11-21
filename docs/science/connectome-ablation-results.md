@@ -18,6 +18,7 @@ results; the test split is reported as a final measurement.
 | Learned spatial frontend, lamina circuit | 24,183 | 36,809 | 6,562 | 81.95% | 81.88% | 18.15° | 64.59 s |
 | Learned spatial frontend, medulla circuit | 32,945 | 36,809 | 6,562 | 82.34% | 82.27% | 15.31° | 94.38 s |
 | Learned spatial frontend, full circuit only | 41,829 | 36,809 | 6,562 | 81.72% | 83.05% | 15.74° | 149.19 s |
+| Learned spatial frontend, full circuit + visual Kenyon | 42,113 | 37,945 | 6,562 | 81.72% | 83.20% | 15.37° | 131.04 s |
 | Learned spatial frontend, shortcut + full circuit | 41,829 | 61,201 | 6,562 | 84.77% | 85.39% | 13.17° | 212.45 s |
 | Standalone fly-spatial model | — | 6,562 | 0 | 97.03% | 97.50% | 3.51° | not recorded |
 
@@ -49,6 +50,13 @@ Global per-eye and regional averages also fail. They retain two or a few dozen c
 average away the local spectral pattern needed to recognize honey before localisation. Regional
 pooling is therefore not a substitute for the learned angular-neighbour frontend.
 
+The first visual Kenyon expansion is effectively neutral on independent frames: adding 284
+graph-selected Kenyon cells raises test balanced accuracy by 0.15 percentage points and lowers
+bearing error by 0.37° relative to the matched full-circuit control, while ordinary test accuracy
+falls from 81.88% to 80.25%. This is not evidence of useful memory because both models reset their
+state for every frame. It establishes that the component is executable and does not materially
+improve the static task; the meaningful comparison must retain state across video clips.
+
 This pattern agrees with useful implementation evidence rather than with a claim that the projects
 solve the same task. [FlyBridge](https://github.com/swotstudio/FlyBridge) uses a small trainable
 image encoder before sensory neurons, bounded per-connection gains, learned leak and bias, and an
@@ -67,8 +75,9 @@ must remain labelled as an approximation.
    correspondence is available. Do not manufacture it from body-ID order.
 3. Replace signed zero-baseline ReLU dynamics with a resting-potential or signed-state policy before
    drawing conclusions about neurotransmitter signs.
-4. Move the selected shortcut into temporal learning. Revisit Kenyon-cell and mushroom-body
-   expansion only after video and movement context have a strong recurrent control.
+4. Cache stateful component activity over clips and compare matched visual-projection and visual
+   Kenyon temporal readouts against the established GRU control before expanding farther into the
+   mushroom body.
 
 All generated reports, checkpoints and input maps are stored under
 `/mnt/fastvault/minesophila/derived/brain-localization-v3/`; no generated artifacts are committed.
