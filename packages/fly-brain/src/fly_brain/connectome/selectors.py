@@ -74,10 +74,7 @@ class SynapticTargets:
     minimum_synapse_count: int = 1
 
     def __post_init__(self) -> None:
-        if (
-            isinstance(self.minimum_synapse_count, bool)
-            or self.minimum_synapse_count < 1
-        ):
+        if isinstance(self.minimum_synapse_count, bool) or self.minimum_synapse_count < 1:
             raise ValueError("minimum_synapse_count must be a positive integer")
 
     def resolve(self, graph: ConnectomeGraph) -> NDArray[np.int64]:
@@ -107,10 +104,7 @@ class SynapticSources:
     minimum_synapse_count: int = 1
 
     def __post_init__(self) -> None:
-        if (
-            isinstance(self.minimum_synapse_count, bool)
-            or self.minimum_synapse_count < 1
-        ):
+        if isinstance(self.minimum_synapse_count, bool) or self.minimum_synapse_count < 1:
             raise ValueError("minimum_synapse_count must be a positive integer")
 
     def resolve(self, graph: ConnectomeGraph) -> NDArray[np.int64]:

@@ -52,9 +52,7 @@ def test_clip_cache_selects_named_sensory_feature_groups() -> None:
     batch = cached.batch("test", feature_group="small")
 
     assert batch.features.shape == (1, 3, 2)
-    np.testing.assert_array_equal(
-        batch.features[0], cached.sensory_features[2:5][:, [1, 3]]
-    )
+    np.testing.assert_array_equal(batch.features[0], cached.sensory_features[2:5][:, [1, 3]])
 
 
 def test_clip_cache_action_batch_requires_visible_teacher_labels() -> None:
