@@ -17,6 +17,7 @@ from fly_brain.models.connectome import (
     ConnectomeTrainingResult,
     ReceptorPoolingInputTransform,
     SpatialCoverageInputTransform,
+    readout_scale,
     train_connectome,
 )
 from fly_brain.models.linear import (
@@ -96,6 +97,7 @@ __all__ = [
     "build_angular_topology",
     "prepare_localization_batch",
     "prepare_temporal_batch",
+    "readout_scale",
     "train_cnn",
     "train_connectome",
     "train_linear",

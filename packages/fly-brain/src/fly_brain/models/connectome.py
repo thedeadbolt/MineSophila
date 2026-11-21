@@ -318,12 +318,10 @@ class ConnectomeLocalizationModel:
             for start in range(0, values.shape[0], batch_size)
         ]
         activity = np.concatenate(parts).astype(np.float64)
-        deviation = activity.std(axis=0)
-        scale = np.where(deviation > 1e-8, deviation, 1.0)
         return replace(
             self,
             readout_mean=activity.mean(axis=0).astype(np.float32),
-            readout_scale=scale.astype(np.float32),
+            readout_scale=readout_scale(activity.std(axis=0)),
         )
 
     def fold_readout_normalization(self, parameters: BrainParameters) -> BrainParameters:
@@ -509,6 +507,19 @@ def _apply(
     norm = jnp.sqrt(jnp.sum(jnp.square(direction_raw), axis=1, keepdims=True) + 1e-12)
     direction = direction_raw / norm
     return presence, direction
+
+
+def readout_scale(deviation: NDArray[np.floating]) -> NDArray[np.float32]:
+    """Per-neuron readout scale: the activity spread, floored at the median active spread.
+
+    Flooring keeps nearly silent neurons from being amplified by orders of magnitude, which
+    would make the readout explode as soon as training shifts their activity.
+    """
+    values = np.asarray(deviation, dtype=np.float64)
+    active = values[values > 0]
+    if active.size == 0:
+        return np.ones(values.shape, dtype=np.float32)
+    return np.maximum(values, np.median(active)).astype(np.float32)
 
 
 def _effective_parameters(

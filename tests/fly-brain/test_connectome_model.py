@@ -36,6 +36,7 @@ from fly_brain.models import (
     SpatialLocalizationModel,
     SpatialModelConfig,
     SpatialTopology,
+    readout_scale,
     train_connectome,
 )
 
@@ -149,6 +150,15 @@ def test_connectome_readout_normalization_folds_into_plain_parameters() -> None:
     np.testing.assert_allclose(actual.direction, expected.direction, atol=1e-5)
     unchanged = model.fold_readout_normalization(parameters)
     np.testing.assert_array_equal(unchanged.readout_weights, parameters.readout_weights)
+
+
+def test_readout_scale_floors_quiet_neurons_at_the_median_active_spread() -> None:
+    deviation = np.array([0.0, 1e-8, 1e-4, 2e-4, 3e-4, 1e-2])
+
+    scale = readout_scale(deviation)
+
+    np.testing.assert_allclose(scale, [2e-4, 2e-4, 2e-4, 2e-4, 3e-4, 1e-2])
+    np.testing.assert_array_equal(readout_scale(np.zeros(3)), np.ones(3))
 
 
 def test_connectome_activity_encoder_retains_state_and_holds_padding() -> None:
