@@ -45,6 +45,8 @@ from fly_brain.datasets import (
 )
 from fly_brain.experiments import load_checkpoint, save_checkpoint
 from fly_brain.models import (
+    ActionPrediction,
+    ActionTemporalBatch,
     CNNLocalizationModel,
     ConnectomeBatch,
     ConnectomeInputTransform,
@@ -56,6 +58,7 @@ from fly_brain.models import (
     MLPLocalizationModel,
     MLPParameters,
     ReceptorPoolingInputTransform,
+    RecurrentActionModel,
     RecurrentLocalizationModel,
     RecurrentTrainingConfig,
     SpatialBatch,
@@ -73,6 +76,7 @@ from fly_brain.models import (
     train_linear,
     train_mlp,
     train_recurrent,
+    train_recurrent_actions,
     train_spatial,
 )
 from fly_brain.tasks import HoneyLocalizationPrediction, evaluate_localization
@@ -100,6 +104,11 @@ def _parser() -> argparse.ArgumentParser:
     temporal.add_argument("--config", required=True, type=Path)
     temporal.add_argument("--report", required=True, type=Path)
     temporal.add_argument("--checkpoint", required=True, type=Path)
+    actions = commands.add_parser("train-recurrent-actions")
+    actions.add_argument("cache", type=Path)
+    actions.add_argument("--config", required=True, type=Path)
+    actions.add_argument("--report", required=True, type=Path)
+    actions.add_argument("--checkpoint", required=True, type=Path)
     audit = commands.add_parser("audit-stills")
     audit.add_argument("dataset", type=Path)
     audit.add_argument("cache", type=Path)
@@ -312,6 +321,94 @@ def _load_recurrent_config(path: Path) -> tuple[bool, int, RecurrentTrainingConf
     if hidden_width < 1:
         raise ValueError("recurrent hidden_width must be positive")
     return include_context, hidden_width, training
+
+
+def _train_recurrent_actions(args: argparse.Namespace) -> int:
+    started = time.perf_counter()
+    include_context, hidden_width, action_scales, training_config = _load_action_config(args.config)
+    dataset = CachedClipDataset.load(args.cache)
+    train = dataset.action_batch("train", include_context=include_context)
+    validation = dataset.action_batch("validation", include_context=include_context)
+    test = dataset.action_batch("test", include_context=include_context)
+    model = RecurrentActionModel(train.input_width, action_scales, hidden_width)
+    result = train_recurrent_actions(model, train, training_config)
+    validation_prediction, _ = model.run(
+        result.parameters, validation.features, validation.sequence_mask
+    )
+    test_prediction, _ = model.run(result.parameters, test.features, test.sequence_mask)
+    report: dict[str, object] = {
+        "format": "fly-brain-recurrent-action-report-v1",
+        "git_revision": _git_revision(),
+        "dataset": dataset.metadata,
+        "model": {
+            "kind": "gru_teacher_action_imitation",
+            "input_width": model.input_width,
+            "hidden_width": model.hidden_width,
+            "action_scales": action_scales,
+            "include_context": include_context,
+            "parameter_count": sum(int(value.size) for value in result.parameters),
+        },
+        "training": {
+            **asdict(training_config),
+            "clips": train.sequences,
+            "supervised_frames": int(np.count_nonzero(train.action_mask)),
+            "initial_loss": result.losses[0],
+            "final_loss": result.losses[-1],
+        },
+        "validation": _evaluate_actions(validation_prediction, validation),
+        "test": _evaluate_actions(test_prediction, test),
+        "runtime": {
+            "backend": jax.default_backend(),
+            "wall_seconds": time.perf_counter() - started,
+            "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024,
+        },
+    }
+    report["checkpoint_manifest_sha256"] = save_checkpoint(
+        args.checkpoint, result.parameters._asdict(), report
+    )
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0
+
+
+def _load_action_config(
+    path: Path,
+) -> tuple[bool, int, tuple[float, ...], RecurrentTrainingConfig]:
+    raw_values: Any = json.loads(path.read_text())
+    if not isinstance(raw_values, dict):
+        raise ValueError("recurrent action config must be a JSON object")
+    values = cast(dict[str, Any], raw_values)
+    if values.get("format") != "fly-brain-recurrent-action-experiment-v1":
+        raise ValueError("unsupported recurrent action config format")
+    model_values = values.get("model")
+    training_values = values.get("training")
+    if not isinstance(model_values, dict) or not isinstance(training_values, dict):
+        raise ValueError("recurrent action config requires model and training objects")
+    model_config = cast(dict[str, Any], model_values)
+    try:
+        include_context = bool(model_config["include_context"])
+        hidden_width = int(model_config["hidden_width"])
+        action_scales = tuple(float(value) for value in model_config["action_scales"])
+        training = RecurrentTrainingConfig(**cast(dict[str, Any], training_values))
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(f"invalid recurrent action setting: {error}") from error
+    if hidden_width < 1 or len(action_scales) != 6:
+        raise ValueError("action model requires positive hidden width and six action scales")
+    return include_context, hidden_width, action_scales, training
+
+
+def _evaluate_actions(
+    prediction: ActionPrediction, batch: ActionTemporalBatch
+) -> dict[str, object]:
+    predicted = prediction.values[batch.action_mask]
+    expected = batch.actions[batch.action_mask]
+    error = predicted - expected
+    return {
+        "sample_count": int(predicted.shape[0]),
+        "mean_absolute_error": np.mean(np.abs(error), axis=0).tolist(),
+        "root_mean_square_error": np.sqrt(np.mean(np.square(error), axis=0)).tolist(),
+    }
 
 
 def _static_temporal_prediction(batch: TemporalBatch) -> TemporalPrediction:
@@ -1258,6 +1355,8 @@ def main(argv: list[str] | None = None) -> int:
             return _prepare_clips(args)
         if args.command == "train-recurrent":
             return _train_recurrent(args)
+        if args.command == "train-recurrent-actions":
+            return _train_recurrent_actions(args)
         if args.command == "audit-stills":
             return _audit_stills(args)
         if args.command == "train-linear":
