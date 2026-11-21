@@ -8,7 +8,7 @@ from fly_brain.connectome.components import (
 )
 from fly_brain.connectome.graph import ConnectomeGraph
 from fly_brain.connectome.network import BrainNetwork, EdgePolicy
-from fly_brain.connectome.selectors import AnnotationEquals, SynapticTargets
+from fly_brain.connectome.selectors import AnnotationEquals, SynapticSources, SynapticTargets
 
 PHOTORECEPTOR_TYPES = (
     "HBeyelet",
@@ -26,6 +26,7 @@ PHOTORECEPTOR_TYPES = (
 LAMINA_RELAY_TYPES = ("L1", "L2", "L3", "L4", "L5")
 MEDULLA_RELAY_TYPES = ("Mi1", "Mi4", "Mi9", "Tm1", "Tm2", "Tm3", "Tm4", "Tm6", "Tm9", "Tm20")
 VISUAL_KENYON_COMPONENT = "visual_kenyon"
+VISUAL_KENYON_INPUT_COMPONENT = "visual_kenyon_inputs"
 
 
 def first_visual_component_specs() -> tuple[ComponentSpec, ...]:
@@ -77,6 +78,22 @@ def visual_kenyon_component_spec(minimum_synapse_count: int = 5) -> ComponentSpe
     )
 
 
+def visual_kenyon_input_component_spec(minimum_synapse_count: int = 5) -> ComponentSpec:
+    """Select visual-projection neurons directly supplying the visual Kenyon set."""
+
+    return ComponentSpec(
+        VISUAL_KENYON_INPUT_COMPONENT,
+        SynapticSources(
+            AnnotationEquals("classes", ("visual_projection",)),
+            AnnotationEquals("classes", ("Kenyon_Cell",)),
+            minimum_synapse_count,
+        ),
+        ComponentRole.PROCESSING,
+        "Visual-projection neurons providing direct input to selected Kenyon cells.",
+        BiologicalStatus.ANATOMICAL,
+    )
+
+
 def build_first_visual_network(
     graph: ConnectomeGraph,
     *,
@@ -85,10 +102,16 @@ def build_first_visual_network(
 ) -> BrainNetwork:
     resolver = ComponentResolver(graph)
     specs = first_visual_component_specs()
+    if component_names is not None and VISUAL_KENYON_INPUT_COMPONENT in component_names:
+        specs = (*specs, visual_kenyon_input_component_spec(minimum_synapse_count))
     if component_names is not None and VISUAL_KENYON_COMPONENT in component_names:
         specs = (*specs, visual_kenyon_component_spec(minimum_synapse_count))
     if component_names is not None:
-        available_specs = (*first_visual_component_specs(), visual_kenyon_component_spec())
+        available_specs = (
+            *first_visual_component_specs(),
+            visual_kenyon_input_component_spec(),
+            visual_kenyon_component_spec(),
+        )
         known = {spec.name for spec in available_specs}
         unknown = set(component_names) - known
         if unknown:

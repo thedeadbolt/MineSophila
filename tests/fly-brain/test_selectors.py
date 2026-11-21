@@ -12,6 +12,7 @@ from fly_brain.connectome import (
     Intersection,
     NeuronTable,
     SynapseTable,
+    SynapticSources,
     SynapticTargets,
     Union,
 )
@@ -77,3 +78,16 @@ def test_synaptic_targets_apply_source_candidate_and_strength_filters(
     manifest = json.loads(json.dumps(selector.to_manifest()))
     assert manifest["kind"] == "synaptic_targets"
     assert manifest["minimum_synapse_count"] == 6
+
+
+def test_synaptic_sources_select_the_upstream_side_of_the_same_edges(
+    graph: ConnectomeGraph,
+) -> None:
+    selector = SynapticSources(
+        AnnotationEquals("classes", ("sensory",)),
+        AnnotationEquals("classes", ("interneuron",)),
+        minimum_synapse_count=6,
+    )
+
+    assert selector.resolve(graph).tolist() == [2]
+    assert selector.to_manifest()["kind"] == "synaptic_sources"

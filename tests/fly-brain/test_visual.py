@@ -7,6 +7,7 @@ from fly_brain.connectome import (
     SynapseTable,
     build_first_visual_network,
     visual_kenyon_component_spec,
+    visual_kenyon_input_component_spec,
 )
 
 
@@ -34,6 +35,13 @@ def test_visual_kenyon_component_selects_direct_strong_targets() -> None:
 
     assert component.selector.resolve(_graph()).tolist() == [3]
     assert component.role.value == "memory"
+
+
+def test_visual_kenyon_input_component_selects_matched_sources() -> None:
+    component = visual_kenyon_input_component_spec(5)
+
+    assert component.selector.resolve(_graph()).tolist() == [2]
+    assert component.role.value == "processing"
 
 
 def test_visual_kenyon_component_is_opt_in() -> None:
