@@ -300,11 +300,16 @@ class ConnectomeLocalizationModel:
 
 @dataclass(frozen=True)
 class ConnectomeActivityEncoder:
-    """Expose selected connectome activity while retaining state across frames."""
+    """Expose selected connectome activity over the frames of a clip.
+
+    By default state is retained across frames. With ``reset_each_frame`` every frame settles
+    from rest for ``transitions_per_frame`` steps, matching how frame-trained models run.
+    """
 
     brain: CompiledBrain
     neuron_ids: NDArray[np.int64]
     transitions_per_frame: int = 1
+    reset_each_frame: bool = False
 
     def __post_init__(self) -> None:
         neuron_ids = np.unique(np.asarray(self.neuron_ids, dtype=np.int64))
@@ -465,12 +470,11 @@ def _encode_activity(
         def transition(_: int, inner_state: BrainState) -> BrainState:
             return encoder.brain.step(parameters, inner_state, frame_values).state
 
-        updated = jax.lax.fori_loop(
-            0, encoder.transitions_per_frame, transition, current
+        start = (
+            BrainState(jnp.zeros_like(current.activity)) if encoder.reset_each_frame else current
         )
-        next_state = BrainState(
-            jnp.where(active[:, None], updated.activity, current.activity)
-        )
+        updated = jax.lax.fori_loop(0, encoder.transitions_per_frame, transition, start)
+        next_state = BrainState(jnp.where(active[:, None], updated.activity, current.activity))
         return next_state, next_state.activity[:, indexes]
 
     final_state, activity = jax.lax.scan(

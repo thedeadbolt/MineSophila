@@ -119,6 +119,12 @@ def _parser() -> argparse.ArgumentParser:
         "--activity-components", nargs="+", default=[VISUAL_KENYON_COMPONENT]
     )
     prepare_connectome_clips.add_argument("--transitions-per-frame", type=int, default=1)
+    prepare_connectome_clips.add_argument(
+        "--state-mode",
+        choices=("carry", "reset"),
+        default="carry",
+        help="carry connectome state across frames or settle each frame from rest",
+    )
     prepare_connectome_clips.add_argument("--prediction-batch-size", type=int, default=64)
     prepare_connectome_clips.add_argument(
         "--frame-selection", choices=("all", "tick"), default="tick"
@@ -255,15 +261,15 @@ def _prepare_connectome_clips(args: argparse.Namespace) -> int:
     if frontend is None:
         raise ValueError("connectome clip activity requires an explicit input transform")
     selected = tuple(args.activity_components)
-    neuron_ids = np.unique(
-        np.concatenate([components[name].neuron_ids for name in selected])
-    )
+    neuron_ids = np.unique(np.concatenate([components[name].neuron_ids for name in selected]))
     feature_groups = {
-        name: np.searchsorted(neuron_ids, components[name].neuron_ids).tolist()
-        for name in selected
+        name: np.searchsorted(neuron_ids, components[name].neuron_ids).tolist() for name in selected
     }
     encoder = ConnectomeActivityEncoder(
-        compiler.compile(), neuron_ids, args.transitions_per_frame
+        compiler.compile(),
+        neuron_ids,
+        args.transitions_per_frame,
+        reset_each_frame=args.state_mode == "reset",
     )
     transform = ConnectomeClipActivityTransform(frontend, encoder, parameters)
     spatial_model, spatial_parameters, spatial_topology = _load_spatial_frontend(
@@ -286,14 +292,17 @@ def _prepare_connectome_clips(args: argparse.Namespace) -> int:
         frame_selection=args.frame_selection,
         sensory_transform=transform.transform,
         sensory_feature_manifest={
-            "kind": "stateful_connectome_activity",
-            "components": {
-                name: int(components[name].neuron_ids.size) for name in selected
-            },
+            "kind": (
+                "framewise_connectome_activity"
+                if encoder.reset_each_frame
+                else "stateful_connectome_activity"
+            ),
+            "components": {name: int(components[name].neuron_ids.size) for name in selected},
             "groups": feature_groups,
             "neuron_ids": neuron_ids.tolist(),
             "width": encoder.output_width,
             "transitions_per_frame": encoder.transitions_per_frame,
+            "state_mode": "reset" if encoder.reset_each_frame else "carry",
             "connectome_checkpoint_sha256": _file_sha256(args.connectome_checkpoint),
             "graph_sha256": graph.graph_sha256,
             "frontend": frontend_manifest,
@@ -341,9 +350,7 @@ def _train_recurrent(args: argparse.Namespace) -> int:
         args.config
     )
     dataset = CachedClipDataset.load(args.cache)
-    train = dataset.batch(
-        "train", include_context=include_context, feature_group=feature_group
-    )
+    train = dataset.batch("train", include_context=include_context, feature_group=feature_group)
     validation = dataset.batch(
         "validation", include_context=include_context, feature_group=feature_group
     )

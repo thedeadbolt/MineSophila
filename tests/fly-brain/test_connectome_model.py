@@ -133,14 +133,33 @@ def test_connectome_activity_encoder_retains_state_and_holds_padding() -> None:
 
     activity, final_state = encoder.run(parameters, values, mask)
     first, first_state = encoder.run(parameters, values[:, :2], mask[:, :2])
-    second, continued_state = encoder.run(
-        parameters, values[:, 2:], mask[:, 2:], state=first_state
-    )
+    second, continued_state = encoder.run(parameters, values[:, 2:], mask[:, 2:], state=first_state)
 
     assert activity.shape == (1, 3, 2)
     np.testing.assert_array_equal(activity[:, 1], activity[:, 0])
     np.testing.assert_allclose(np.concatenate([first, second], axis=1), activity)
     np.testing.assert_allclose(continued_state.activity, final_state.activity)
+
+
+def test_connectome_activity_encoder_can_settle_each_frame_from_rest() -> None:
+    brain = compiled_brain().compile()
+    parameters = brain.initialize_parameters(seed=3)
+    neuron_ids = np.array([1, 3])
+    encoder = ConnectomeActivityEncoder(
+        brain, neuron_ids, transitions_per_frame=4, reset_each_frame=True
+    )
+    values = np.array([[[1.0, 0.0], [0.0, 1.0], [1.0, 0.0]]], dtype=np.float32)
+    mask = np.ones((1, 3), dtype=np.bool_)
+
+    activity, _ = encoder.run(parameters, values, mask)
+    indexes = np.searchsorted(brain.neuron_ids, neuron_ids)
+    for frame in range(3):
+        sequence = np.broadcast_to(values[:, frame], (4, 1, 2))
+        settled = brain.run(parameters, brain.initialize_state(1), sequence).final_state
+        np.testing.assert_allclose(
+            activity[:, frame], np.asarray(settled.activity)[:, indexes], rtol=1e-6
+        )
+    np.testing.assert_allclose(activity[:, 2], activity[:, 0])
 
 
 def test_connectome_clip_transform_resets_and_encodes_one_clip() -> None:
