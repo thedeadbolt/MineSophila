@@ -35,11 +35,13 @@ Add a second, named dynamics policy and keep the current one as the legacy contr
 
 - **State relative to rest.** Each neuron has a graded potential `v` that may go above or below
   a learned resting value. Leak relaxes `v` toward rest, not toward zero.
-- **Bounded, smooth release.** A neuron drives its targets through a bounded release function
-  of `v` (initially a logistic curve with a learned per-cell-type threshold). Rest sits on the
-  sloped part of the curve, so tonic release at rest lets hyperpolarisation reduce downstream
-  drive instead of being lost. Release is bounded, so drive and state are bounded for bounded
-  gains and inputs.
+- **Bounded, smooth release relative to rest.** A neuron drives its targets with release
+  measured relative to its tonic release at rest, `0.5 * tanh(2 v)`: zero at rest, unit slope
+  at rest and bounded to ±0.5. Hyperpolarisation therefore reduces downstream drive instead of
+  being lost, and drive and state are bounded for bounded gains and inputs. The constant tonic
+  release itself is absorbed into each neuron's learned rest. A first version used absolute
+  logistic release; its slope of 0.25 at rest attenuated small signals about fourfold per
+  synapse, its tonic offset accumulated with depth, and the model stayed at chance.
 - **Neurotransmitter signs on.** Sources whose `consensus_nt` is GABA, glutamate or histamine are
   inhibitory; acetylcholine and other labelled transmitters are excitatory. Glutamate is treated
   as inhibitory as an approximation; it is excitatory at some fly synapses. Unlabelled neurons
@@ -65,6 +67,9 @@ Add a second, named dynamics policy and keep the current one as the legacy contr
   accuracy must at least match the legacy model's 83% before clip training starts.
 - Clip training backpropagates through about 42,000 neurons and 318,000 edges per step. Truncation
   length and memory use need a measured budget.
-- Unresolved: logistic release versus a shifted `tanh`; per-cell-type versus per-neuron rest; how
+- The input itself varies little between frames (coverage std about 0.02), and the linear
+  readout reads unnormalised activity of order 10⁻⁴. Readout normalisation is a separate,
+  policy-independent experiment and must be applied to both policies when compared.
+- Unresolved: per-cell-type versus per-neuron rest; how
   to treat the few transmitters with mixed or unknown sign; and whether glutamate needs a
   receptor-specific exception for known excitatory synapses.
