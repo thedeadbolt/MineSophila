@@ -35,9 +35,10 @@ uv run fly-brain train-connectome /path/to/*.fly-brain.npz \
   --checkpoint /path/to/connectome-checkpoint.npz
 ```
 
-The current parameter policy fixes normalized anatomical weights, learns one global recurrent
-gain and learns a localisation readout. See the
-[first result](../../docs/science/first-connectome-model.md) and the
+Parameter policies can learn global, cell-type-pair or per-edge gains, optionally apply
+neurotransmitter signs and select named circuit/readout components. See the
+[first result](../../docs/science/first-connectome-model.md), the
+[input and component ablations](../../docs/science/connectome-ablation-results.md), and the
 [foundation plan](../../docs/superpowers/plans/2026-11-19-fly-brain-foundation.md).
 
 ## Spatial coverage experiment
