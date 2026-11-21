@@ -154,3 +154,29 @@ Artifacts in the same external directory:
 - `recurrent-level1-*-framewise-v1.{report.json,checkpoint.npz}` (seed 0) and
   `recurrent-level1-seeds-*-s{1,2}.{report.json,checkpoint.npz}` (seeds 1–2, including reruns of
   the two frontend controls)
+
+## Occlusion-rich level-3 clips (Slice 9f, existing pilot data)
+
+The m12-2e level-3 pilot (`m12-2e-pilot-l3-bf957cc37d30`) includes search clips that start with
+the honey hidden, and 160-tick occlusion clips. With the `spatial-coverage-level3-v2` frontend it
+gives 99 clips and 5,594 tick frames. That is 1,005 occluded training frames and 113 occluded test
+frames, against 47 and 6 on level 1. Seeds 0–2:
+
+| GRU input | Visible bearing | Occluded bearing | Occluded recall |
+|---|---:|---:|---:|
+| Frontend output | 24.67 ± 2.23° | 64.76 ± 2.03° | 100% |
+| Frontend output + egocentric context | **18.62 ± 0.90°** | **57.15 ± 4.33°** | 79.94 ± 14.18% |
+
+These clips add training volume but cannot settle the memory question. The test split has eight
+clips and no honey-free frames, so balanced accuracy is undefined (specificity has no negatives),
+and the level-3 frontend's own bearing error is 28°. Within that limit, memory through occlusion
+is weak: occluded error is about three times visible error, and ego-motion context improves both
+only modestly. A decisive Slice 9f test needs a level-1 or level-2 pilot with search and long
+occlusion clips.
+
+The matching m12-2e level-4 dataset cannot be converted: three of its 100 clips
+(`train/95/s000009-c02` among them) have lost `rgb.mkv`, and their directories were modified on
+2026-11-14, after the 2026-10-29 pilot. The converter refuses incomplete clips by design.
+
+Artifacts: `temporal-level3-m12-2e-tick-v1.fly-brain.npz` and
+`recurrent-level3-m12-2e-{control,context}-s{0,1,2}.{report.json,checkpoint.npz}`.
