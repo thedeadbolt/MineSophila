@@ -12,12 +12,17 @@ results; the test split is reported as a final measurement.
 | Signed cell-pair gains, full circuit | 41,829 | 42,090 | 0 | 50.00% | 50.00% | 75.53° | 81.55 s |
 | Signed per-edge gains and biases | 41,829 | 392,108 | 0 | 50.00% | 50.00% | 75.29° | 81.34 s |
 | Direct receptors, photoreceptor + projection readout | 41,829 | 61,201 | 0 | 53.75% | 53.83% | 64.69° | 168.07 s |
+| Per-eye mean, photoreceptor shortcut | 15,299 | 24,397 | 0 | 52.89% | 45.39% | 71.04° | 236.53 s* |
+| 8×4 regional mean, photoreceptor shortcut | 15,299 | 24,397 | 0 | 51.09% | 48.36% | 63.35° | 241.32 s* |
 | Learned spatial frontend, photoreceptor shortcut | 15,299 | 24,397 | 6,562 | 85.47% | **87.66%** | **11.82°** | 48.76 s |
 | Learned spatial frontend, lamina circuit | 24,183 | 36,809 | 6,562 | 81.95% | 81.88% | 18.15° | 64.59 s |
 | Learned spatial frontend, medulla circuit | 32,945 | 36,809 | 6,562 | 82.34% | 82.27% | 15.31° | 94.38 s |
 | Learned spatial frontend, full circuit only | 41,829 | 36,809 | 6,562 | 81.72% | 83.05% | 15.74° | 149.19 s |
 | Learned spatial frontend, shortcut + full circuit | 41,829 | 61,201 | 6,562 | 84.77% | 85.39% | 13.17° | 212.45 s |
 | Standalone fly-spatial model | — | 6,562 | 0 | 97.03% | 97.50% | 3.51° | not recorded |
+
+\* The two pooling controls ran concurrently on one CPU and their wall times are not comparable to
+the sequential runs.
 
 The learned frontend is the frozen selected Level-1 fly-spatial model. It converts receptor signals
 into predicted per-ommatidium coverage without reading labels or privileged state at inference.
@@ -39,6 +44,10 @@ However, the photoreceptor shortcut is 4.61 percentage points more accurate, 3.9
 bearing and roughly three times faster than the full circuit-only model. Adding the full circuit
 to the shortcut also reduces accuracy. The selected Slice-7 model is therefore the shortcut, not
 the larger or more biological variant.
+
+Global per-eye and regional averages also fail. They retain two or a few dozen coarse regions but
+average away the local spectral pattern needed to recognize honey before localisation. Regional
+pooling is therefore not a substitute for the learned angular-neighbour frontend.
 
 This pattern agrees with useful implementation evidence rather than with a claim that the projects
 solve the same task. [FlyBridge](https://github.com/swotstudio/FlyBridge) uses a small trainable
