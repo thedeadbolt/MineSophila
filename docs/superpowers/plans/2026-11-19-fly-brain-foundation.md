@@ -622,6 +622,27 @@ Revised order: normalised readouts → central-complex components (named, review
 → 9f occlusion-rich clips → 9g clip-trained graded central-complex memory against the GRU
 control.
 
+#### Planned for the action head: outcome-weighted imitation (proposed 2026-11-22)
+
+The teacher is imperfect on purpose. Drift and recovery give state coverage beyond perfect paths,
+and every frame is still labelled with the teacher's corrective command. Making the teacher perfect
+would remove the recovery states a student needs once it drives. Instead, score the data and let
+better data count more:
+
+- **Progress:** a potential `Φ(d)` that rises slowly with closeness to the honey and spikes near
+  it, such as `1 / (1 + d)` or `exp(-d / τ)`. It is applied as the per-tick difference
+  `γΦ(d') - Φ(d)` (potential-based shaping, which keeps the optimal policy unchanged).
+- **Time:** a small penalty per tick.
+- **Efficiency:** walked path length against the shortest walkable path from the teacher's
+  `WalkGraph`.
+- **Per-scene baseline:** compare each clip or segment with what its own scene allowed, as an
+  advantage, so hard scenes are not mistaken for bad data.
+
+Use the score as an imitation weight (for example `exp(advantage / β)`) or to filter the
+lowest-scoring segments. Compare against unweighted imitation. Localisation targets are ground
+truth and do not depend on the teacher, so this matters only for the action head. The same score
+becomes the reward for Slice 10 fine-tuning.
+
 ### Slice 10 — Close the live loop
 
 **Goal:** Drive Honey Factory through the existing lock-step protocol.
