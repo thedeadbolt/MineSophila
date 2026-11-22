@@ -59,6 +59,8 @@ from fly_brain.models import (
     ConnectomeActivityEncoder,
     ConnectomeBatch,
     ConnectomeClipActivityTransform,
+    ConnectomeClipModel,
+    ConnectomeClipTrainingConfig,
     ConnectomeInputTransform,
     ConnectomeLocalizationModel,
     ConnectomeModelConfig,
@@ -83,6 +85,7 @@ from fly_brain.models import (
     build_angular_topology,
     train_cnn,
     train_connectome,
+    train_connectome_clips,
     train_linear,
     train_mlp,
     train_recurrent,
@@ -157,6 +160,28 @@ def _parser() -> argparse.ArgumentParser:
     probe.add_argument("--seeds", type=int, nargs="+", default=[0])
     probe.add_argument("--evaluation-split", default="test")
     probe.add_argument("--report", required=True, type=Path)
+    port_clips = commands.add_parser(
+        "prepare-port-clips", help="cache each clip frame's connectome input port values"
+    )
+    port_clips.add_argument("dataset", type=Path)
+    port_clips.add_argument("--out", required=True, type=Path)
+    port_clips.add_argument("--matrix-cache", required=True, type=Path)
+    port_clips.add_argument("--layout-cache", required=True, type=Path)
+    port_clips.add_argument("--connectome-root", required=True, type=Path)
+    port_clips.add_argument("--config", required=True, type=Path)
+    port_clips.add_argument("--frontend-checkpoint", required=True, type=Path)
+    port_clips.add_argument("--prediction-batch-size", type=int, default=64)
+    port_clips.add_argument("--frame-selection", choices=("all", "tick"), default="tick")
+    clip_connectome = commands.add_parser(
+        "train-connectome-clips", help="train a connectome on clips with state carried over frames"
+    )
+    clip_connectome.add_argument("cache", type=Path)
+    clip_connectome.add_argument("--layout-cache", required=True, type=Path)
+    clip_connectome.add_argument("--connectome-root", required=True, type=Path)
+    clip_connectome.add_argument("--config", required=True, type=Path)
+    clip_connectome.add_argument("--initial-checkpoint", type=Path)
+    clip_connectome.add_argument("--report", required=True, type=Path)
+    clip_connectome.add_argument("--checkpoint", required=True, type=Path)
     temporal = commands.add_parser("train-recurrent")
     temporal.add_argument("cache", type=Path)
     temporal.add_argument("--config", required=True, type=Path)
@@ -461,6 +486,224 @@ def _probe_clip_features(args: argparse.Namespace) -> int:
     }
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
+def _prepare_port_clips(args: argparse.Namespace) -> int:
+    model_config, training_config = _load_connectome_config(args.config)
+    layout_dataset = CachedStillDataset.load(args.layout_cache)
+    layout = _cached_sensor_layout([layout_dataset])
+    graph, _, _, input_map, _ = _build_connectome(layout, args.connectome_root, model_config)
+    frontend, frontend_manifest = _connectome_frontend(
+        model_config,
+        args.frontend_checkpoint,
+        [layout_dataset],
+        input_map,
+        training_config.batch_size,
+    )
+    if frontend is None:
+        raise ValueError("port clips require an explicit input transform")
+    spatial_model, spatial_parameters, spatial_topology = _load_spatial_frontend(
+        args.frontend_checkpoint
+    )
+    print(f"preparing port clips from {args.dataset} -> {args.out}", flush=True)
+
+    def progress(done: int, total: int) -> None:
+        print(f"  {done}/{total} clips", flush=True)
+
+    converted = convert_honey_factory_clips(
+        args.dataset,
+        args.out,
+        matrix_cache=args.matrix_cache,
+        spatial_model=spatial_model,
+        spatial_parameters=spatial_parameters,
+        spatial_topology=spatial_topology,
+        frontend_checkpoint_sha256=_file_sha256(args.frontend_checkpoint),
+        prediction_batch_size=args.prediction_batch_size,
+        frame_selection=args.frame_selection,
+        sensory_transform=frontend.transform,
+        sensory_feature_manifest={
+            "kind": "connectome_port_values",
+            "width": int(input_map.target_neuron_ids.size),
+            "input_map_sha256": _input_map_sha256(input_map),
+            "photoreceptor_release": graph.release.release_id,
+            "frontend": frontend_manifest,
+        },
+        progress=progress,
+    )
+    print(f"  wrote {converted.clip_count} clips and {converted.frame_count} frames", flush=True)
+    return 0
+
+
+def _input_map_sha256(input_map: ReceptorInputMap) -> str:
+    """Hash the receptor-to-port assignment, independent of the rest of the graph."""
+    manifest = {
+        key: value for key, value in input_map.to_manifest().items() if key != "graph_sha256"
+    }
+    payload = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _load_connectome_clip_config(
+    path: Path,
+) -> tuple[ConnectomeModelConfig, int, ConnectomeClipTrainingConfig]:
+    raw_values: Any = json.loads(path.read_text())
+    if not isinstance(raw_values, dict):
+        raise ValueError("connectome clip config must be a JSON object")
+    values = cast(dict[str, Any], raw_values)
+    if values.get("format") != "fly-brain-connectome-clip-experiment-v1":
+        raise ValueError("unsupported connectome clip config format")
+    model_values = values.get("model")
+    training_values = values.get("training")
+    if not isinstance(model_values, dict) or not isinstance(training_values, dict):
+        raise ValueError("connectome clip config requires model and training objects")
+    model = dict(cast(dict[str, Any], model_values))
+    transitions = int(model.pop("transitions_per_frame", 2))
+    try:
+        return (
+            ConnectomeModelConfig(**model),
+            transitions,
+            ConnectomeClipTrainingConfig(**cast(dict[str, Any], training_values)),
+        )
+    except TypeError as error:
+        raise ValueError(f"invalid connectome clip setting: {error}") from error
+
+
+def _train_connectome_clips(args: argparse.Namespace) -> int:
+    started = time.perf_counter()
+    model_config, transitions, training_config = _load_connectome_clip_config(args.config)
+    layout_dataset = CachedStillDataset.load(args.layout_cache)
+    layout = _cached_sensor_layout([layout_dataset])
+    graph, network, _, input_map, compiler = _build_connectome(
+        layout, args.connectome_root, model_config
+    )
+    dataset = CachedClipDataset.load(args.cache)
+    raw_manifest = dataset.metadata.get("sensory_features")
+    manifest = cast(dict[str, Any], raw_manifest) if isinstance(raw_manifest, dict) else {}
+    if manifest.get("kind") != "connectome_port_values":
+        raise ValueError("connectome clip training needs a port-value clip cache")
+    if manifest.get("input_map_sha256") != _input_map_sha256(input_map):
+        raise ValueError("port-value cache was built with a different receptor input map")
+    model = ConnectomeClipModel(compiler.compile(), transitions)
+    initial: BrainParameters | None = None
+    initial_manifest: dict[str, object] | None = None
+    if args.initial_checkpoint is not None:
+        values, checkpoint_manifest = load_checkpoint(args.initial_checkpoint)
+        checkpoint_connectome = checkpoint_manifest.get("connectome")
+        graph_sha = (
+            cast(dict[str, Any], checkpoint_connectome).get("graph_sha256")
+            if isinstance(checkpoint_connectome, dict)
+            else None
+        )
+        if graph_sha != graph.graph_sha256:
+            raise ValueError("initial checkpoint graph does not match the compiled graph")
+        loaded = BrainParameters(**cast(Any, values))
+        fresh = model.initialize(training_config.seed)
+        if loaded.edge_gain.shape != fresh.edge_gain.shape:
+            raise ValueError("initial checkpoint gains do not match the parameter policy")
+        # Keep the circuit; the readout is re-learned because the readout neurons may differ.
+        initial = fresh._replace(edge_gain=loaded.edge_gain, neuron_bias=loaded.neuron_bias)
+        initial_manifest = {
+            "path": str(args.initial_checkpoint),
+            "sha256": _file_sha256(args.initial_checkpoint),
+            "reused": ["edge_gain", "neuron_bias"],
+        }
+    train = dataset.batch("train")
+    validation = dataset.batch("validation")
+    test = dataset.batch("test")
+    readout_statistics: dict[str, object] = {"mode": model_config.readout_normalization}
+    if model_config.readout_normalization == "initial":
+        rows = np.random.default_rng(training_config.seed).permutation(train.sequences)[:32]
+        model = model.with_readout_normalization(
+            initial if initial is not None else model.initialize(training_config.seed),
+            train.features[np.sort(rows)],
+            train.time_mask[np.sort(rows)],
+        )
+        assert model.readout_scale is not None
+        readout_statistics.update(
+            {
+                "clips": int(rows.size),
+                "scale_min": float(np.min(model.readout_scale)),
+                "scale_median": float(np.median(model.readout_scale)),
+                "scale_max": float(np.max(model.readout_scale)),
+            }
+        )
+    print(
+        f"training connectome on {train.sequences} clips: {model.brain.neuron_ids.size} neurons, "
+        f"{transitions} transitions per frame",
+        flush=True,
+    )
+    result = train_connectome_clips(model, train, training_config, initial)
+    parameters = model.fold_readout_normalization(result.parameters)
+    model = replace(model, readout_mean=None, readout_scale=None)
+    validation_prediction = model.run(parameters, validation.features, validation.time_mask)
+    threshold = _select_temporal_threshold(validation_prediction, validation)
+    test_prediction = model.run(parameters, test.features, test.time_mask)
+    visible = dataset.interval_mask("test", "visible") & test.time_mask
+    occluded = dataset.interval_mask("test", "occluded") & test.time_mask & (test.presence > 0.5)
+    test_clip_types = sorted(
+        {
+            value
+            for value, split in zip(dataset.clip_types, dataset.splits, strict=True)
+            if split == "test"
+        }
+    )
+    description = network.describe()
+    report: dict[str, object] = {
+        "format": "fly-brain-connectome-clip-report-v1",
+        "git_revision": _git_revision(),
+        "dataset": dataset.metadata,
+        "connectome": {
+            "release_id": graph.release.release_id,
+            "graph_sha256": graph.graph_sha256,
+            "components": dict(description.component_sizes),
+        },
+        "model": {
+            **asdict(model_config),
+            "transitions_per_frame": transitions,
+            "compilation": asdict(compiler.plan()),
+            "readout_statistics": readout_statistics,
+            "initial_checkpoint": initial_manifest,
+        },
+        "training": {
+            **asdict(training_config),
+            "clips": train.sequences,
+            "frames": int(np.count_nonzero(train.time_mask)),
+            "initial_loss": result.losses[0],
+            "final_loss": result.losses[-1],
+            "loss_curve": [
+                float(np.mean(result.losses[start : start + 50]))
+                for start in range(0, len(result.losses), 50)
+            ],
+            "selected_presence_threshold": threshold,
+        },
+        "validation": _evaluate_temporal(validation_prediction, validation, threshold),
+        "test": _evaluate_temporal(test_prediction, test, threshold),
+        "test_visible": _evaluate_temporal(test_prediction, test, threshold, visible),
+        "test_occluded": _evaluate_temporal(test_prediction, test, threshold, occluded),
+        "test_by_clip_type": {
+            clip_type: _evaluate_temporal(
+                test_prediction, test, threshold, dataset.clip_type_mask("test", clip_type)
+            )
+            for clip_type in test_clip_types
+        },
+        "temporal_diagnostics": _temporal_diagnostics(test_prediction, test, visible),
+        "runtime": {
+            "backend": jax.default_backend(),
+            "wall_seconds": time.perf_counter() - started,
+            "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024,
+        },
+    }
+    report["checkpoint_manifest_sha256"] = save_checkpoint(
+        args.checkpoint, parameters._asdict(), report
+    )
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    print(
+        f"test balanced {report['test']}\nvisible {report['test_visible']}\n"
+        f"occluded {report['test_occluded']}",
+        flush=True,
+    )
     return 0
 
 
@@ -1706,6 +1949,10 @@ def main(argv: list[str] | None = None) -> int:
             return _combine_clip_features(args)
         if args.command == "probe-clip-features":
             return _probe_clip_features(args)
+        if args.command == "prepare-port-clips":
+            return _prepare_port_clips(args)
+        if args.command == "train-connectome-clips":
+            return _train_connectome_clips(args)
         if args.command == "train-recurrent":
             return _train_recurrent(args)
         if args.command == "train-recurrent-actions":
