@@ -199,6 +199,26 @@ def train_connectome_clips(
     return ConnectomeClipTrainingResult(parameters, tuple(losses))
 
 
+def self_motion_port_values(
+    context: NDArray[np.float32],
+    *,
+    yaw_index: int,
+    signs: NDArray[np.float32],
+    scale: float,
+) -> NDArray[np.float32]:
+    """Map measured yaw rate onto angular-velocity port neurons, signed by brain side.
+
+    ``context`` is (B, T, C) egocentric motion context; the result is (B, T, len(signs)).
+    """
+    values = np.asarray(context, dtype=np.float32)
+    if values.ndim != 3 or not 0 <= yaw_index < values.shape[2]:
+        raise ValueError("yaw_index must name a context feature of a (B, T, C) array")
+    side = np.asarray(signs, dtype=np.float32)
+    if side.ndim != 1 or side.size == 0 or not np.all(np.isin(side, (-1.0, 1.0))):
+        raise ValueError("signs must be a non-empty vector of +1 and -1")
+    return (values[:, :, yaw_index, None] * scale * side[None, None, :]).astype(np.float32)
+
+
 def _effective_parameters(
     parameters: BrainParameters, model: ConnectomeClipModel
 ) -> BrainParameters:

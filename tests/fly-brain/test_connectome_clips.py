@@ -24,6 +24,7 @@ from fly_brain.models import (
     ConnectomeClipModel,
     ConnectomeClipTrainingConfig,
     TemporalBatch,
+    self_motion_port_values,
     train_connectome_clips,
 )
 
@@ -157,3 +158,15 @@ def test_clip_training_reduces_loss_and_rejects_bad_settings() -> None:
     assert np.isfinite(result.losses).all()
     with pytest.raises(ValueError, match="truncation"):
         ConnectomeClipTrainingConfig(truncation_steps=0)
+
+
+def test_self_motion_port_values_sign_yaw_by_brain_side() -> None:
+    context = np.zeros((1, 2, 4), dtype=np.float32)
+    context[0, :, 3] = [10.0, -5.0]
+    signs = np.array([1.0, -1.0, 1.0], dtype=np.float32)
+
+    values = self_motion_port_values(context, yaw_index=3, signs=signs, scale=0.1)
+
+    np.testing.assert_allclose(values[0], [[1.0, -1.0, 1.0], [-0.5, 0.5, -0.5]])
+    with pytest.raises(ValueError, match="yaw"):
+        self_motion_port_values(context, yaw_index=4, signs=signs, scale=0.1)

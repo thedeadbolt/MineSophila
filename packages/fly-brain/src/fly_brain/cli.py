@@ -13,6 +13,7 @@ from typing import Any, Literal, cast
 
 import jax
 import numpy as np
+from numpy.typing import NDArray
 
 from fly_brain.connectome import (
     CENTRAL_COMPLEX_COMPONENTS,
@@ -22,6 +23,8 @@ from fly_brain.connectome import (
     BrainNetwork,
     BrainParameters,
     ConnectomeGraph,
+    InjectionRule,
+    InputPort,
     LeakyRateDynamics,
     MaleCNSLoader,
     NetworkComponent,
@@ -83,6 +86,7 @@ from fly_brain.models import (
     TemporalBatch,
     TemporalPrediction,
     build_angular_topology,
+    self_motion_port_values,
     train_cnn,
     train_connectome,
     train_connectome_clips,
@@ -608,9 +612,9 @@ def _train_connectome_clips(args: argparse.Namespace) -> int:
             "sha256": _file_sha256(args.initial_checkpoint),
             "reused": ["edge_gain", "neuron_bias"],
         }
-    train = dataset.batch("train")
-    validation = dataset.batch("validation")
-    test = dataset.batch("test")
+    train = _connectome_clip_batch(dataset, "train", model_config, graph)
+    validation = _connectome_clip_batch(dataset, "validation", model_config, graph)
+    test = _connectome_clip_batch(dataset, "test", model_config, graph)
     readout_statistics: dict[str, object] = {"mode": model_config.readout_normalization}
     if model_config.readout_normalization == "initial":
         rows = np.random.default_rng(training_config.seed).permutation(train.sequences)[:32]
@@ -675,6 +679,19 @@ def _train_connectome_clips(args: argparse.Namespace) -> int:
             "compilation": asdict(compiler.plan()),
             "readout_statistics": readout_statistics,
             "initial_checkpoint": initial_manifest,
+            "self_motion": (
+                None
+                if model_config.self_motion_input == "none"
+                else {
+                    "port": SELF_MOTION_PORT,
+                    "cell_types": list(PEN_TYPES),
+                    "neurons": int(_self_motion_neurons(graph).size),
+                    "context_feature": "yaw_rate",
+                    "scale": YAW_PORT_SCALE,
+                    "sign": "+1 left, -1 right",
+                    "biological_status": "approximation",
+                }
+            ),
         },
         "training": {
             **asdict(training_config),
@@ -1578,9 +1595,19 @@ def _build_connectome(
     readout_neuron_ids = np.unique(
         np.concatenate([components[name].neuron_ids for name in config.readout_components])
     )
+    ports = [input_map.input_port()]
+    if config.self_motion_input == "pen_yaw":
+        ports.append(
+            InputPort(
+                SELF_MOTION_PORT,
+                _self_motion_neurons(graph),
+                InjectionRule.ADDITIVE,
+                BiologicalStatus.APPROXIMATION,
+            )
+        )
     spec = BrainModelSpec(
         network,
-        (input_map.input_port(),),
+        tuple(ports),
         OutputHead(
             "honey_localisation",
             readout_neuron_ids,
@@ -1598,6 +1625,51 @@ def _build_connectome(
         config.dt,
     )
     return graph, network, components, input_map, BrainCompiler(spec)
+
+
+SELF_MOTION_PORT = "angular_velocity"
+PEN_TYPES = ("PEN_a(PEN1)", "PEN_b(PEN2)")
+YAW_CONTEXT_INDEX = 3  # yaw_rate in EGOCENTRIC_MOTION_SCHEMA
+YAW_PORT_SCALE = 0.1  # degrees per tick to port units, about the range of visual input
+
+
+def _self_motion_neurons(graph: ConnectomeGraph) -> NDArray[np.int64]:
+    """PEN neurons, which carry angular velocity from the noduli into the compass."""
+    neurons = graph.neurons
+    ids = np.sort(neurons.neuron_ids[np.isin(neurons.cell_types, PEN_TYPES)]).astype(np.int64)
+    if ids.size == 0:
+        raise ValueError("the graph has no PEN neurons for the self-motion port")
+    return ids
+
+
+def _self_motion_signs(graph: ConnectomeGraph) -> NDArray[np.float32]:
+    """+1 for left and -1 for right PEN neurons; turning drives the two sides oppositely."""
+    ids = _self_motion_neurons(graph)
+    sides = graph.neurons.sides[np.searchsorted(graph.neurons.neuron_ids, ids)]
+    if not np.all(np.isin(sides, ("L", "R"))):
+        raise ValueError("every PEN neuron needs a left or right side for the self-motion port")
+    return np.where(sides == "L", 1.0, -1.0).astype(np.float32)
+
+
+def _connectome_clip_batch(
+    dataset: CachedClipDataset,
+    split: str,
+    config: ConnectomeModelConfig,
+    graph: ConnectomeGraph,
+) -> TemporalBatch:
+    """Port values per frame, followed by self-motion port values when configured."""
+    if config.self_motion_input == "none":
+        return dataset.batch(split)
+    batch = dataset.batch(split, include_context=True)
+    width = batch.input_width - dataset.motion_context.shape[1]
+    motion = self_motion_port_values(
+        batch.features[:, :, width:],
+        yaw_index=YAW_CONTEXT_INDEX,
+        signs=_self_motion_signs(graph),
+        scale=YAW_PORT_SCALE,
+    )
+    features = np.concatenate([batch.features[:, :, :width], motion], axis=2)
+    return TemporalBatch(features, batch.time_mask, batch.presence, batch.direction)
 
 
 def _cached_sensor_layout(datasets: list[CachedStillDataset]) -> SensorLayout:

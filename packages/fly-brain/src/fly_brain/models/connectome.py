@@ -56,8 +56,13 @@ class ConnectomeModelConfig:
     regional_azimuth_bins: int = 8
     regional_elevation_bins: int = 4
     readout_normalization: Literal["none", "initial"] = "none"
+    self_motion_input: Literal["none", "pen_yaw"] = "none"
 
     def __post_init__(self) -> None:
+        if self.self_motion_input not in {"none", "pen_yaw"}:
+            raise ValueError(f"unsupported self-motion input {self.self_motion_input!r}")
+        if self.self_motion_input == "pen_yaw" and "compass" not in self.components:
+            raise ValueError("pen_yaw self-motion input requires the compass component")
         if self.readout_normalization not in {"none", "initial"}:
             raise ValueError(f"unsupported readout normalization {self.readout_normalization!r}")
         if self.minimum_synapse_count < 1 or self.settling_steps < 1:

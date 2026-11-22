@@ -24,6 +24,7 @@ from fly_brain.models.connectome_clips import (
     ConnectomeClipModel,
     ConnectomeClipTrainingConfig,
     ConnectomeClipTrainingResult,
+    self_motion_port_values,
     train_connectome_clips,
 )
 from fly_brain.models.linear import (
@@ -107,6 +108,7 @@ __all__ = [
     "prepare_localization_batch",
     "prepare_temporal_batch",
     "readout_scale",
+    "self_motion_port_values",
     "train_cnn",
     "train_connectome",
     "train_connectome_clips",
