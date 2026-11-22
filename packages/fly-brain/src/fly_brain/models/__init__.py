@@ -20,6 +20,12 @@ from fly_brain.models.connectome import (
     readout_scale,
     train_connectome,
 )
+from fly_brain.models.connectome_clips import (
+    ConnectomeClipModel,
+    ConnectomeClipTrainingConfig,
+    ConnectomeClipTrainingResult,
+    train_connectome_clips,
+)
 from fly_brain.models.linear import (
     LinearLocalizationModel,
     LinearParameters,
@@ -65,6 +71,9 @@ __all__ = [
     "ConnectomeActivityEncoder",
     "ConnectomeBatch",
     "ConnectomeClipActivityTransform",
+    "ConnectomeClipModel",
+    "ConnectomeClipTrainingConfig",
+    "ConnectomeClipTrainingResult",
     "ConnectomeInputTransform",
     "ConnectomeLocalizationModel",
     "ConnectomeModelConfig",
@@ -100,6 +109,7 @@ __all__ = [
     "readout_scale",
     "train_cnn",
     "train_connectome",
+    "train_connectome_clips",
     "train_linear",
     "train_mlp",
     "train_recurrent",
