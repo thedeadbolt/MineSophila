@@ -503,6 +503,16 @@ def _loss(
         model=model,
         truncation_steps=truncation_steps,
     )
+    return temporal_localisation_loss(raw, time_mask, presence, target_direction)
+
+
+def temporal_localisation_loss(
+    raw: jax.Array, time_mask: jax.Array, presence: jax.Array, target_direction: jax.Array
+) -> jax.Array:
+    """Class-balanced presence cross-entropy plus cosine direction loss on present frames.
+
+    ``raw`` holds (B, T, 4) logits: presence, then an unnormalised direction.
+    """
     valid = time_mask.astype(jnp.float32)
     positive = valid * presence
     negative = valid * (1.0 - presence)
@@ -512,9 +522,10 @@ def _loss(
         + jnp.sum(cross_entropy * negative) / jnp.maximum(jnp.sum(negative), 1.0)
     )
     direction_raw = raw[:, :, 1:]
-    direction = direction_raw / jnp.maximum(
-        jnp.linalg.norm(direction_raw, axis=2, keepdims=True), 1e-6
-    )
+    # The epsilon inside the root keeps the gradient finite when a raw direction is exactly zero,
+    # as it is for a connectome readout whose neurons are all at rest.
+    norm = jnp.sqrt(jnp.sum(jnp.square(direction_raw), axis=2, keepdims=True) + 1e-12)
+    direction = direction_raw / jnp.maximum(norm, 1e-6)
     direction_error = 1.0 - jnp.sum(direction * target_direction, axis=2)
     direction_loss = jnp.sum(direction_error * positive) / jnp.maximum(jnp.sum(positive), 1.0)
     return presence_loss + direction_loss
