@@ -607,6 +607,17 @@ These results change the remaining steps:
   seen (presence or identity), not where.
 - **9f is unchanged** and still needs explicit approval for a game run.
 
+**Progress, 2026-11-21 late:**
+
+- Normalised readouts are done: legacy 98.44%, graded 98.67% on stills, up from 82.66%.
+- The central-complex components are added and reviewed: 352 neurons, a complete chain with no
+  disconnected parts. The static graded central-complex model reaches 96.80%.
+- The existing m12-2e level-3 clips give 1,005 occluded training frames, but their test split
+  cannot settle memory.
+- m12-2e level 4 is missing three `rgb.mkv` files.
+
+Next is a level-1/2 pilot with search and long occlusion clips (daytime game run), then 9g.
+
 Revised order: normalised readouts → central-complex components (named, reviewed as in Slice 4)
 → 9f occlusion-rich clips → 9g clip-trained graded central-complex memory against the GRU
 control.

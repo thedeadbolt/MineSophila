@@ -101,3 +101,22 @@ Stored under `/mnt/fastvault/minesophila/derived/brain-localization-v3/`:
   `probe-level1-pathway-stages-graded-v1.report.json`
 - `connectome-level1-visual-kenyon{,-graded}-long-v1.{report.json,checkpoint.npz,input-map.json}`
 - `temporal-level1-visual-kenyon-graded-{carry,reset}-v1.fly-brain.npz`
+
+## Normalised readouts (2026-11-21)
+
+The static models' linear readout was the bottleneck, so compiled models can now z-score their
+readout neurons with statistics measured under the initial parameters
+(`readout_normalization: "initial"`). Quiet neurons are floored at the median active spread. Rest
+stays frozen, because trained rest collapses either policy under a normalised readout (ADR 0027).
+Level-1 stills, 3,000 steps:
+
+| Static model | Test balanced accuracy | Test bearing |
+|---|---:|---:|
+| Legacy, unnormalised (previous) | 82.66% | 14.24° |
+| Legacy, normalised | 98.44% | 7.27° |
+| Graded signed, normalised | **98.67%** | 8.59° |
+| Graded signed + central complex (8 settling steps), normalised | 96.80% | 10.60° |
+
+Normalisation removes the readout bottleneck for both policies. The graded signed model now
+matches the legacy model. The central-complex model trains end to end at 96.8%; its static score is
+not a memory test, which needs clip training (Slice 9g).
