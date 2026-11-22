@@ -633,7 +633,18 @@ def _train_connectome_clips(args: argparse.Namespace) -> int:
         f"{transitions} transitions per frame",
         flush=True,
     )
-    result = train_connectome_clips(model, train, training_config, initial)
+    clip_started = time.perf_counter()
+
+    def progress(step: int, loss: float) -> None:
+        elapsed = time.perf_counter() - clip_started
+        remaining = elapsed / step * (training_config.steps - step)
+        print(
+            f"  step {step}/{training_config.steps} loss {loss:.4f} "
+            f"({elapsed / step:.1f} s/step, about {remaining / 60:.0f} min left)",
+            flush=True,
+        )
+
+    result = train_connectome_clips(model, train, training_config, initial, progress=progress)
     parameters = model.fold_readout_normalization(result.parameters)
     model = replace(model, readout_mean=None, readout_scale=None)
     validation_prediction = model.run(parameters, validation.features, validation.time_mask)

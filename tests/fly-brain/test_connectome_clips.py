@@ -142,8 +142,17 @@ def test_clip_training_reduces_loss_and_rejects_bad_settings() -> None:
         steps=60, batch_size=4, learning_rate=0.05, weight_decay=0.0, truncation_steps=4, seed=0
     )
 
-    result = train_connectome_clips(model, batch, config)
+    reports: list[tuple[int, float]] = []
 
+    result = train_connectome_clips(
+        model,
+        batch,
+        config,
+        progress=lambda step, loss: reports.append((step, loss)),
+        progress_interval=25,
+    )
+
+    assert [step for step, _ in reports] == [25, 50, 60]
     assert np.mean(result.losses[-10:]) < np.mean(result.losses[:10])
     assert np.isfinite(result.losses).all()
     with pytest.raises(ValueError, match="truncation"):

@@ -9,6 +9,7 @@ and the same balanced localisation loss and evaluator as the recurrent (GRU) con
 # pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from functools import partial
 
@@ -137,8 +138,14 @@ def train_connectome_clips(
     batch: TemporalBatch,
     config: ConnectomeClipTrainingConfig,
     initial: BrainParameters | None = None,
+    *,
+    progress: Callable[[int, float], None] | None = None,
+    progress_interval: int = 50,
 ) -> ConnectomeClipTrainingResult:
-    """Train with truncated backpropagation through time on randomly drawn clips."""
+    """Train with truncated backpropagation through time on randomly drawn clips.
+
+    ``progress`` receives the step and the mean loss of the last ``progress_interval`` steps.
+    """
     if batch.input_width != model.brain.input_width:
         raise ValueError("clip batch width does not match the compiled brain")
     parameters = initial if initial is not None else model.initialize(config.seed)
@@ -187,6 +194,8 @@ def train_connectome_clips(
             second_moment,
         )
         losses.append(float(loss))
+        if progress is not None and (step % progress_interval == 0 or step == config.steps):
+            progress(step, float(np.mean(losses[-progress_interval:])))
     return ConnectomeClipTrainingResult(parameters, tuple(losses))
 
 
