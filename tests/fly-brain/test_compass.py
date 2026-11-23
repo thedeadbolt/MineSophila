@@ -143,3 +143,60 @@ def test_model_config_validates_the_compass_operating_point() -> None:
         )
     with pytest.raises(ValueError, match="tonic"):
         ConnectomeModelConfig(compass_tonic_bias=-1.0)
+
+
+def test_model_config_validates_release_thresholds_and_fitted_compass() -> None:
+    fitted = ConnectomeModelConfig(
+        activation="graded",
+        edge_gain_mode="cell_type_pair",
+        maximum_edge_gain=4.0,
+        components=("photoreceptors", "visual_projection", "compass"),
+        compass_operating_point="fitted",
+        compass_gains={"EPG>Delta7": 3.9, "PEN_a(PEN1)>EPG": 2.0},
+        compass_type_bias={"EPG": 0.1},
+        release_thresholds={"PEN_a(PEN1)": -0.1},
+    )
+    assert fitted.compass_gains["EPG>Delta7"] == 3.9
+    with pytest.raises(ValueError, match="graded"):
+        ConnectomeModelConfig(release_thresholds={"PEN_a(PEN1)": 0.1})
+    with pytest.raises(ValueError, match="compass_gains"):
+        ConnectomeModelConfig(
+            edge_gain_mode="cell_type_pair",
+            maximum_edge_gain=4.0,
+            components=("photoreceptors", "visual_projection", "compass"),
+            compass_operating_point="fitted",
+        )
+    with pytest.raises(ValueError, match="SOURCE>TARGET"):
+        ConnectomeModelConfig(
+            edge_gain_mode="cell_type_pair",
+            maximum_edge_gain=4.0,
+            components=("photoreceptors", "visual_projection", "compass"),
+            compass_operating_point="fitted",
+            compass_gains={"EPG-Delta7": 1.0},
+        )
+    with pytest.raises(ValueError, match="maximum"):
+        ConnectomeModelConfig(
+            edge_gain_mode="cell_type_pair",
+            maximum_edge_gain=4.0,
+            components=("photoreceptors", "visual_projection", "compass"),
+            compass_operating_point="fitted",
+            compass_gains={"EPG>Delta7": 4.0},
+        )
+
+
+def test_type_pair_gains_set_the_named_groups_and_reject_unknown_pairs() -> None:
+    from fly_brain.connectome.compass import type_pair_raw_gains
+
+    source_types = np.array(["EPG", "EPG", "Delta7", "PEN"])
+    target_types = np.array(["Delta7", "Delta7", "EPG", "EPG"])
+    edge_group = np.array([0, 0, 1, 2])
+    raw = np.zeros(3, dtype=np.float32)
+
+    updated = type_pair_raw_gains(
+        raw, edge_group, source_types, target_types, {"EPG>Delta7": 3.0, "PEN>EPG": 1.0}, 4.0
+    )
+
+    effective = 4.0 / (1.0 + np.exp(-updated))
+    np.testing.assert_allclose(effective, [3.0, 2.0, 1.0], rtol=1e-5)
+    with pytest.raises(ValueError, match="no edge group"):
+        type_pair_raw_gains(raw, edge_group, source_types, target_types, {"PEG>EPG": 1.0}, 4.0)

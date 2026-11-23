@@ -186,3 +186,25 @@ def bump_metrics(
         "phase_yaw_corr": corr,
         "phase_yaw_gain": float(np.dot(x, y) / np.dot(x, x)) if x.size else None,
     }
+
+
+def type_pair_raw_gains(
+    raw_gains: NDArray[np.floating],
+    edge_group: NDArray[np.integer],
+    source_types: NDArray[np.str_],
+    target_types: NDArray[np.str_],
+    gains: dict[str, float],
+    maximum_gain: float,
+) -> NDArray[np.float32]:
+    """Set bounded raw gains so named ``SOURCE>TARGET`` cell-type pairs take effective ``gains``.
+
+    ``source_types`` and ``target_types`` are per edge. Each pair must name exactly one group.
+    """
+    updated = np.asarray(raw_gains, dtype=np.float32).copy()
+    pairs = np.char.add(np.char.add(source_types.astype(str), ">"), target_types.astype(str))
+    for key, value in gains.items():
+        groups = np.unique(edge_group[pairs == key])
+        if groups.size != 1:
+            raise ValueError(f"compass gain {key!r} matches no edge group")
+        updated[groups[0]] = np.log(value / (maximum_gain - value))
+    return updated

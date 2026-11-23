@@ -2,7 +2,7 @@
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false
 """Localisation through a compiled connectome with a learned readout."""
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import partial
 from typing import Literal, NamedTuple, Protocol
 
@@ -58,14 +58,27 @@ class ConnectomeModelConfig:
     readout_normalization: Literal["none", "initial"] = "none"
     self_motion_input: Literal["none", "pen_yaw"] = "none"
     self_motion_scale: float = 0.1
-    compass_operating_point: Literal["none", "ring_attractor"] = "none"
+    compass_operating_point: Literal["none", "ring_attractor", "fitted"] = "none"
     compass_tonic_bias: float = 0.02
+    compass_gains: dict[str, float] = field(default_factory=dict[str, float])
+    compass_type_bias: dict[str, float] = field(default_factory=dict[str, float])
+    release_thresholds: dict[str, float] = field(default_factory=dict[str, float])
+    release_threshold_sharpness: float = 20.0
 
     def __post_init__(self) -> None:
-        if self.compass_operating_point not in {"none", "ring_attractor"}:
+        if self.compass_operating_point not in {"none", "ring_attractor", "fitted"}:
             raise ValueError(
                 f"unsupported compass operating point {self.compass_operating_point!r}"
             )
+        self._validate_fitted_compass()
+        if self.release_thresholds and self.activation != "graded":
+            raise ValueError("release thresholds need graded dynamics")
+        if not all(np.isfinite(value) for value in self.release_thresholds.values()):
+            raise ValueError("release thresholds must be finite")
+        if not np.isfinite(self.release_threshold_sharpness) or (
+            self.release_threshold_sharpness <= 0
+        ):
+            raise ValueError("release_threshold_sharpness must be positive")
         if self.compass_operating_point != "none" and "compass" not in self.components:
             raise ValueError("a compass operating point requires the compass component")
         if not np.isfinite(self.compass_tonic_bias) or self.compass_tonic_bias < 0:
@@ -116,6 +129,24 @@ class ConnectomeModelConfig:
             raise ValueError("regional pooling bin counts must be positive")
         object.__setattr__(self, "components", components)
         object.__setattr__(self, "readout_components", readout_components)
+
+    def _validate_fitted_compass(self) -> None:
+        """Fitted gains are effective cell-type-pair gains keyed ``SOURCE>TARGET``."""
+        if self.compass_operating_point != "fitted":
+            if self.compass_gains or self.compass_type_bias:
+                raise ValueError("compass_gains and compass_type_bias need a fitted compass")
+            return
+        if not self.compass_gains:
+            raise ValueError("a fitted compass needs compass_gains")
+        if self.edge_gain_mode != "cell_type_pair" or self.maximum_edge_gain is None:
+            raise ValueError("a fitted compass needs bounded cell-type-pair gains")
+        for key, value in self.compass_gains.items():
+            if key.count(">") != 1 or not all(key.split(">")):
+                raise ValueError(f"compass gain {key!r} must be keyed SOURCE>TARGET")
+            if not np.isfinite(value) or not 0 < value < self.maximum_edge_gain:
+                raise ValueError("compass gains must lie between 0 and the maximum edge gain")
+        if not all(np.isfinite(value) for value in self.compass_type_bias.values()):
+            raise ValueError("compass type biases must be finite")
 
 
 @dataclass(frozen=True)
