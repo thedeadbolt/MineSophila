@@ -233,8 +233,8 @@
   </section>
 
   <section id="brain-panel" class="workspace-panel" hidden aria-label="Brain">
-    <div class="panel-bar">
-      <div class="segmented" role="radiogroup" aria-label="Brain view">
+    <div class="panel-bar tab-bar">
+      <div class="tabs" role="radiogroup" aria-label="Brain view">
         <label><input type="radio" name="brain-view" value="playback"><span>Clip playback</span></label>
         <label><input type="radio" name="brain-view" value="circuit"><span>Circuit</span></label>
         <label><input type="radio" name="brain-view" value="brain3d"><span>3D brain</span></label>
@@ -245,19 +245,20 @@
       <button type="button" id="brain-record" title="Play the clip once and save the fly's view, compass, activity and readout as a WebM video">Record video</button>
     </div>
     <div id="brain-3d" hidden>
-      <div class="panel-bar">
-        <div class="group" role="group" aria-label="Viewpoint">
-          <button type="button" id="brain3d-front" title="Look at the brain from the front">Front</button>
-          <button type="button" id="brain3d-top" title="Look down from above">Top</button>
-          <button type="button" id="brain3d-side" title="Look from the side">Side</button>
-        </div>
-        <label class="toggle"><input id="brain3d-rotate" type="checkbox" checked><span>Turn slowly</span></label>
-        <label class="toggle"><input id="brain3d-background" type="checkbox" checked><span>Brain outline</span></label>
-        <label class="toggle"><input id="brain3d-edges" type="checkbox" checked><span>Connections</span></label>
-        <label class="toggle" title="Colour neurons by their cell type's activity at this frame (needs a trace for the clip)"><input id="brain3d-activity" type="checkbox" checked><span>Show activity</span></label>
-        <span class="status" id="brain3d-status"></span>
-      </div>
+      <p class="status" id="brain3d-status"></p>
       <div class="viewport3d">
+        <div class="overlay-bar" role="toolbar" aria-label="3D view">
+          <div class="group" role="group" aria-label="Viewpoint">
+            <button type="button" id="brain3d-front" title="Look at the brain from the front">Front</button>
+            <button type="button" id="brain3d-top" title="Look down from above">Top</button>
+            <button type="button" id="brain3d-side" title="Look from the side">Side</button>
+          </div>
+          <span class="sep" aria-hidden="true"></span>
+          <label class="toggle" title="Colour neurons by their cell type's activity at this frame (needs a trace for the clip)"><input id="brain3d-activity" type="checkbox" checked><span>Activity</span></label>
+          <label class="toggle"><input id="brain3d-edges" type="checkbox" checked><span>Connections</span></label>
+          <label class="toggle"><input id="brain3d-background" type="checkbox" checked><span>Outline</span></label>
+          <label class="toggle"><input id="brain3d-rotate" type="checkbox" checked><span>Turn</span></label>
+        </div>
         <canvas id="brain3d-canvas" title="Drag to turn, scroll to zoom, double-click to reset"></canvas>
         <div class="stat stat-left" id="brain3d-neurons"></div>
         <div class="stat stat-right" id="brain3d-connections"></div>
@@ -265,7 +266,7 @@
         <div class="stat stat-top" id="brain3d-activity-label" hidden></div>
         <div class="heat-scale" id="brain3d-scale" hidden><span>quiet</span><i></i><span>active</span></div>
       </div>
-      <p class="legend" id="brain3d-legend"></p>
+      <div class="filter-chips" id="brain3d-legend" role="group" aria-label="Components shown"></div>
       <p class="hint" id="brain3d-note"></p>
     </div>
     <div id="brain-network" hidden>

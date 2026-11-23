@@ -126,8 +126,17 @@ function build(graph) {
   view3d.neuronCount = keep.length;
   $("brain3d-neurons").textContent = `${number(keep.length)} neurons`;
   $("brain3d-connections").textContent = `${number(edges.length)} connections`;
-  $("brain3d-legend").replaceChildren(...graph.components.map((c) => {
-    const key = element("button", `${humane(c.name)} ${number(c.neurons)}`, "key toggle-key");
+  const reset = element("button", "Show all", "chip-reset ghost");
+  reset.type = "button";
+  reset.addEventListener("click", () => {
+    view3d.hidden.clear();
+    for (const key of $("brain3d-legend").querySelectorAll(".toggle-key")) key.setAttribute("aria-pressed", "true");
+    view3d.activityKey = null;
+    paint();
+  });
+  $("brain3d-legend").replaceChildren(element("span", "Components", "chips-label"), ...graph.components.map((c) => {
+    const key = element("button", humane(c.name), "toggle-key");
+    key.append(" ", element("span", number(c.neurons), "count"));
     key.type = "button";
     const [r, g, b] = COMPONENT_COLOURS[c.name] || [0.6, 0.6, 0.6];
     key.style.setProperty("--key", `rgb(${r * 255} ${g * 255} ${b * 255})`);
@@ -141,7 +150,7 @@ function build(graph) {
       paint();
     });
     return key;
-  }));
+  }), reset);
   $("brain3d-note").textContent = `Neurons sit at their soma in MaleCNS space (${number(atlas.placed_from_partners)} without a recorded soma, mostly photoreceptors and lamina cells, are placed among their partners). The faint cloud is ${number(view3d.backgroundCount)} other brain neurons. Lines are the strongest connections: teal excitatory, blue inhibitory.`;
   view3d.ready = true;
   return true;
