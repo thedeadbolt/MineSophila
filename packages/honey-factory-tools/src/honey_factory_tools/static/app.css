@@ -393,23 +393,6 @@ table.data.compact td { padding: 0.22rem 0.4rem; cursor: default; white-space: p
 table.data.compact tbody tr { cursor: default; }
 table.data.compact tbody tr:hover { background: none; }
 
-/* Circuit diagram */
-#brain-circuit { display: flex; flex-direction: column; gap: 0.5rem; }
-#brain-circuit-svg { width: 100%; height: auto; max-height: 62vh; display: block; }
-#brain-circuit-svg .node { cursor: pointer; }
-#brain-circuit-svg .node .box { fill: var(--surface); stroke: var(--rule); stroke-width: 1; }
-#brain-circuit-svg .node:hover .box, #brain-circuit-svg .node:focus-visible .box { stroke: var(--muted); }
-#brain-circuit-svg .node:focus { outline: none; }
-#brain-circuit-svg .node.read .box { stroke: var(--honey); stroke-width: 1.6; }
-#brain-circuit-svg .node .activity { fill: var(--honey); pointer-events: none; transition: opacity 0.08s linear; }
-#brain-circuit-svg .node.absent { opacity: 0.38; }
-#brain-circuit-svg .node.absent .box { stroke-dasharray: 3 3; fill: none; }
-#brain-circuit-svg text { fill: var(--ink); pointer-events: none; }
-#brain-circuit-svg .label { font: 600 13px var(--sans); }
-#brain-circuit-svg .count { font: 11px var(--mono); fill: var(--muted); }
-#brain-circuit-svg .cells { font: 10.5px var(--sans); fill: var(--faint); }
-#brain-circuit-svg .size { fill: var(--faint); }
-#brain-circuit-svg .meter { fill: var(--honey); transition: width 0.08s linear; }
 
 /* Network */
 #brain-network { display: flex; flex-direction: column; gap: 0.5rem; flex: 1 1 auto; min-height: 0; }

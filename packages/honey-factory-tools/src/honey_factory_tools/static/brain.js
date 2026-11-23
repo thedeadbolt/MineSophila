@@ -64,7 +64,6 @@ function setView(view) {
   if (view !== "brain3d" && window.brain3d) window.brain3d.hide();
   $("brain-runs").hidden = view !== "runs";
   $("brain-trace-details").hidden = view !== "playback";
-  $("brain-circuit-details").hidden = true;
   $("brain-run-details").hidden = view !== "runs";
   $("brain-circuit-run").hidden = view !== "circuit";
   $("brain-record").hidden = view !== "playback";
