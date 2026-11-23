@@ -1,3 +1,4 @@
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false
 import numpy as np
 
 from fly_brain.models import (
@@ -90,3 +91,39 @@ def test_spatial_settings_reject_invalid_values() -> None:
         SpatialModelConfig(activation="unknown")  # type: ignore[arg-type]
     with np.testing.assert_raises_regex(ValueError, "unsupported presence pooling"):
         SpatialModelConfig(presence_pooling="unknown")  # type: ignore[arg-type]
+
+
+def test_spatial_loss_gradient_is_finite_when_coverage_underflows() -> None:
+    import jax
+    import jax.numpy as jnp
+
+    from fly_brain.models import spatial
+
+    directions = np.eye(3, dtype=np.float32)[[0, 1, 2, 0]]
+    model_config = SpatialModelConfig(hidden_width=4, message_passing_layers=1, neighbor_count=1)
+    model = SpatialLocalizationModel(3, 4, model_config)
+    topology = build_angular_topology(
+        directions, np.full(4, "L"), neighbor_count=1, radius_deg=180.0
+    )
+    # An extreme output bias drives every site's coverage to exactly zero in float32, so the
+    # predicted direction vector is exactly zero (a negative sample whose coverage underflowed).
+    parameters = model.initialize(0)._replace(output_bias=jnp.full((1,), -200.0))
+    signals = jnp.zeros((2, 4, 3))
+    target = jnp.zeros((2, 4)).at[0, 1].set(1.0)
+
+    def loss(p: spatial.SpatialParameters) -> jax.Array:
+        return spatial._loss(  # pyright: ignore[reportPrivateUsage]
+            p,
+            signals,
+            target,
+            valid=jnp.ones(4, dtype=bool),
+            directions=jnp.asarray(directions),
+            neighbors=jnp.asarray(topology.neighbors),
+            neighbor_valid=jnp.asarray(topology.neighbor_valid),
+            model_config=model_config,
+            training_config=SpatialTrainingConfig(),
+        )
+
+    gradients = jax.grad(loss)(parameters)
+
+    assert all(bool(jnp.isfinite(leaf).all()) for leaf in jax.tree.leaves(gradients))

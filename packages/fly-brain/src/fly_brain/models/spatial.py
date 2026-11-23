@@ -429,12 +429,11 @@ def _apply(
     presence = jax.nn.sigmoid(presence_logit)
     direction_weights = jnp.power(coverage, config.coverage_power) * valid[None, :]
     direction_raw = direction_weights @ directions
-    direction_norm = jnp.linalg.norm(direction_raw, axis=1, keepdims=True)
-    direction = jnp.where(
-        direction_norm > 1e-6,
-        direction_raw / jnp.maximum(direction_norm, 1e-6),
-        0.0,
-    )
+    # Double-where: the gradient of a norm is NaN at an exactly zero vector (all coverage
+    # underflowed), and jnp.where does not stop NaN gradients from the unused branch.
+    squared = jnp.sum(direction_raw**2, axis=1, keepdims=True)
+    nonzero = squared > 1e-12
+    direction = jnp.where(nonzero, direction_raw / jnp.sqrt(jnp.where(nonzero, squared, 1.0)), 0.0)
     return presence, direction, coverage
 
 
