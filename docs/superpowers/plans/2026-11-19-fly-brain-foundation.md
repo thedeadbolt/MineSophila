@@ -763,7 +763,10 @@ The model has Delta7, EPG and PFL3 itself, about 11.5% of PFL3's real input.
 - land `trace-clip` (below);
 - include FC2 and hΔ per-neuron angles, FC2 `goal_phase` and `goal_strength`, PFL3 activity,
   and the fitted bump gain;
-- so that the viewer can draw the dual EPG/FC2 compass (#32) and the circuit (#30).
+- add per-frame aggregates per component (mean activity and release) and per component pair
+  (summed signed signal), plus the learned type-pair gains;
+- so that the viewer can draw the dual EPG/FC2 compass (#32), the circuit (#30), and the
+  animated activity-flow diagram (#33).
 
 #### Planned after 9i: `fly-brain trace-clip` for the honey-factory-tools viewer
 
