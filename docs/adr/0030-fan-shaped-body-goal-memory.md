@@ -33,6 +33,29 @@ vector addition (Lyu, Abbott & Maimon 2022; Lu et al. 2022):
 - egocentric signals arriving through the noduli set their gain;
 - hΔ sums them into a rotated vector.
 
+### Literature check (2026-11-23)
+
+- FC2 encodes the goal direction, and PFL3 compares it with heading in the bridge, where about
+  80% of PFL3's heading input comes from Δ7 ([Mussells Pires et al. 2024](https://www.nature.com/articles/s41586-023-07006-3);
+  [Westeinde et al. 2024](https://www.nature.com/articles/s41586-024-07039-2)). This matches MaleCNS.
+- Olfactory memories specify the goal direction in FC2 during navigation
+  ([Nature 2026](https://www.nature.com/articles/s41586-026-10827-7)). The goal is set by learned
+  value, not only by a seen object.
+- A preprint ([Nanni & Lee 2026, arXiv:2607.18969](https://arxiv.org/abs/2607.18969);
+  FlyWire, neuron level, not peer reviewed) makes these claims:
+  - There is no within-FC2 ring attractor. FC2 "normalizes an externally set goal rather than
+    selecting it".
+  - FB5A is a uniform global inhibitor of FC2 (divisive normalization). Its GABA identity is a
+    low-confidence prediction.
+  - The goal is held upstream, in an hΔ recurrent network led by hΔC.
+  - That network is gated by value through MBON → FB5AB → {hΔC, FC2}.
+  - The hΔ loop latches only partially, at gains of about 6 or more.
+- No specific plasticity rule for writing FC2 goals has been reported.
+
+This agrees with the stage-1 finding in this repository. In the modelled circuit FC2 has no
+excitatory loop of its own, and no leading mode is first harmonic. So the goal store, if it is
+held in activity, is the hΔ network, read and normalized by FC2.
+
 ## Decision
 
 - **Components (opt-in):**
