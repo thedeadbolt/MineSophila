@@ -58,8 +58,18 @@ class ConnectomeModelConfig:
     readout_normalization: Literal["none", "initial"] = "none"
     self_motion_input: Literal["none", "pen_yaw"] = "none"
     self_motion_scale: float = 0.1
+    compass_operating_point: Literal["none", "ring_attractor"] = "none"
+    compass_tonic_bias: float = 0.02
 
     def __post_init__(self) -> None:
+        if self.compass_operating_point not in {"none", "ring_attractor"}:
+            raise ValueError(
+                f"unsupported compass operating point {self.compass_operating_point!r}"
+            )
+        if self.compass_operating_point != "none" and "compass" not in self.components:
+            raise ValueError("a compass operating point requires the compass component")
+        if not np.isfinite(self.compass_tonic_bias) or self.compass_tonic_bias < 0:
+            raise ValueError("compass_tonic_bias must be non-negative")
         if not np.isfinite(self.self_motion_scale) or self.self_motion_scale <= 0:
             raise ValueError("self_motion_scale must be positive")
         if self.self_motion_input not in {"none", "pen_yaw"}:

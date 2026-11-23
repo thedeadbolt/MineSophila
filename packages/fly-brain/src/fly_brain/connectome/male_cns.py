@@ -74,6 +74,22 @@ class MaleCNSLoader:
             raise ValueError("MaleCNS annotation selection resolved to no neurons")
         return tuple(np.asarray(annotations["bodyId"], dtype=np.int64)[mask].tolist())
 
+    def instances(self, neuron_ids: NDArray[np.int64]) -> dict[int, str]:
+        """Instance names (for example ``EPG(PB08)_L3``) of the requested neurons."""
+        annotations = feather.read_table(
+            self.root / _FILES["annotations"][0], columns=["bodyId", "instance"], memory_map=True
+        )
+        annotations = annotations.filter(
+            pc.is_in(annotations["bodyId"], value_set=pa.array(np.asarray(neuron_ids, np.int64)))
+        )
+        return dict(
+            zip(
+                np.asarray(annotations["bodyId"], dtype=np.int64).tolist(),
+                _strings(annotations["instance"]).tolist(),
+                strict=True,
+            )
+        )
+
     def load(self, release: ConnectomeRelease = MALE_CNS_V1_RELEASE) -> ConnectomeGraph:
         if release != MALE_CNS_V1_RELEASE:
             raise ValueError("MaleCNSLoader only supports the pinned MaleCNS v1.0 release")

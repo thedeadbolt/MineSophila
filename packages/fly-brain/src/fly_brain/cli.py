@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 from numpy.typing import NDArray
 
@@ -22,6 +23,7 @@ from fly_brain.connectome import (
     BrainModelSpec,
     BrainNetwork,
     BrainParameters,
+    CompiledBrain,
     ConnectomeGraph,
     InjectionRule,
     InputPort,
@@ -34,6 +36,12 @@ from fly_brain.connectome import (
     build_first_visual_network,
     build_receptor_input_map,
     central_complex_cell_types,
+)
+from fly_brain.connectome.central_complex import COMPASS_TYPES
+from fly_brain.connectome.compass import (
+    CompassOperatingPoint,
+    pb_glomerulus_angle,
+    ring_attractor_gains,
 )
 from fly_brain.connectome.visual import (
     LAMINA_RELAY_TYPES,
@@ -612,6 +620,15 @@ def _train_connectome_clips(args: argparse.Namespace) -> int:
             "sha256": _file_sha256(args.initial_checkpoint),
             "reused": ["edge_gain", "neuron_bias"],
         }
+    operating_point: dict[str, object] | None = None
+    if model_config.compass_operating_point == "ring_attractor":
+        initial, operating_point = _compass_operating_point(
+            initial if initial is not None else model.initialize(training_config.seed),
+            model.brain,
+            graph,
+            args.connectome_root,
+            model_config,
+        )
     train = _connectome_clip_batch(dataset, "train", model_config, graph)
     validation = _connectome_clip_batch(dataset, "validation", model_config, graph)
     test = _connectome_clip_batch(dataset, "test", model_config, graph)
@@ -679,6 +696,7 @@ def _train_connectome_clips(args: argparse.Namespace) -> int:
             "compilation": asdict(compiler.plan()),
             "readout_statistics": readout_statistics,
             "initial_checkpoint": initial_manifest,
+            "compass_operating_point": operating_point,
             "self_motion": (
                 None
                 if model_config.self_motion_input == "none"
@@ -1630,6 +1648,63 @@ def _build_connectome(
 SELF_MOTION_PORT = "angular_velocity"
 PEN_TYPES = ("PEN_a(PEN1)", "PEN_b(PEN2)")
 YAW_CONTEXT_INDEX = 3  # yaw_rate in EGOCENTRIC_MOTION_SCHEMA
+
+
+def _compass_operating_point(
+    parameters: BrainParameters,
+    brain: CompiledBrain,
+    graph: ConnectomeGraph,
+    connectome_root: Path,
+    config: ConnectomeModelConfig,
+) -> tuple[BrainParameters, dict[str, object]]:
+    """Set compass type-pair gains to a ring attractor and add tonic bias to compass neurons."""
+    maximum = brain.parameter_policy.maximum_edge_gain
+    if maximum is None or brain.parameter_policy.edge_gain_mode != "cell_type_pair":
+        raise ValueError("the compass operating point needs bounded cell-type-pair gains")
+    neurons = graph.neurons
+    types = neurons.cell_types[np.searchsorted(neurons.neuron_ids, brain.neuron_ids)]
+    members = np.isin(types, COMPASS_TYPES)
+    epg = np.flatnonzero(types == "EPG")
+    instances = MaleCNSLoader(connectome_root, verify_checksums=False).instances(
+        brain.neuron_ids[epg]
+    )
+    angles = np.full(types.size, np.nan)
+    angles[epg] = [pb_glomerulus_angle(instances[int(brain.neuron_ids[i])]) for i in epg]
+    raw = np.asarray(parameters.edge_gain, dtype=np.float64)
+    point = CompassOperatingPoint(tonic_bias=config.compass_tonic_bias)
+    result = ring_attractor_gains(
+        brain.source_indexes,
+        brain.target_indexes,
+        brain.anatomical_weights,
+        brain.edge_group_indexes,
+        maximum / (1.0 + np.exp(-raw)),
+        members,
+        angles,
+        maximum_gain=maximum,
+        point=point,
+    )
+    gains = raw.copy()
+    chosen = result.gains[result.changed_groups]
+    gains[result.changed_groups] = np.log(chosen / (maximum - chosen))
+    bias = np.asarray(parameters.neuron_bias, dtype=np.float32).copy()
+    bias[members] += point.tonic_bias
+    report: dict[str, object] = {
+        "mode": "ring_attractor",
+        "biological_status": "approximation",
+        "groups": int(result.changed_groups.size),
+        "harmonic_eigenvalue": result.harmonic_eigenvalue,
+        "other_eigenvalue": result.other_eigenvalue,
+        "tonic_bias": point.tonic_bias,
+        "tonic_neurons": int(members.sum()),
+        "search": {"iterations": point.iterations, "seed": point.seed},
+    }
+    return (
+        parameters._replace(
+            edge_gain=jnp.asarray(gains, dtype=jnp.float32),  # pyright: ignore[reportUnknownMemberType]
+            neuron_bias=jnp.asarray(bias, dtype=jnp.float32),  # pyright: ignore[reportUnknownMemberType]
+        ),
+        report,
+    )
 
 
 def _self_motion_neurons(graph: ConnectomeGraph) -> NDArray[np.int64]:

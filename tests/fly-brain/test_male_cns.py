@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.feather as feather
 
@@ -17,6 +18,7 @@ def write_release(root: Path) -> None:
                 "somaSide": ["L", "L", None],
                 "rootSide": [None, None, "R"],
                 "somaNeuromere": ["ME", "LO", None],
+                "instance": ["R1_L", "EPG(PB08)_L3", None],
             }
         ),
         root / "body-annotations-male-cns-v1.0-minconf-0.5.feather",
@@ -63,3 +65,10 @@ def test_male_cns_annotation_selection_precedes_edge_materialization(tmp_path: P
     assert loader.annotation_ids(cell_types=("photoreceptor",)) == (10,)
     assert loader.annotation_ids(classes=("visual",)) == (20,)
     assert loader.annotation_ids(superclasses=("visual_projection",)) == (20,)
+
+
+def test_male_cns_instances_name_requested_neurons(tmp_path: Path) -> None:
+    write_release(tmp_path)
+    loader = MaleCNSLoader(tmp_path, verify_checksums=False)
+
+    assert loader.instances(np.array([20, 10])) == {10: "R1_L", 20: "EPG(PB08)_L3"}
