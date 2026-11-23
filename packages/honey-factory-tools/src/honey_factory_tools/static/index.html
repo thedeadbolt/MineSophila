@@ -8,6 +8,24 @@
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
+<div class="app">
+<nav class="rail" aria-label="Workspaces">
+  <span class="mark" title="MineSophila viewer" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 2.5 27.7 9.25v13.5L16 29.5 4.3 22.75V9.25z"/><path d="M16 9.5 21.6 12.75v6.5L16 22.5l-5.6-3.25v-6.5z"/></svg></span>
+  <a class="workspace-link" href="#" aria-current="page" title="Scene: honey-factory images and clips">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/><path d="m3.5 15 5-4.5 4 3.5 3-2.5 5 4"/></svg>
+    <span>Scene</span>
+  </a>
+  <span class="workspace-link" aria-disabled="true" title="Eye: fly-vision receptor maps. Not built yet.">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 3.5 2v4L12 12 8.5 10V6zM8.5 10 12 12v4l-3.5 2L5 16v-4zM15.5 10 19 12v4l-3.5 2-3.5-2v-4z"/></svg>
+    <span>Eye</span>
+  </span>
+  <span class="workspace-link" aria-disabled="true" title="Brain: fly-brain runs and activity. Not built yet.">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.5"/><path d="M12 4.5v2M12 17.5v2M4.5 12h2M17.5 12h2"/></svg>
+    <span>Brain</span>
+  </span>
+</nav>
+
+<div class="shell">
 <header class="masthead">
   <div class="identity">
     <h1 id="dataset-id">Dataset inspector</h1>
@@ -51,7 +69,7 @@
       <div class="field-grid">
         <label>Split <select name="split"><option value="">Any</option></select></label>
         <label>Type <select name="type"><option value="">Any</option></select></label>
-        <label>Scene <input name="scene_id" placeholder="s000000" spellcheck="false"></label>
+        <label class="span">Scene <input name="scene_id" placeholder="s000000" spellcheck="false"></label>
       </div>
       <div class="actions"><button class="primary">Apply</button></div>
     </form>
@@ -61,27 +79,31 @@
 
   <main class="viewer" id="clip-view" hidden>
     <nav class="viewer-bar" aria-label="Playback">
-      <div class="stepper">
-        <button id="prev-clip" title="Previous clip">⇤ Clip</button>
-        <button id="clip-back" title="Previous frame (,)">◀︎ Frame</button>
-        <button id="clip-play" class="primary" title="Play or pause (space)">Play</button>
-        <button id="clip-forward" title="Next frame (.)">Frame ▶︎</button>
-        <button id="next-clip" title="Next clip">Clip ⇥</button>
-        <button id="clip-wide" title="Hide the side panels so the player gets the whole window (w)" aria-pressed="false">Wide</button>
+      <div class="title-row">
         <strong id="clip-title"></strong>
+        <button id="clip-wide" class="ghost" title="Hide the side panels so the player gets the whole window (w)" aria-pressed="false">Wide</button>
       </div>
-      <div class="display">
-        <label>Speed <select id="clip-speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
-        <div class="zoom" role="group" aria-label="Zoom">
+      <div class="toolbar">
+        <div class="group transport" role="group" aria-label="Playback">
+          <button id="prev-clip" title="Previous clip" aria-label="Previous clip">⇤</button>
+          <button id="clip-back" title="Previous frame (,)" aria-label="Previous frame">◀︎</button>
+          <button id="clip-play" class="primary" title="Play or pause (space)">Play</button>
+          <button id="clip-forward" title="Next frame (.)" aria-label="Next frame">▶︎</button>
+          <button id="next-clip" title="Next clip" aria-label="Next clip">⇥</button>
+        </div>
+        <label class="field">Speed <select id="clip-speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
+        <span class="sep" aria-hidden="true"></span>
+        <div class="group zoom" role="group" aria-label="Zoom">
           <button type="button" id="clip-zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
           <output id="clip-zoom-level" aria-live="polite">100%</output>
           <button type="button" id="clip-zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
           <button type="button" id="clip-zoom-fit" title="Fit the frame to the player (0)">Fit</button>
           <button type="button" id="clip-zoom-actual" title="One frame pixel per screen pixel">1:1</button>
         </div>
-        <label title="Resolution frames are decoded at; Auto follows the zoom">Detail <select id="clip-detail"><option value="auto" selected>Auto</option><option value="0.25">¼</option><option value="0.5">½</option><option value="1">Full</option></select></label>
-        <label class="check"><input id="clip-overlay" type="checkbox" checked> Mask overlay (o)</label>
-        <label class="check"><input id="clip-box" type="checkbox" checked> Box</label>
+        <label class="field" title="Resolution frames are decoded at; Auto follows the zoom">Detail <select id="clip-detail"><option value="auto" selected>Auto</option><option value="0.25">¼</option><option value="0.5">½</option><option value="1">Full</option></select></label>
+        <span class="sep" aria-hidden="true"></span>
+        <label class="toggle" title="Mask overlay (o)"><input id="clip-overlay" type="checkbox" checked><span>Mask</span></label>
+        <label class="toggle"><input id="clip-box" type="checkbox" checked><span>Box</span></label>
       </div>
     </nav>
     <div id="clip-errors" hidden></div>
@@ -91,8 +113,8 @@
       <output id="clip-frame-label"></output>
     </div>
     <section class="timeline" aria-labelledby="timeline-title">
-      <h2 id="timeline-title">Across the clip <span class="legend" id="timeline-legend"></span></h2>
       <canvas id="clip-timeline" title="Click to jump to a frame"></canvas>
+      <h2 id="timeline-title"><span class="lanes">Top to bottom: honey status, bearing, teacher mode</span> <span class="legend" id="timeline-legend"></span></h2>
     </section>
   </main>
 
@@ -117,28 +139,34 @@
 
   <main class="viewer" id="view" hidden>
     <nav class="viewer-bar" aria-label="Navigation and display">
-      <div class="stepper">
-        <button id="prev-scene" title="Previous scene">⇤ Scene</button>
-        <button id="prev-sample" title="Previous sample (←)">← Sample</button>
+      <div class="title-row">
+        <div class="group" role="group" aria-label="Previous">
+          <button id="prev-scene" title="Previous scene">⇤ Scene</button>
+          <button id="prev-sample" title="Previous sample (←)">← Sample</button>
+        </div>
         <strong id="view-title"></strong>
-        <button id="next-sample" title="Next sample (→)">Sample →</button>
-        <button id="next-scene" title="Next scene">Scene ⇥</button>
+        <div class="group" role="group" aria-label="Next">
+          <button id="next-sample" title="Next sample (→)">Sample →</button>
+          <button id="next-scene" title="Next scene">Scene ⇥</button>
+        </div>
       </div>
-      <div class="display">
+      <div class="toolbar">
         <div class="segmented" role="radiogroup" aria-label="Layer">
           <label title="1"><input type="radio" name="layer" value="rgb" checked><span>RGB</span></label>
           <label title="2"><input type="radio" name="layer" value="mask"><span>Mask</span></label>
           <label title="3"><input type="radio" name="layer" value="overlay"><span>Overlay</span></label>
         </div>
-        <label class="slider">Opacity <input id="opacity" type="range" min="0" max="100" value="55"></label>
-        <div class="zoom" role="group" aria-label="Zoom">
+        <label class="field slider">Opacity <input id="opacity" type="range" min="0" max="100" value="55"></label>
+        <span class="sep" aria-hidden="true"></span>
+        <div class="group zoom" role="group" aria-label="Zoom">
           <button type="button" id="zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
           <output id="zoom-level" aria-live="polite">Fit</output>
           <button type="button" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
           <button type="button" id="zoom-fit" title="Fit the image to the window (0)">Fit</button>
           <button type="button" id="zoom-actual" title="One image pixel per screen pixel">1:1</button>
         </div>
-        <label class="check"><input id="show-box" type="checkbox"> Box and centroid</label>
+        <span class="sep" aria-hidden="true"></span>
+        <label class="toggle"><input id="show-box" type="checkbox"><span>Box and centroid</span></label>
       </div>
     </nav>
     <div id="errors" hidden></div>
@@ -186,6 +214,8 @@
       <pre id="raw-record"></pre>
     </details>
   </aside>
+</div>
+</div>
 </div>
 <script src="/static/app.js"></script>
 <script src="/static/clips.js"></script>
