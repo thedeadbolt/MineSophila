@@ -223,6 +223,8 @@
         <label title="How much of each ommatidium's view is honey"><input type="radio" name="eye-channel" value="honey"><span>Honey</span></label>
       </div>
       <label class="toggle" title="Drag the line on the decoded image to compare it with the camera frame"><input id="eye-compare" type="checkbox"><span>Compare with camera</span></label>
+      <label class="toggle" title="The honey's visible mask over the camera frame and the decoded image"><input id="eye-mask" type="checkbox" checked><span>Mask</span></label>
+      <label class="toggle" title="The honey's bounding box"><input id="eye-box" type="checkbox" checked><span>Box</span></label>
       <label class="field">Gain <select id="eye-gain"><option value="auto" selected>Each frame's peak</option><option value="fixed">Fixed, 0 to 0.75</option></select></label>
       <span id="eye-status" class="status"></span>
     </div>

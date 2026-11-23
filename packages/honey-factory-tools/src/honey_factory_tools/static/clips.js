@@ -259,6 +259,9 @@ function show(index) {
   document.dispatchEvent(new CustomEvent("viewer:frame", { detail: {
     clipId: clip.id, index: clip.index, frame: clip.frames[clip.index], frames: clip.frames,
     record: clip.record, scene: clip.scene, image: clip.rgb[clip.index] || null, playing: clip.playing,
+    mask: clip.masks[clip.index] || null, maskTinted: true,
+    box: clip.frames[clip.index] ? clip.frames[clip.index].target.visible_bbox_xywh : null,
+    size: [clip.record.files.rgb.width, clip.record.files.rgb.height],
   } }));
   if (clip.compose) clip.compose();
 }

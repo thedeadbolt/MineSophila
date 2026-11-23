@@ -54,8 +54,9 @@ async function ready() {
 }
 
 function subject(sel) {
-  if (sel.frame) return { key: `clip:${sel.frame.clipId}:${sel.frame.index}`, path: `/api/eye/clips/${encodeURIComponent(sel.frame.clipId)}/${sel.frame.index}`, image: sel.frame.image, label: `${sel.frame.clipId}, frame ${sel.frame.index}` };
-  if (sel.sample) return { key: `sample:${sel.sample.sample.sample_id}`, path: `/api/eye/samples/${encodeURIComponent(sel.sample.sample.sample_id)}`, image: sel.sample.image, label: sel.sample.sample.sample_id };
+  const extras = (from) => ({ mask: from.mask, maskTinted: from.maskTinted, box: from.box, size: from.size });
+  if (sel.frame) return { key: `clip:${sel.frame.clipId}:${sel.frame.index}`, path: `/api/eye/clips/${encodeURIComponent(sel.frame.clipId)}/${sel.frame.index}`, image: sel.frame.image, label: `${sel.frame.clipId}, frame ${sel.frame.index}`, ...extras(sel.frame) };
+  if (sel.sample) return { key: `sample:${sel.sample.sample.sample_id}`, path: `/api/eye/samples/${encodeURIComponent(sel.sample.sample.sample_id)}`, image: sel.sample.image, label: sel.sample.sample.sample_id, ...extras(sel.sample) };
   return null;
 }
 
@@ -67,6 +68,7 @@ async function load(sel) {
     return;
   }
   eye.camera = wanted.image;
+  eye.overlay = { mask: tinted(wanted.mask, wanted.maskTinted), box: wanted.box, size: wanted.size };
   if (eye.cache.has(wanted.key)) {
     eye.data = eye.cache.get(wanted.key);
     eye.key = wanted.key;
@@ -245,6 +247,46 @@ function marker(context, x, y, r) {
   context.stroke();
 }
 
+/** A mask as a cyan overlay, as Scene draws it. Clip masks arrive tinted; image masks
+    are tinted here once and kept. */
+const tintCache = new WeakMap();
+function tinted(mask, already) {
+  if (!mask || already) return mask || null;
+  if (tintCache.has(mask)) return tintCache.get(mask);
+  const canvas = new OffscreenCanvas(mask.width, mask.height);
+  const context = canvas.getContext("2d");
+  context.drawImage(mask, 0, 0);
+  const pixels = context.getImageData(0, 0, mask.width, mask.height);
+  for (let p = 0; p < pixels.data.length; p += 4) {
+    const on = pixels.data[p] > 127;
+    pixels.data[p] = 24;
+    pixels.data[p + 1] = 200;
+    pixels.data[p + 2] = 240;
+    pixels.data[p + 3] = on ? 150 : 0;
+  }
+  context.putImageData(pixels, 0, 0);
+  tintCache.set(mask, canvas);
+  return canvas;
+}
+
+/** The honey's mask and box over a panorama drawn in ``box``. */
+function drawHoney(context, box) {
+  const overlay = eye.overlay;
+  if (!overlay) return;
+  if ($("eye-mask").checked && overlay.mask) {
+    context.imageSmoothingEnabled = false;
+    context.drawImage(overlay.mask, box.x, box.y, box.w, box.h);
+  }
+  if ($("eye-box").checked && overlay.box && overlay.size) {
+    const [bx, by, bw, bh] = overlay.box;
+    const s = box.w / overlay.size[0];
+    const pad = 3 * devicePixelRatio;
+    context.strokeStyle = cssVar("--honey");
+    context.lineWidth = 1.5 * devicePixelRatio;
+    context.strokeRect(box.x + bx * s - pad, box.y + by * s - pad, bw * s + 2 * pad, bh * s + 2 * pad);
+  }
+}
+
 function drawCamera() {
   const canvas = $("eye-camera");
   const context = fitCanvas(canvas);
@@ -255,6 +297,7 @@ function drawCamera() {
     context.imageSmoothingEnabled = true;
     context.drawImage(eye.camera, box.x, box.y, box.w, box.h);
   }
+  drawHoney(context, box);
   if (eye.hover !== null && eye.layout) {
     const [fx, fy] = panoramaXY(eye.hover);
     marker(context, box.x + fx * box.w, box.y + fy * box.h, 2.6 / 310 * box.w + 3);
@@ -317,6 +360,7 @@ function drawDecoded() {
     const [fx, fy] = panoramaXY(eye.hover);
     marker(context, box.x + fx * box.w, box.y + fy * box.h, 2.6 / 310 * box.w + 3);
   }
+  drawHoney(context, box);
   eye.decodedBox = box;
 }
 
@@ -673,6 +717,7 @@ $("eye-hex").addEventListener("pointermove", (event) => {
 }
 for (const id of ["eye-decoded", "eye-camera", "eye-hex", "eye-globe"]) $(id).addEventListener("pointerleave", () => setHover(null));
 for (const input of document.querySelectorAll('input[name="eye-channel"], #eye-gain')) input.addEventListener("input", drawAll);
+for (const id of ["eye-mask", "eye-box"]) $(id).addEventListener("input", () => eye.data && (drawCamera(), drawDecoded()));
 for (const input of document.querySelectorAll('input[name="eye-pigments"]')) input.addEventListener("input", () => eye.data && drawSpectra());
 new ResizeObserver(() => eye.active && drawAll()).observe($("eye-panel"));
 

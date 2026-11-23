@@ -292,7 +292,12 @@ async function openSample(sampleId) {
     state.images = { rgb, mask };
   }
   draw();
-  document.dispatchEvent(new CustomEvent("viewer:sample", { detail: { sample, scene: detail.scene, image: state.images.rgb || null } }));
+  document.dispatchEvent(new CustomEvent("viewer:sample", { detail: {
+    sample, scene: detail.scene, image: state.images.rgb || null,
+    mask: state.images.mask || null, maskTinted: false,
+    box: sample.target.visible_bbox_xywh,
+    size: [sample.files.rgb.width, sample.files.rgb.height],
+  } }));
 }
 
 function history(reviews) {
