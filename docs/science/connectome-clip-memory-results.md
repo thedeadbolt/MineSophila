@@ -2,8 +2,8 @@
 
 Recorded 2026-11-22, updated 2026-11-23. The first test of target-direction memory inside the
 connectome, against the recurrent (GRU) control, on clips where the honey is hidden for long
-stretches. Results are interim: several central-complex rows are still single seeds. Level 4 and a
-weaker self-motion input are still running.
+stretches. Results are interim: several central-complex rows are still single seeds. The level-4
+central-complex runs are still training.
 
 ## Data
 
@@ -50,6 +50,8 @@ Adding yaw rate to the PEN neurons (`self_motion_input: "pen_yaw"`, seed 0):
 |---|---:|---:|---:|---:|
 | Compass readout + self-motion (seeds 0–1) | 72.2% | 34.2° | 83.0° (81.0, 85.0) | 43.4% |
 | Projection readout + self-motion (seeds 0–1) | 63.0% | 26.5° | 50.9° (49.1, 52.6) | 68.7% |
+| Compass readout + weak self-motion (0.002) | 76.0% | 31.1° | 77.3° | 58.9% |
+| Projection readout + weak self-motion (0.002) | 64.0% | 26.1° | 49.0° | 67.6% |
 
 ## Level 3 (batch B, slice 1), test split
 
@@ -62,6 +64,17 @@ and harder for every model.
 | GRU + egocentric motion | 74.8 ± 2.2% | **23.9 ± 1.5°** | 65.3 ± 0.6° | 84.2 ± 4.7% |
 | Central complex, compass readout | **81.4%** | 52.0° | 78.1° | 73.6% |
 | Central complex, projection readout | 71.3% | 37.3° | **51.1°** | 72.7% |
+
+## Level 4 (batch B), test split
+
+600 clips from 150 scenes; the test split has 6,340 occluded frames with honey present. Occluded
+bearing is close to visible bearing for the GRUs, so these occlusions are easier to bridge than
+level 3's. The central-complex runs are still training.
+
+| Model | Test balanced accuracy | Visible bearing | Occluded bearing | Occluded recall |
+|---|---:|---:|---:|---:|
+| GRU, vision only | 73.2 ± 1.6% | 23.1 ± 0.4° | 23.0 ± 0.5° | 69.2 ± 7.0% |
+| GRU + egocentric motion | **81.6 ± 2.4%** | **17.2 ± 0.6°** | **20.1 ± 0.5°** | 73.3 ± 2.7% |
 
 ## Level 2 (batch A)
 
@@ -84,13 +97,15 @@ and harder for every model.
   against about 65° for both GRUs. Egocentric motion no longer helps the GRU there. Visible
   bearing is worse than the GRUs (37.3° against 23.9–29.6°), so the circuit trades visible
   precision for memory.
-- **Self-motion as wired did not help.** It made the compass readout worse (81.0° against
-  71.6°) and left the projection readout unchanged. Yaw rate averages 3.7°/tick, so at scale 0.1
-  the PEN drive (about 0.37) is roughly 50 times the mean visual port value (about 0.008). The
-  likely failure is that self-motion swamps the compass instead of rotating its bump. The
-  per-type gains are bounded at 4, so training cannot scale it down far enough.
-- **Next:** a much smaller self-motion scale (about 0.002, comparable with visual drive), batch-B seeds
-  for the projection readout, and level 4.
+- **Self-motion through PEN does not help at either scale.** At scale 0.1, yaw drive (mean 3.7°/tick
+  × 0.1 ≈ 0.37) is about 50 times the mean visual port value (about 0.008), and the compass readout
+  got worse (83.0° over two seeds, against 71.6°). At scale 0.002, matched to visual drive, it is
+  77.3°: still no better than no self-motion. The projection readout is unchanged at either scale.
+  The drive's strength is therefore not the problem. Either the compass carries no usable heading
+  bump under these trained gains, or the readout cannot decode one. That should be checked
+  directly from EPG activity before any further self-motion runs.
+- **Next:** level-4 central-complex results, a direct check for an EPG bump, and batch-B seeds for
+  the projection readout.
 
 ## Artifacts
 
@@ -100,6 +115,8 @@ Under `/mnt/fastvault/minesophila/derived/brain-localization-v3/`:
 - `recurrent-level{2,3}-occ-a-{control,context}-s{0,1,2}.{report.json,checkpoint.npz}`
 - `connectome-clips-level{2,3}-occ-a-central-complex-{compass,projection}-v1.{report.json,checkpoint.npz}`
 - `connectome-clips-level3-occ-a-central-complex-{compass,projection}-self-motion-v1.*`
+- `connectome-clips-level3-occ-a-central-complex-{compass,projection}-self-motion-weak-v1.*`
+- `temporal-level4-occ-b-{tick,ports}-v1.fly-brain.npz`, `recurrent-level4-occ-b-{control,context}-s{0,1,2}.*`
 - `temporal-level3-occ-b-s1-{tick,ports}-v1.fly-brain.npz`, `recurrent-level3-occ-b-s1-*`,
   `connectome-clips-level3-occ-b-s1-central-complex-{compass,projection}-v1.*`
 
