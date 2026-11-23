@@ -99,6 +99,24 @@ class ConnectomeClipModel:
         raw = np.asarray(jax.device_get(apply(parameters, jnp.asarray(values), jnp.asarray(mask))))
         return _prediction(raw, mask)
 
+    def activity(
+        self,
+        parameters: BrainParameters,
+        port_values: NDArray[np.float32],
+        time_mask: NDArray[np.bool_],
+        neuron_indexes: NDArray[np.integer],
+    ) -> NDArray[np.float32]:
+        """State of ``neuron_indexes`` after each frame, shape (B, T, len(neuron_indexes))."""
+        values, mask = self._check(port_values, time_mask)
+        indexes = np.asarray(neuron_indexes, dtype=np.int32)
+        if indexes.ndim != 1 or np.any((indexes < 0) | (indexes >= self.brain.neuron_ids.size)):
+            raise ValueError("neuron indexes must name compiled neurons")
+        collect = jax.jit(partial(_neuron_activity, model=self, indexes=indexes))
+        return np.asarray(
+            jax.device_get(collect(parameters, jnp.asarray(values), jnp.asarray(mask))),
+            dtype=np.float32,
+        )
+
     def with_readout_normalization(
         self,
         parameters: BrainParameters,
@@ -237,9 +255,13 @@ def _frames(
     mask: jax.Array,
     *,
     model: ConnectomeClipModel,
+    indexes: NDArray[np.int32] | None = None,
 ) -> tuple[BrainState, jax.Array]:
-    """Run frames of shape (B, T, F); return the final state and readout activity (B, T, R)."""
-    readout = jnp.asarray(model.brain.readout_indexes)
+    """Run frames of shape (B, T, F); return the final state and activity (B, T, R).
+
+    The activity is of the readout neurons unless ``indexes`` names others.
+    """
+    readout = jnp.asarray(model.brain.readout_indexes if indexes is None else indexes)
 
     def frame(current: BrainState, item: tuple[jax.Array, jax.Array]):
         frame_values, active = item
@@ -283,6 +305,25 @@ def _readout_activity(
 ) -> jax.Array:
     _, activity = _frames(
         parameters, model.brain.initialize_state(values.shape[0]), values, mask, model=model
+    )
+    return activity
+
+
+def _neuron_activity(
+    parameters: BrainParameters,
+    values: jax.Array,
+    mask: jax.Array,
+    *,
+    model: ConnectomeClipModel,
+    indexes: NDArray[np.int32],
+) -> jax.Array:
+    _, activity = _frames(
+        _effective_parameters(parameters, model),
+        model.brain.initialize_state(values.shape[0]),
+        values,
+        mask,
+        model=model,
+        indexes=indexes,
     )
     return activity
 

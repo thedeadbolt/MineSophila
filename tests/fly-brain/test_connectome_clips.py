@@ -179,3 +179,21 @@ def test_self_motion_scale_is_configurable_and_positive() -> None:
     for bad in (0.0, -1.0, float("nan")):
         with pytest.raises(ValueError, match="self_motion_scale"):
             ConnectomeModelConfig(self_motion_scale=bad)
+
+
+def test_clip_activity_returns_chosen_neurons_per_frame() -> None:
+    model = ConnectomeClipModel(compiled_brain(), transitions_per_frame=2)
+    parameters = model.initialize(seed=1)
+    batch = clips()
+    readout = model.brain.readout_indexes
+
+    activity = model.activity(parameters, batch.features, batch.time_mask, readout)
+    raw = activity @ np.asarray(parameters.readout_weights) + np.asarray(parameters.readout_bias)
+    prediction = model.run(parameters, batch.features, batch.time_mask)
+
+    assert activity.shape == (*batch.time_mask.shape, readout.size)
+    np.testing.assert_allclose(
+        1 / (1 + np.exp(-raw[..., 0])), prediction.presence_probability, rtol=1e-5
+    )
+    with pytest.raises(ValueError, match="neuron"):
+        model.activity(parameters, batch.features, batch.time_mask, np.array([99]))

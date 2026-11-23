@@ -37,9 +37,17 @@ from fly_brain.connectome import (
     build_receptor_input_map,
     central_complex_cell_types,
 )
-from fly_brain.connectome.central_complex import COMPASS_TYPES
+from fly_brain.connectome.central_complex import (
+    ANTERIOR_VISUAL_INPUT_TYPES,
+    COMPASS_TYPES,
+    RING_NEURON_TYPES,
+    STEERING_TYPES,
+    TUBERCLE_BULB_TYPES,
+)
 from fly_brain.connectome.compass import (
     CompassOperatingPoint,
+    bump_metrics,
+    compass_modes,
     pb_glomerulus_angle,
     ring_attractor_gains,
 )
@@ -194,6 +202,17 @@ def _parser() -> argparse.ArgumentParser:
     clip_connectome.add_argument("--initial-checkpoint", type=Path)
     clip_connectome.add_argument("--report", required=True, type=Path)
     clip_connectome.add_argument("--checkpoint", required=True, type=Path)
+    compass_probe = commands.add_parser(
+        "probe-compass",
+        help="measure compass activity, eigenmodes and EPG bump tracking of a clip checkpoint",
+    )
+    compass_probe.add_argument("cache", type=Path)
+    compass_probe.add_argument("--layout-cache", required=True, type=Path)
+    compass_probe.add_argument("--connectome-root", required=True, type=Path)
+    compass_probe.add_argument("--config", required=True, type=Path)
+    compass_probe.add_argument("--checkpoint", required=True, type=Path)
+    compass_probe.add_argument("--split", default="test")
+    compass_probe.add_argument("--report", required=True, type=Path)
     temporal = commands.add_parser("train-recurrent")
     temporal.add_argument("cache", type=Path)
     temporal.add_argument("--config", required=True, type=Path)
@@ -1650,6 +1669,89 @@ PEN_TYPES = ("PEN_a(PEN1)", "PEN_b(PEN2)")
 YAW_CONTEXT_INDEX = 3  # yaw_rate in EGOCENTRIC_MOTION_SCHEMA
 
 
+def _compass_layout(
+    brain: CompiledBrain, graph: ConnectomeGraph, connectome_root: Path
+) -> tuple[NDArray[np.str_], NDArray[np.float64]]:
+    """Cell type per compiled neuron, and the PB glomerulus angle of each EPG (NaN elsewhere)."""
+    neurons = graph.neurons
+    types = neurons.cell_types[np.searchsorted(neurons.neuron_ids, brain.neuron_ids)]
+    epg = np.flatnonzero(types == "EPG")
+    if epg.size == 0:
+        raise ValueError("the compiled brain has no EPG neurons")
+    instances = MaleCNSLoader(connectome_root, verify_checksums=False).instances(
+        brain.neuron_ids[epg]
+    )
+    angles = np.full(types.size, np.nan)
+    angles[epg] = [pb_glomerulus_angle(instances[int(brain.neuron_ids[i])]) for i in epg]
+    return types, angles
+
+
+def _probe_compass(args: argparse.Namespace) -> int:
+    model_config, transitions, _ = _load_connectome_clip_config(args.config)
+    layout = _cached_sensor_layout([CachedStillDataset.load(args.layout_cache)])
+    graph, _, _, _, compiler = _build_connectome(layout, args.connectome_root, model_config)
+    model = ConnectomeClipModel(compiler.compile(), transitions)
+    brain = model.brain
+    values, _ = load_checkpoint(args.checkpoint)
+    parameters = BrainParameters(**cast(Any, values))
+    types, angles = _compass_layout(brain, graph, args.connectome_root)
+    dataset = CachedClipDataset.load(args.cache)
+    batch = _connectome_clip_batch(dataset, args.split, model_config, graph)
+    context = dataset.batch(args.split, include_context=True).features
+    yaw = context[:, :, context.shape[2] - dataset.motion_context.shape[1] + YAW_CONTEXT_INDEX]
+    stages = {
+        "anterior_visual_inputs": ANTERIOR_VISUAL_INPUT_TYPES,
+        "tubercle_bulb": TUBERCLE_BULB_TYPES,
+        "ring_neurons": RING_NEURON_TYPES,
+        **{cell_type: (cell_type,) for cell_type in COMPASS_TYPES},
+        "steering": STEERING_TYPES,
+    }
+    groups = {name: np.flatnonzero(np.isin(types, members)) for name, members in stages.items()}
+    watched = np.concatenate(list(groups.values()))
+    activity = model.activity(parameters, batch.features, batch.time_mask, watched)
+    mask = batch.time_mask
+    stage_activity: dict[str, object] = {}
+    start = 0
+    for name, indexes in groups.items():
+        part = activity[:, :, start : start + indexes.size][mask]
+        start += indexes.size
+        stage_activity[name] = {
+            "neurons": int(indexes.size),
+            "mean_abs": float(np.abs(part).mean()) if part.size else None,
+        }
+    epg = np.flatnonzero(types[watched] == "EPG")
+    epg_activity = activity[:, :, epg]
+    epg_angles = angles[watched[epg]]
+    occluded = dataset.interval_mask(args.split, "occluded") & mask
+    maximum = brain.parameter_policy.maximum_edge_gain
+    raw = np.asarray(parameters.edge_gain, dtype=np.float64)
+    gains = maximum / (1.0 + np.exp(-raw)) if maximum is not None else raw
+    modes = compass_modes(
+        brain.source_indexes,
+        brain.target_indexes,
+        brain.anatomical_weights * gains[brain.edge_group_indexes],
+        np.isin(types, COMPASS_TYPES),
+        angles,
+        count=6,
+    )
+    report = {
+        "format": "fly-brain-compass-probe-v1",
+        "git_revision": _git_revision(),
+        "checkpoint": str(args.checkpoint),
+        "checkpoint_sha256": _file_sha256(args.checkpoint),
+        "config": str(args.config),
+        "split": args.split,
+        "stage_activity": stage_activity,
+        "compass_modes": [asdict(mode) for mode in modes],
+        "bump": bump_metrics(epg_activity, epg_angles, yaw, mask),
+        "bump_occluded": bump_metrics(epg_activity, epg_angles, yaw, occluded),
+    }
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    print(json.dumps({"bump": report["bump"], "bump_occluded": report["bump_occluded"]}))
+    return 0
+
+
 def _compass_operating_point(
     parameters: BrainParameters,
     brain: CompiledBrain,
@@ -1661,15 +1763,8 @@ def _compass_operating_point(
     maximum = brain.parameter_policy.maximum_edge_gain
     if maximum is None or brain.parameter_policy.edge_gain_mode != "cell_type_pair":
         raise ValueError("the compass operating point needs bounded cell-type-pair gains")
-    neurons = graph.neurons
-    types = neurons.cell_types[np.searchsorted(neurons.neuron_ids, brain.neuron_ids)]
+    types, angles = _compass_layout(brain, graph, connectome_root)
     members = np.isin(types, COMPASS_TYPES)
-    epg = np.flatnonzero(types == "EPG")
-    instances = MaleCNSLoader(connectome_root, verify_checksums=False).instances(
-        brain.neuron_ids[epg]
-    )
-    angles = np.full(types.size, np.nan)
-    angles[epg] = [pb_glomerulus_angle(instances[int(brain.neuron_ids[i])]) for i in epg]
     raw = np.asarray(parameters.edge_gain, dtype=np.float64)
     point = CompassOperatingPoint(tonic_bias=config.compass_tonic_bias)
     result = ring_attractor_gains(
@@ -2110,6 +2205,8 @@ def main(argv: list[str] | None = None) -> int:
             return _prepare_port_clips(args)
         if args.command == "train-connectome-clips":
             return _train_connectome_clips(args)
+        if args.command == "probe-compass":
+            return _probe_compass(args)
         if args.command == "train-recurrent":
             return _train_recurrent(args)
         if args.command == "train-recurrent-actions":
