@@ -2,8 +2,7 @@
 
 Recorded 2026-11-22, updated 2026-11-23. The first test of target-direction memory inside the
 connectome, against the recurrent (GRU) control, on clips where the honey is hidden for long
-stretches. Results are interim: several central-complex rows are still single seeds. The level-4
-central-complex runs are still training.
+stretches. Results are interim: several central-complex rows are still single seeds.
 
 ## Data
 
@@ -69,12 +68,16 @@ and harder for every model.
 
 600 clips from 150 scenes; the test split has 6,340 occluded frames with honey present. Occluded
 bearing is close to visible bearing for the GRUs, so these occlusions are easier to bridge than
-level 3's. The central-complex runs are still training.
+level 3's.
+Here the GRUs lead on every measure. This fits the level-3 pattern: the circuit's advantage
+appears only where bridging the occlusion matters more than visible precision.
 
 | Model | Test balanced accuracy | Visible bearing | Occluded bearing | Occluded recall |
 |---|---:|---:|---:|---:|
 | GRU, vision only | 73.2 ± 1.6% | 23.1 ± 0.4° | 23.0 ± 0.5° | 69.2 ± 7.0% |
 | GRU + egocentric motion | **81.6 ± 2.4%** | **17.2 ± 0.6°** | **20.1 ± 0.5°** | 73.3 ± 2.7% |
+| Central complex, compass readout | 75.2% | 43.9° | 39.3° | 72.5% |
+| Central complex, projection readout | 67.9% | 30.6° | 27.5° | 71.8% |
 
 ## Level 2 (batch A)
 
@@ -118,7 +121,7 @@ level 3's. The central-complex runs are still training.
   - Ring-neuron input to the compass is inhibitory, with no tonic activity to shape.
   - The linearised compass loop has spectral radius 0.54, so it cannot sustain activity.
 - **Next:** set the compass operating point (plan, 9h): loop gain near 1, tonic drive, and a bump
-  test before localisation. Then level-4 central-complex results and batch-B seeds.
+  test before localisation. Then batch-B seeds.
 
 ## Artifacts
 
@@ -129,7 +132,8 @@ Under `/mnt/fastvault/minesophila/derived/brain-localization-v3/`:
 - `connectome-clips-level{2,3}-occ-a-central-complex-{compass,projection}-v1.{report.json,checkpoint.npz}`
 - `connectome-clips-level3-occ-a-central-complex-{compass,projection}-self-motion-v1.*`
 - `connectome-clips-level3-occ-a-central-complex-{compass,projection}-self-motion-weak-v1.*`
-- `temporal-level4-occ-b-{tick,ports}-v1.fly-brain.npz`, `recurrent-level4-occ-b-{control,context}-s{0,1,2}.*`
+- `temporal-level4-occ-b-{tick,ports}-v1.fly-brain.npz`, `recurrent-level4-occ-b-{control,context}-s{0,1,2}.*`,
+  `connectome-clips-level4-occ-b-central-complex-{compass,projection}-v1.*`
 - `temporal-level3-occ-b-s1-{tick,ports}-v1.fly-brain.npz`, `recurrent-level3-occ-b-s1-*`,
   `connectome-clips-level3-occ-b-s1-central-complex-{compass,projection}-v1.*`
 
