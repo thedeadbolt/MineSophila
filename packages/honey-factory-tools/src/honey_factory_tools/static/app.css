@@ -625,3 +625,19 @@ body:not(.clips) #toggle-timeline { display: none; }
 #brain-circuit-svg .band-head.absent { opacity: 0.45; }
 #brain-circuit-svg .clabel { stroke: var(--surface); }
 #eye-spectra { height: 12.5rem; }
+
+/* Timeline hover: a thin line at the pointer and a tip with every lane's value there. */
+.timeline-wrap { position: relative; }
+.timeline-wrap.hovering::after {
+  content: ""; position: absolute; top: 1px; bottom: 1px; left: var(--hover); width: 1px;
+  background: rgb(255 255 255 / 0.55); pointer-events: none;
+}
+.timeline-tip { bottom: 100%; min-width: 15rem; max-width: 22rem; gap: 0.25rem; }
+.timeline-tip .tip-head { color: #e8e6e1; font: 600 0.74rem var(--mono); margin-bottom: 0.1rem; }
+.tip-row { display: grid; grid-template-columns: 0.7rem 5.5rem minmax(0, 1fr); gap: 0.4rem; align-items: center; color: #949aa3; }
+.tip-row.here { color: #e8e6e1; }
+.tip-row.here .tip-name { font-weight: 600; }
+.tip-row .tip-value { color: #c9ccd1; }
+.tip-row.here .tip-value { color: #fff; }
+.swatch { width: 0.65rem; height: 0.65rem; border-radius: 2px; display: inline-block; }
+.swatch.none { border: 1px solid #2d3239; }

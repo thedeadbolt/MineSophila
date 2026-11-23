@@ -405,6 +405,13 @@ function drawTimeline() {
   const frames = clip.frames;
   if (frames.length === 0) return;
   const step = width / frames.length;
+  // Lane bounds in device pixels, for reading the lane under the pointer.
+  clip.lanes = {
+    status: [0, lane],
+    bearing: [lane, lane + bearing + 4],
+    mode: [lane + bearing + 4, lane + bearing + 4 + lane],
+    turn: [turnTop - Math.round(4 * devicePixelRatio), turnTop + lane],
+  };
   frames.forEach((frame, n) => {
     const x = n * step;
     const labels = tickLabelsAt(n);
@@ -655,6 +662,63 @@ $("clip-filters").addEventListener("submit", (event) => {
   event.preventDefault();
   listClips(true).catch(report);
 });
+/** What every lane says at one frame, for the timeline's hover tip. */
+function describeTimeline(n, laneName) {
+  const frame = clip.frames[n];
+  const labels = tickLabelsAt(n);
+  const swatch = (colour) => {
+    const dot = element("i", null, "swatch");
+    dot.style.background = colour;
+    return dot;
+  };
+  const row = (lane, colour, name, value) => {
+    const line = element("div", null, `tip-row${lane === laneName ? " here" : ""}`);
+    line.append(colour ? swatch(colour) : element("i", null, "swatch none"), element("span", name, "tip-name"), element("span", value, "tip-value"));
+    return line;
+  };
+  const target = frame.target;
+  const status = target.target_status;
+  const bearing = frame.bearing;
+  const mode = labels && labels.teacher_mode;
+  const driver = labels && labels.driver;
+  const turn = labels && labels.teacher ? labels.teacher.turn_rate : null;
+  const rows = [
+    element("div", `Frame ${frame.frame} · tick ${frame.tick}${frame.sub_frame ? `.${frame.sub_frame}` : ""}`, "tip-head"),
+    row("status", STATUS_COLOURS[status], "Honey", `${humane(status)}${target.visible_pixels ? `, ${number(target.visible_pixels)} px` : ""}`),
+    row("bearing", "#e0a100", "Bearing", bearing ? `${number(bearing.azimuth_degrees, 1)}° ${bearing.azimuth_degrees >= 0 ? "right" : "left"}, ${number(bearing.distance_blocks, 1)} blocks` : "not in view"),
+    row("mode", mode ? MODE_COLOURS[mode] : null, "Teacher", mode ? `${mode}${driver && driver !== "teacher" ? `, driven by ${DRIVER_NAMES[driver] || driver}` : ""}` : "no label"),
+    row("turn", turn ? "rgba(24, 200, 240, 0.85)" : null, "Teacher turn", turn === null ? "—" : turn === 0 ? "straight" : `${number(Math.abs(turn), 1)}°/tick ${turn > 0 ? "right" : "left"}`),
+  ];
+  if (labels && labels.drifting) rows.push(row("drift", "rgba(224, 161, 0, 0.45)", "Drifting", "the amber band: drift added to the teacher's command"));
+  return rows;
+}
+
+{
+  const canvas = $("clip-timeline");
+  const tip = $("timeline-tip");
+  canvas.addEventListener("pointermove", (event) => {
+    if (!clip.frames.length || !clip.lanes) return;
+    const box = canvas.getBoundingClientRect();
+    const fx = (event.clientX - box.left) / box.width;
+    const py = (event.clientY - box.top) * devicePixelRatio;
+    const n = Math.max(0, Math.min(clip.frames.length - 1, Math.floor(fx * clip.frames.length)));
+    const laneName = Object.entries(clip.lanes).find(([, [a, b]]) => py >= a && py < b)?.[0] ?? null;
+    tip.replaceChildren(...describeTimeline(n, laneName));
+    tip.hidden = false;
+    const wrap = canvas.parentElement.getBoundingClientRect();
+    const left = event.clientX - wrap.left;
+    tip.style.left = `${Math.min(wrap.width - tip.offsetWidth - 4, Math.max(4, left + 14))}px`;
+    tip.style.bottom = `${wrap.height + 6}px`;
+    canvas.style.setProperty("--hover", `${fx * 100}%`);
+    canvas.parentElement.classList.add("hovering");
+    canvas.parentElement.style.setProperty("--hover", `${left}px`);
+  });
+  canvas.addEventListener("pointerleave", () => {
+    tip.hidden = true;
+    canvas.parentElement.classList.remove("hovering");
+  });
+}
+
 $("clip-timeline").addEventListener("click", (event) => {
   const box = event.target.getBoundingClientRect();
   if (clip.frames.length === 0) return;

@@ -140,7 +140,10 @@
       <output id="clip-frame-label"></output>
     </div>
     <section class="timeline" aria-labelledby="timeline-title">
-      <canvas id="clip-timeline" title="Click to jump to a frame"></canvas>
+      <div class="timeline-wrap">
+        <canvas id="clip-timeline" aria-label="Clip timeline: point at it to read a frame, click to jump there"></canvas>
+        <div class="tip timeline-tip" id="timeline-tip" hidden></div>
+      </div>
       <h2 id="timeline-title"><span class="lanes">Top to bottom: honey status, bearing, teacher mode, teacher turn (up is right)</span> <span class="legend" id="timeline-legend"></span></h2>
     </section>
   </main>
