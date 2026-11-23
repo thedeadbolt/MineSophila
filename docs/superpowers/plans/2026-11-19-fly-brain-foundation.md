@@ -687,6 +687,34 @@ Then rerun the compass and self-motion clip experiments against the same GRU con
 3. Score each step against the dead-reckoning ceiling as well as the GRUs. Batch A is likely
    dominated by translation, so batch B is the primary test.
 
+**9i progress, 2026-11-23 (step 1, integrator diagnosis):**
+
+- Untrained ring compass, batch-B test clips, PEN yaw drive:
+  - Zeroing visual input leaves EPG activity unchanged, so vision does not reach the bump.
+  - Varying the self-motion scale (0.02–0.2), the PEN sign, or driving PEN_a or PEN_b alone
+    leaves the per-frame phase-yaw corr at about 0.3–0.37.
+- **The PB angle mapping was mirrored on the left (fixed in 3e8ffc6).** Heading runs along the
+  bridge, L8..L1 then R1..R8, so Ln and R(9-n) share a heading. The MaleCNS Delta7 instances
+  (`L4R5`, `L3R6`, `L1L9R8`) confirm this. The old mapping gave Ln and Rn the same angle, which
+  scrambled the first-harmonic score the ring search optimises, so its best "harmonic" modes
+  were only 63% first harmonic. With the fix, the search reaches a harmonic pair at 1.01 with
+  every other mode at most 0.65. The 9h ring-compass runs used the mirrored mapping.
+- **Constant-turn test** (bump seeded at 8 headings through a PEN kick, then turn rates from −8
+  to +8°/tick; scratchpad `threshold_prototype.py`):
+  - The seed works: during the kick the bump sits at the seeded heading (strength 0.6–0.74).
+  - **The bump does not persist.** Once the kick stops it fades (0.64 to 0.36) and drifts within
+    about 30 frames to a fixed resting pattern near 175°. The 1.01 eigenvalue is too marginal
+    once tanh saturation and the tonic offset reduce the effective slope.
+  - Turning shifts the phase by an offset that grows with the rate, then stops (under 1°/frame).
+  - A smooth threshold on PEN release (θ 0.05–0.1) changes neither result. PEN conjunction
+    cannot rotate a bump that does not persist.
+- **Cause, as understood so far.** Integration needs two things: a self-sustaining bump, and PEN
+  neurons gated by bump × turn. Graded signed release (ADR 0027) is linear at rest, so the
+  second also needs a threshold. EPG and PEN spike in the fly. Persistence comes first.
+- **Next:** stronger harmonic targets and no tonic bias, judged by persistence. Then the PEN
+  threshold (ADR 0028 if it works), then FC2 (FC2A/B/C, 92 neurons in MaleCNS) as the goal
+  memory read by PFL3.
+
 #### Planned for the action head: outcome-weighted imitation (proposed 2026-11-22)
 
 The teacher is imperfect on purpose. Drift and recovery give state coverage beyond perfect paths,
