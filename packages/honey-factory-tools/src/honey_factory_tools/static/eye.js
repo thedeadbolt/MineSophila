@@ -9,6 +9,8 @@
 
 const DECODE_SIZE = [620, 320];
 const FIXED_PEAK = 0.75;
+// Which photoreceptor carries each rhodopsin (pale and yellow ommatidia split R7 and R8).
+const RHODOPSIN_RECEPTORS = { Rh1: "R1–6", Rh3: "R7 pale", Rh4: "R7 yellow", Rh5: "R8 pale", Rh6: "R8 yellow" };
 const RHODOPSIN_COLOURS = { Rh1: "#c9ccd1", Rh3: "#7a2fe0", Rh4: "#b48cff", Rh5: "#3d8bfd", Rh6: "#1e9e3c" };
 const BAND_COLOURS = { R: "rgb(230 60 60 / 0.16)", G: "rgb(60 200 90 / 0.16)", B: "rgb(70 120 255 / 0.16)" };
 const eye = {
@@ -475,7 +477,7 @@ function drawSpectra() {
   const spectra = eye.layout.spectra;
   const mode = document.querySelector('input[name="eye-pigments"]:checked').value;
   const ratio = devicePixelRatio;
-  const pad = { l: 6 * ratio, r: 6 * ratio, t: 6 * ratio, b: 18 * ratio };
+  const pad = { l: 6 * ratio, r: 6 * ratio, t: 62 * ratio, b: 18 * ratio };
   const w = canvas.width - pad.l - pad.r;
   const h = canvas.height - pad.t - pad.b;
   const wl = spectra.wavelengths;
@@ -488,6 +490,13 @@ function drawSpectra() {
     values.forEach((v, k) => context.lineTo(x(wl[k]), y(v)));
     context.lineTo(x(wl[wl.length - 1]), y(0));
     context.fill();
+    // Name each camera band just above the axis at its peak.
+    const peak = values.indexOf(Math.max(...values));
+    context.fillStyle = BAND_COLOURS[band].replace(/\/ 0\.16\)/, "/ 0.85)");
+    context.font = `600 ${9.5 * ratio}px ${cssVar("--sans")}`;
+    context.textAlign = "center";
+    context.fillText(band, x(wl[peak]), y(0) - 3 * ratio);
+    context.textAlign = "start";
   }
   context.lineWidth = 1.6 * ratio;
   for (const [opsin, values] of Object.entries(spectra.modes[mode])) {
@@ -496,6 +505,43 @@ function drawSpectra() {
     values.forEach((v, k) => (k ? context.lineTo(x(wl[k]), y(v)) : context.moveTo(x(wl[k]), y(v))));
     context.stroke();
   }
+  // Label every curve at its peak: name and peak wavelength, stacked in rows where they
+  // would collide. Ticks first, then the labels on chips, so text is never crossed.
+  const peaks = Object.entries(spectra.modes[mode]).map(([opsin, values]) => {
+    const k = values.indexOf(Math.max(...values));
+    return { opsin, nm: wl[k], px: x(wl[k]) };
+  }).sort((a, b) => a.px - b.px);
+  context.font = `600 ${10 * ratio}px ${cssVar("--mono")}`;
+  const rows = [];
+  for (const peak of peaks) {
+    peak.text = `${peak.opsin} ${peak.nm}`;
+    peak.width = context.measureText(peak.text).width + 8 * ratio;
+    peak.cx = Math.max(peak.width / 2, Math.min(canvas.width - peak.width / 2, peak.px));
+    let row = 0;
+    while (rows[row] !== undefined && peak.cx - peak.width / 2 < rows[row]) row += 1;
+    rows[row] = peak.cx + peak.width / 2;
+    peak.ty = (11 + row * 13) * ratio;
+  }
+  for (const peak of peaks) {
+    context.strokeStyle = RHODOPSIN_COLOURS[peak.opsin];
+    context.globalAlpha = 0.45;
+    context.lineWidth = ratio;
+    context.beginPath();
+    context.moveTo(peak.px, peak.ty);
+    context.lineTo(peak.px, y(1) - 1 * ratio);
+    context.stroke();
+  }
+  context.globalAlpha = 1;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  for (const peak of peaks) {
+    context.fillStyle = cssVar("--surface");
+    context.fillRect(peak.cx - peak.width / 2, peak.ty - 6 * ratio, peak.width, 12 * ratio);
+    context.fillStyle = RHODOPSIN_COLOURS[peak.opsin];
+    context.fillText(peak.text, peak.cx, peak.ty);
+  }
+  context.textAlign = "start";
+  context.textBaseline = "alphabetic";
   context.fillStyle = cssVar("--muted");
   context.font = `${10.5 * ratio}px ${cssVar("--mono")}`;
   for (const nm of [300, 400, 500, 600, 700]) {
@@ -503,13 +549,13 @@ function drawSpectra() {
   }
   $("eye-spectra-legend").replaceChildren(
     ...Object.keys(RHODOPSIN_COLOURS).map((opsin) => {
-      const key = element("span", `${opsin}`, "key");
+      const key = element("span", `${opsin} · ${RHODOPSIN_RECEPTORS[opsin]}`, "key");
       key.style.setProperty("--key", RHODOPSIN_COLOURS[opsin]);
       return key;
     }),
   );
   const used = eye.data && eye.data.spectral && eye.data.spectral.pigment_map ? eye.data.spectral.pigment_map.kind : null;
-  $("eye-spectra-note").textContent = `Shaded: the camera's assumed R, G and B bands. Frames are sampled with the ${used === "affine" ? "remapped" : used === "identity" || used === "none" ? "physical" : used || "default"} pigments.`;
+  $("eye-spectra-note").textContent = `Labels give each rhodopsin's peak in nm. Shaded: the camera's assumed R, G and B bands. Frames are sampled with the ${used === "affine" ? "remapped" : used === "identity" || used === "none" ? "physical" : used || "default"} pigments.`;
 }
 
 function nearest(points, px, py, limit) {

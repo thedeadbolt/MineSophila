@@ -624,3 +624,4 @@ body:not(.clips) #toggle-timeline { display: none; }
 #brain-circuit-svg .band-title, #brain-circuit-svg .band-sub { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; }
 #brain-circuit-svg .band-head.absent { opacity: 0.45; }
 #brain-circuit-svg .clabel { stroke: var(--surface); }
+#eye-spectra { height: 12.5rem; }
