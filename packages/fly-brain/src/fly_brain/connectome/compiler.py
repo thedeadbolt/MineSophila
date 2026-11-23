@@ -26,8 +26,14 @@ class SynapseCountPolicy:
     edge_gain_mode: EdgeGainMode = "global"
     maximum_edge_gain: float | None = None
     use_neurotransmitter_signs: bool = False
+    # "loaded": each neuron's inputs sum to one over the loaded network (the original policy).
+    # "full": divide by the neuron's total input in the whole connectome, so inputs from neurons
+    # left out of the model stay missing instead of being rescaled into the loaded ones.
+    weight_normalization: Literal["loaded", "full"] = "loaded"
 
     def __post_init__(self) -> None:
+        if self.weight_normalization not in {"loaded", "full"}:
+            raise ValueError(f"unsupported weight normalization {self.weight_normalization!r}")
         if not np.isfinite(self.initial_edge_gain) or self.initial_edge_gain < 0:
             raise ValueError("initial_edge_gain must be finite and non-negative")
         if self.edge_gain_mode not in {"global", "cell_type_pair", "per_edge"}:
@@ -276,6 +282,13 @@ class BrainCompiler:
         counts = graph.synapses.counts.astype(np.float32)
         incoming = np.zeros(neuron_ids.size, dtype=np.float32)
         np.add.at(incoming, targets, counts)
+        if self.spec.parameter_policy.weight_normalization == "full":
+            totals = graph.neurons.input_synapse_counts
+            if totals is None:
+                raise ValueError("full weight normalization needs input_synapse_counts")
+            if np.any(totals < incoming):
+                raise ValueError("input_synapse_counts are smaller than the loaded input")
+            incoming = totals.astype(np.float32)
         weights = counts / np.maximum(incoming[targets], 1.0)
         if self.spec.parameter_policy.use_neurotransmitter_signs:
             inhibitory = np.isin(

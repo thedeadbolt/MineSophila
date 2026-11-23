@@ -72,3 +72,25 @@ def test_male_cns_instances_name_requested_neurons(tmp_path: Path) -> None:
     loader = MaleCNSLoader(tmp_path, verify_checksums=False)
 
     assert loader.instances(np.array([20, 10])) == {10: "R1_L", 20: "EPG(PB08)_L3"}
+
+
+def test_male_cns_loader_counts_full_input_including_unloaded_neurons(tmp_path: Path) -> None:
+    write_release(tmp_path)
+
+    graph = MaleCNSLoader(
+        tmp_path,
+        minimum_synapse_count=5,
+        neuron_ids=(10, 20),
+        verify_checksums=False,
+        input_totals=True,
+    ).load()
+
+    # Neuron 20 hears 8 synapses from loaded neuron 10 and 20 from unloaded neuron 30;
+    # neuron 10's only input (3 from 20) is below the edge threshold.
+    assert graph.neurons.input_synapse_counts is not None
+    assert graph.neurons.input_synapse_counts.tolist() == [0, 28]
+    plain = MaleCNSLoader(
+        tmp_path, minimum_synapse_count=5, neuron_ids=(10, 20), verify_checksums=False
+    ).load()
+    assert plain.neurons.input_synapse_counts is None
+    assert plain.graph_sha256 == graph.graph_sha256

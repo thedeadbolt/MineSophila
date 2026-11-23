@@ -32,6 +32,9 @@ class NeuronTable:
     neuropils: NDArray[np.str_]
     neurotransmitters: NDArray[np.str_]
     sides: NDArray[np.str_]
+    # Total incoming synapses per neuron in the full release (edges at or above the loader's
+    # threshold, from any presynaptic neuron, loaded or not); None when not requested.
+    input_synapse_counts: NDArray[np.integer] | None = None
 
     def __post_init__(self) -> None:
         neuron_ids = _integer_column(self.neuron_ids, "neuron_ids")
@@ -51,6 +54,11 @@ class NeuronTable:
         object.__setattr__(self, "neuron_ids", readonly(neuron_ids[order]))
         for name, column in columns.items():
             object.__setattr__(self, name, readonly(column[order]))
+        if self.input_synapse_counts is not None:
+            totals = _integer_column(self.input_synapse_counts, "input_synapse_counts")
+            if totals.shape != (rows,) or np.any(totals < 0):
+                raise ValueError("input_synapse_counts must be non-negative, one per neuron")
+            object.__setattr__(self, "input_synapse_counts", readonly(totals[order]))
 
     @property
     def rows(self) -> int:
@@ -81,6 +89,9 @@ class NeuronTable:
             neuropils=self.neuropils[selected],
             neurotransmitters=self.neurotransmitters[selected],
             sides=self.sides[selected],
+            input_synapse_counts=(
+                None if self.input_synapse_counts is None else self.input_synapse_counts[selected]
+            ),
         )
 
 

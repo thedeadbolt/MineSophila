@@ -1786,6 +1786,7 @@ def _build_connectome(
         connectome_root,
         minimum_synapse_count=config.minimum_synapse_count,
         neuron_ids=selected_ids,
+        input_totals=config.weight_normalization == "full",
     ).load()
     network = build_first_visual_network(
         graph,
@@ -1828,6 +1829,7 @@ def _build_connectome(
             config.edge_gain_mode,
             config.maximum_edge_gain,
             config.use_neurotransmitter_signs,
+            config.weight_normalization,
         ),
         config.dt,
         _egocentric_projection(graph, components, connectome_root, config),

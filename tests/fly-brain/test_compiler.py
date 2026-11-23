@@ -401,3 +401,66 @@ def test_brains_without_egocentric_projection_ignore_the_parameter() -> None:
 
     assert parameters.egocentric_weights.shape == (0, 2)
     assert model.egocentric_source_indexes is None
+
+
+def _with_input_totals(totals) -> ConnectomeGraph:
+    base = graph()
+    neurons = base.neurons
+    return ConnectomeGraph(
+        base.release,
+        NeuronTable(
+            neuron_ids=neurons.neuron_ids,
+            cell_types=neurons.cell_types,
+            classes=neurons.classes,
+            neuropils=neurons.neuropils,
+            neurotransmitters=neurons.neurotransmitters,
+            sides=neurons.sides,
+            input_synapse_counts=totals,
+        ),
+        base.synapses,
+    )
+
+
+def _normalised_compiler(source: ConnectomeGraph, mode: str) -> BrainCompiler:
+    spec = BrainModelSpec(
+        network(source),
+        (
+            InputPort(
+                "receptors", np.array([1, 2]), InjectionRule.CLAMPED, BiologicalStatus.APPROXIMATION
+            ),
+        ),
+        OutputHead("localisation", np.array([4]), 2),
+        LeakyRateDynamics(time_constant=1.0, activation="relu"),
+        SynapseCountPolicy(weight_normalization=mode),  # pyright: ignore[reportArgumentType]
+    )
+    return BrainCompiler(spec)
+
+
+def test_full_normalization_divides_by_whole_connectome_input() -> None:
+    # Edges 1->3 (2), 2->3 (6), 3->4 (4). In the full connectome neuron 3 hears 16 synapses and
+    # neuron 4 hears 10, so loaded inputs are only part of their input.
+    source = _with_input_totals(np.array([0, 0, 16, 10]))
+
+    loaded = _normalised_compiler(source, "loaded").compile().anatomical_weights
+    full = _normalised_compiler(source, "full").compile().anatomical_weights
+
+    np.testing.assert_allclose(loaded, [2 / 8, 6 / 8, 4 / 4])
+    np.testing.assert_allclose(full, [2 / 16, 6 / 16, 4 / 10])
+
+
+def test_full_normalization_needs_input_counts_covering_loaded_input() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="input_synapse_counts"):
+        _normalised_compiler(graph(), "full").compile()
+    with pytest.raises(ValueError, match="smaller than"):
+        _normalised_compiler(_with_input_totals(np.array([0, 0, 4, 10])), "full").compile()
+
+
+def test_neuron_table_selection_keeps_input_counts() -> None:
+    table = _with_input_totals(np.array([0, 0, 16, 10])).neurons
+
+    chosen = table.select(np.array([False, True, True, False]))
+
+    assert chosen.input_synapse_counts is not None
+    assert chosen.input_synapse_counts.tolist() == [0, 16]

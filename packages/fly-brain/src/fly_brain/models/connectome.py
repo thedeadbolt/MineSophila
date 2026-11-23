@@ -43,6 +43,7 @@ class ConnectomeModelConfig:
     edge_gain_mode: Literal["global", "cell_type_pair", "per_edge"] = "global"
     maximum_edge_gain: float | None = None
     use_neurotransmitter_signs: bool = False
+    weight_normalization: Literal["loaded", "full"] = "loaded"
     components: tuple[str, ...] = (
         "photoreceptors",
         "lamina_relays",
@@ -70,6 +71,8 @@ class ConnectomeModelConfig:
     goal_type_bias: dict[str, float] = field(default_factory=dict[str, float])
 
     def __post_init__(self) -> None:
+        if self.weight_normalization not in {"loaded", "full"}:
+            raise ValueError(f"unsupported weight normalization {self.weight_normalization!r}")
         self._validate_fitted_goal()
         if self.egocentric_input not in {"none", "pfn_vector"}:
             raise ValueError(f"unsupported egocentric input {self.egocentric_input!r}")

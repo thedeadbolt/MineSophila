@@ -207,8 +207,13 @@ def test_goal_write_fit_returns_learned_and_frozen_values() -> None:
     circuit, angles = goal_ring()
     n = circuit.cell_types.size
     config = GoalWriteConfig(
-        steps=3, learning_rate=0.01, bump_gain=0.5, frames=20, kick_frames=4,
-        transitions_per_frame=2, batch_size=2,
+        steps=3,
+        learning_rate=0.01,
+        bump_gain=0.5,
+        frames=20,
+        kick_frames=4,
+        transitions_per_frame=2,
+        batch_size=2,
     )
     rng = np.random.default_rng(0)
     clips = {

@@ -4,7 +4,7 @@
 """Pinned loader for the official MaleCNS v1.0 flat connectome."""
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -47,6 +47,7 @@ class MaleCNSLoader:
     minimum_synapse_count: int = 50
     neuron_ids: tuple[int, ...] | None = None
     verify_checksums: bool = True
+    input_totals: bool = False
 
     def __post_init__(self) -> None:
         if self.minimum_synapse_count < 1:
@@ -143,8 +144,20 @@ class MaleCNSLoader:
 
         weights = feather.read_table(paths["weights"], memory_map=True)
         known = pa.array(neurons.neuron_ids)
+        strong = pc.greater_equal(weights["weight"], self.minimum_synapse_count)  # pyright: ignore[reportUnknownVariableType]
+        if self.input_totals:
+            incoming = weights.filter(
+                pc.and_(strong, pc.is_in(weights["body_post"], value_set=known))
+            )
+            totals = np.zeros(neurons.rows, dtype=np.int64)
+            np.add.at(
+                totals,
+                np.searchsorted(neurons.neuron_ids, np.asarray(incoming["body_post"])),
+                np.asarray(incoming["weight"], dtype=np.int64),
+            )
+            neurons = replace(neurons, input_synapse_counts=totals)
         edge_mask = pc.and_(
-            pc.greater_equal(weights["weight"], self.minimum_synapse_count),
+            strong,
             pc.and_(
                 pc.is_in(weights["body_pre"], value_set=known),
                 pc.is_in(weights["body_post"], value_set=known),
