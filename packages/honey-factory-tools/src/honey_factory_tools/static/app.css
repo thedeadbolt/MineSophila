@@ -143,8 +143,8 @@ a.workspace-link:hover { background: var(--raised); color: var(--ink); }
 .viewer > * { flex: none; }
 
 /* Filters */
-#filter-panel { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--bg); }
-#filter-panel summary { padding: 0.45rem 0.6rem; cursor: pointer; display: flex; justify-content: space-between; gap: 0.5rem; font-weight: 500; }
+.filter-panel { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--bg); }
+.filter-panel summary { padding: 0.45rem 0.6rem; cursor: pointer; display: flex; justify-content: space-between; gap: 0.5rem; font-weight: 500; }
 #filter-summary { color: var(--muted); text-align: right; font-weight: 400; font-size: var(--step--1); align-self: center; }
 #filters { padding: 0 0.6rem 0.6rem; display: grid; gap: 0.6rem; }
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
@@ -276,12 +276,6 @@ dd { margin: 0; overflow-wrap: anywhere; color: var(--ink); }
 .raw summary { cursor: pointer; padding: 0.8rem 0 0.4rem; color: var(--muted); font-size: var(--step--1); }
 .raw pre { font: 0.72rem/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; color: var(--muted); }
 
-@media (max-width: 1180px) {
-  .workspace { grid-template-columns: 18rem minmax(0, 1fr); grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); }
-  .viewer { grid-column: 2; grid-row: 1; }
-  .inspector { grid-column: 2; grid-row: 2; border-left: 0; border-top: 1px solid var(--rule); }
-  .results { grid-row: 1 / span 2; }
-}
 
 /* On a phone the page scrolls as one column, and the rail becomes a bar along the top. */
 @media (max-width: 760px) {
@@ -311,12 +305,6 @@ dd { margin: 0; overflow-wrap: anywhere; color: var(--ink); }
 #results li button.result .muted { grid-column: 1 / -1; font-size: 0.74rem; color: var(--muted); }
 /* The player gets the room: narrower side panes, and none at all in wide mode. */
 body.clips .viewer { gap: 0.5rem; padding: 0.6rem 0.8rem 0.7rem; overflow: auto; }
-@media (max-width: 1180px) {
-  body.clips .workspace { grid-template-columns: 15rem minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
-  body.clips .results { grid-column: 1; grid-row: 1 / span 2; }
-  body.clips #clip-view { grid-column: 2; grid-row: 1; }
-  body.clips #clip-details { grid-column: 2; grid-row: 2; max-height: 24vh; border-left: 0; border-top: 1px solid var(--rule); }
-}
 .clip-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; transform: none; }
 #clip-loading {
   position: absolute; left: 50%; bottom: 0.7rem; transform: translateX(-50%); margin: 0;
@@ -339,11 +327,7 @@ body[data-workspace="eye"] .scene-only, body[data-workspace="brain"] .scene-only
 body[data-workspace="eye"] .viewer > .stage, body[data-workspace="brain"] .viewer > .stage,
 body[data-workspace="eye"] #details, body[data-workspace="brain"] #details,
 body[data-workspace="eye"] #clip-details, body[data-workspace="brain"] #clip-details { display: none !important; }
-@media (max-width: 1180px) {
-  .side-panel { grid-column: 2; grid-row: 2; border-left: 0; border-top: 1px solid var(--rule); }
-  body.clips .side-panel { grid-column: 2; grid-row: 2; max-height: 30vh; }
-}
-.workspace-panel { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 0.6rem; }
+.workspace-panel { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 0.6rem; }
 .panel-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem 0.8rem; }
 .status { color: var(--muted); font-size: var(--step--1); font-family: var(--mono); }
 .status.bad { color: var(--fail); }
@@ -427,7 +411,7 @@ table.data.compact tbody tr:hover { background: none; }
 /* 3D brain */
 #brain-3d { display: flex; flex-direction: column; gap: 0.5rem; flex: 1 1 auto; min-height: 0; }
 .viewport3d {
-  position: relative; flex: 1 1 auto; min-height: 24rem; border-radius: var(--radius-stage); overflow: hidden;
+  position: relative; flex: 1 1 0; min-height: 0; border-radius: var(--radius-stage); overflow: hidden;
   border: 1px solid var(--rule); background: radial-gradient(ellipse at 50% 45%, #1b2228 0%, #0d1013 70%);
 }
 #brain3d-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
@@ -447,34 +431,62 @@ table.data.compact tbody tr:hover { background: none; }
 
 /* Layout: pane widths, hiding panes and the timeline, and canvases that fill their card.
    Canvases take their size from the layout (flex-basis 0), never from their own pixels. */
+/* Three panes at every desktop width. A hidden pane folds to a thin strip that keeps its
+   handle, so it is always one click from coming back. */
+body { --rail: 2rem; }
 body.clips { --list: 16rem; --details: 18.5rem; }
-body.hide-list, body.clips.hide-list, body.clips.wide { --list: 0px; }
-body.hide-details, body.clips.hide-details, body.clips.wide { --details: 0px; }
-@media (min-width: 1181px) {
+@media (max-width: 1440px) {
+  :root { --list: 17.5rem; --details: 18rem; }
+  body.clips { --list: 14rem; --details: 16.5rem; }
+}
+body.hide-list, body.clips.hide-list, body.clips.wide { --list: var(--rail); }
+body.hide-details, body.clips.hide-details, body.clips.wide { --details: var(--rail); }
+@media (min-width: 761px) {
   .workspace { grid-template-rows: minmax(0, 1fr); transition: grid-template-columns 0.18s ease; }
   .workspace > .results { grid-column: 1; grid-row: 1; }
   .workspace > .viewer { grid-column: 2; grid-row: 1; }
   .workspace > .inspector { grid-column: 3; grid-row: 1; }
+  body.hide-list .results > :not(.pane-handle), body.clips.wide .results > :not(.pane-handle),
+  body.hide-details .workspace > .inspector > :not(.pane-handle),
+  body.clips.wide .workspace > .inspector > :not(.pane-handle) { display: none !important; }
   body.hide-list .results, body.clips.wide .results,
-  body.hide-details .workspace > .inspector, body.clips.wide .workspace > .inspector { visibility: hidden; overflow: hidden; padding: 0; border: 0; }
+  body.hide-details .workspace > .inspector, body.clips.wide .workspace > .inspector { padding: 0.4rem 0; overflow: hidden; }
+}
+.pane-handle {
+  display: flex; align-items: center; gap: 0.35rem; width: 100%; margin: -0.2rem 0 0.5rem;
+  padding: 0.2rem 0.4rem; border: 0; background: none; color: var(--muted); font-size: 0.74rem; justify-content: flex-end;
+}
+.results > .pane-handle { justify-content: flex-start; }
+.pane-handle:hover { color: var(--ink); background: var(--raised); }
+.pane-handle .chevron { font-size: 0.9rem; line-height: 1; }
+body.hide-list .results > .pane-handle, body.clips.wide .results > .pane-handle,
+body.hide-details .workspace > .inspector > .pane-handle, body.clips.wide .workspace > .inspector > .pane-handle {
+  flex-direction: column; justify-content: flex-start; height: 100%; margin: 0; padding: 0.5rem 0; gap: 0.6rem;
+}
+body.hide-list .results > .pane-handle .label, body.clips.wide .results > .pane-handle .label,
+body.hide-details .workspace > .inspector > .pane-handle .label, body.clips.wide .workspace > .inspector > .pane-handle .label {
+  writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: 0.04em;
 }
 body.hide-timeline .timeline { display: none; }
 .pane-toggles { display: inline-flex; gap: 0.3rem; }
 .pane-toggles button { padding: 0.25rem 0.55rem; font-size: var(--step--1); color: var(--muted); }
 .pane-toggles button[aria-pressed="true"] { color: var(--ink); background: var(--raised); }
-@media (max-width: 1180px) { .pane-toggles .wide-only { display: none; } }
 
-.viewer > .workspace-panel { flex: 1 1 auto; min-height: 20rem; }
+.viewer > .workspace-panel { flex: 1 1 auto; min-height: 0; }
+/* Eye and Brain fit the window: nothing in them scrolls the page; views shrink instead. */
+body[data-workspace="eye"] .viewer, body[data-workspace="brain"] .viewer { overflow: hidden; }
+body[data-workspace="eye"] .timeline h2, body[data-workspace="brain"] .timeline h2 { display: none; }
+body[data-workspace="eye"] .timeline canvas, body[data-workspace="brain"] .timeline canvas { height: 3.6rem; }
 #brain-panel > div:not([hidden]):not(.panel-bar) { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .card { display: flex; flex-direction: column; min-height: 0; }
-.card > canvas { flex: 1 1 0; min-height: 4rem; height: 0; }
-.eye-grid { flex: 1 1 auto; min-height: 0; grid-template-rows: repeat(2, minmax(9rem, 1fr)); }
-.brain-grid { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(10rem, 1.3fr) minmax(8rem, 1fr) minmax(7rem, 0.75fr); }
+.card > canvas { flex: 1 1 0; min-height: 2rem; height: 0; }
+.eye-grid { flex: 1 1 auto; min-height: 0; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 0.6rem 0.8rem; }
+.brain-grid { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 0.75fr); gap: 0.6rem 0.8rem; }
 #brain-view { background: var(--stage); }
 #brain-heatmap + .hint { margin: 0; }
-.viewport2d { position: relative; flex: 1 1 0; min-height: 18rem; }
-#brain-runs .table-scroll { flex: 1 1 0; min-height: 10rem; }
-#brain-circuit-svg { flex: 1 1 0; min-height: 16rem; max-height: none; }
+.viewport2d { position: relative; flex: 1 1 0; min-height: 0; }
+#brain-runs .table-scroll { flex: 1 1 0; min-height: 0; }
+#brain-circuit-svg { flex: 1 1 0; min-height: 0; max-height: none; }
 
 /* A card can take the whole panel. */
 .card figcaption { position: relative; padding-right: 1.8rem; }
@@ -508,3 +520,18 @@ body.hide-timeline .timeline { display: none; }
 kbd { font: 0.72rem var(--mono); padding: 0.05rem 0.35rem; border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px; background: var(--bg); color: var(--ink); }
 body:not(.clips) #toggle-timeline { display: none; }
 .legend { font-size: var(--step--1); }
+.stat-top { top: 0.7rem; bottom: auto; left: 0.9rem; font-size: 0.85rem; font-weight: 500; color: #f0b429; }
+.heat-scale { position: absolute; top: 0.75rem; right: 0.9rem; display: flex; align-items: center; gap: 0.4rem; font: 0.72rem var(--mono); color: #c9ccd1; pointer-events: none; }
+.heat-scale i { width: 7rem; height: 0.45rem; border-radius: 999px; background: linear-gradient(90deg, #1f2938, #1a9ea8, #ffb82e, #fff8e0); }
+
+/* The list pane: filters and the count stay put while the list scrolls under them. */
+.results { display: flex; flex-direction: column; overflow: hidden; }
+.results > .filter-panel { flex: none; max-height: 55%; overflow: auto; }
+#clip-filters { padding: 0 0.6rem 0.6rem; }
+#clip-filter-summary { color: var(--muted); font-weight: 400; font-size: var(--step--1); align-self: center; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#results { flex: 1 1 auto; min-height: 0; overflow: auto; align-content: start; }
+#result-count { flex: none; }
+.strip.collapsed #scene-grid { display: none; }
+.strip > h2 { cursor: pointer; display: flex; gap: 0.35rem; align-items: center; }
+.strip > h2::before { content: ""; width: 0.4rem; height: 0.4rem; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg) translate(-2px, -2px); }
+.strip.collapsed > h2::before { transform: rotate(-45deg); }

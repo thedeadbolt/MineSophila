@@ -108,7 +108,8 @@ the URL opens a workspace, and for a clip dataset `?clip=s000123-c02` opens that
   with WebGL. Drag to turn, scroll to zoom, point at a neuron for its cell type, and click
   a component in the legend to hide it. Neurons without a recorded soma (most
   photoreceptors and lamina cells) are placed among their partners. During playback,
-  neurons brighten with their cell type's activity.
+  neurons take a heat colour stretched to that frame's spread, active ones grow and light
+  their outgoing connections, and the side panel lists the most active cell types.
 - **Record video** (Brain playback): plays the clip once and saves the fly's view, compass,
   activity map and readout as a 1920×1080 WebM.
 - **Network** (Brain): the connectome itself, from `--connectome FILE`. One node per cell
@@ -128,7 +129,9 @@ uv run honey-factory-tools connectome-graph /mnt/fastvault/minesophila/connectom
 
 While anything loads, the masthead shows what it is waiting for, how many requests are
 done and the elapsed time. The masthead also hides the list, the details or the clip
-timeline (`[`, `]`, `t`), and `?` lists every shortcut. Side-panel sections fold away
+timeline (`[`, `]`, `t`); a hidden pane folds to a strip with a handle, and on windows
+narrower than 1300 px the details start folded. `?` lists every shortcut. Filters apply as
+you change them, and the list scrolls under them. Side-panel sections fold away
 when you click their headings. Any view can fill its panel with its ⤢ button. These
 choices are remembered in the browser.
 

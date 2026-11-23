@@ -53,7 +53,7 @@ async function startClips(dataset) {
   $("details").hidden = true;
   $("find-id").placeholder = "Go to s000123-c02";
   const form = $("clip-filters");
-  form.hidden = false;
+  $("clip-filter-panel").hidden = false;
   fill(form.split, dataset.options.splits);
   fill(form.type, ["approach", "pass_by", "scan", "occlusion", "detour", "search", "no_honey"]);
   $("timeline-legend").replaceChildren(
@@ -76,6 +76,8 @@ function legend(name, colour) {
 async function listClips(openFirst) {
   const params = new URLSearchParams();
   for (const [name, value] of new FormData($("clip-filters"))) if (String(value).trim() !== "") params.set(name, value);
+  const active = [...params.entries()].map(([name, value]) => (name === "scene_id" ? value : humane(value)));
+  $("clip-filter-summary").textContent = active.length ? active.join(", ") : "all clips";
   const listing = await api(`/api/clips?${params}`);
   clip.list = listing.clips;
   $("result-count").textContent = `${listing.total} clips`;
@@ -639,6 +641,15 @@ $("clip-zoom-actual").addEventListener("click", actualSize);
     }
   });
   new ResizeObserver(() => (clip.view.fit ? fitView() : drawFrame())).observe(stage);
+}
+// Filters apply as they change; typing in the scene box waits until it pauses.
+{
+  let typing = null;
+  $("clip-filters").addEventListener("input", (event) => {
+    clearTimeout(typing);
+    typing = setTimeout(() => listClips(true).catch(report), event.target.tagName === "INPUT" ? 350 : 0);
+  });
+  $("clip-filters").addEventListener("reset", () => setTimeout(() => listClips(true).catch(report)));
 }
 $("clip-filters").addEventListener("submit", (event) => {
   event.preventDefault();

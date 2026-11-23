@@ -33,8 +33,8 @@
   </div>
   <p id="activity" class="activity" role="status" aria-live="polite" hidden><span class="spinner" aria-hidden="true"></span><span id="activity-text"></span></p>
   <div class="pane-toggles" role="group" aria-label="Panels">
-    <button type="button" id="toggle-list" class="wide-only" aria-pressed="true" title="Show or hide the list ([)">List</button>
-    <button type="button" id="toggle-details" class="wide-only" aria-pressed="true" title="Show or hide the details (])">Details</button>
+    <button type="button" id="toggle-list" aria-pressed="true" title="Show or hide the list ([)">List</button>
+    <button type="button" id="toggle-details" aria-pressed="true" title="Show or hide the details (])">Details</button>
     <button type="button" id="toggle-timeline" aria-pressed="true" title="Show or hide the clip timeline (t)">Timeline</button>
     <button type="button" id="toggle-help" aria-expanded="false" aria-controls="shortcuts" title="Keyboard shortcuts (?)">?</button>
   </div>
@@ -62,7 +62,7 @@
 </div>
 <div class="workspace">
   <aside class="results" aria-label="Samples">
-    <details id="filter-panel">
+    <details id="filter-panel" class="filter-panel">
       <summary><span>Filter and order</span> <span id="filter-summary"></span></summary>
       <form id="filters">
         <div class="field-grid">
@@ -88,14 +88,17 @@
         <div class="actions"><button class="primary">Apply</button><button type="reset">Clear</button></div>
       </form>
     </details>
-    <form id="clip-filters" hidden>
-      <div class="field-grid">
-        <label>Split <select name="split"><option value="">Any</option></select></label>
-        <label>Type <select name="type"><option value="">Any</option></select></label>
-        <label class="span">Scene <input name="scene_id" placeholder="s000000" spellcheck="false"></label>
-      </div>
-      <div class="actions"><button class="primary">Apply</button></div>
-    </form>
+    <details id="clip-filter-panel" class="filter-panel" hidden>
+      <summary><span>Filter clips</span> <span id="clip-filter-summary">all clips</span></summary>
+      <form id="clip-filters">
+        <div class="field-grid">
+          <label>Split <select name="split"><option value="">Any</option></select></label>
+          <label>Type <select name="type"><option value="">Any</option></select></label>
+          <label class="span">Scene <input name="scene_id" placeholder="s000000" spellcheck="false"></label>
+        </div>
+        <div class="actions"><button type="reset">Clear</button></div>
+      </form>
+    </details>
     <p id="result-count"></p>
     <ol id="results"></ol>
   </aside>
@@ -251,6 +254,7 @@
         <label class="toggle"><input id="brain3d-rotate" type="checkbox" checked><span>Turn slowly</span></label>
         <label class="toggle"><input id="brain3d-background" type="checkbox" checked><span>Brain outline</span></label>
         <label class="toggle"><input id="brain3d-edges" type="checkbox" checked><span>Connections</span></label>
+        <label class="toggle" title="Colour neurons by their cell type's activity at this frame (needs a trace for the clip)"><input id="brain3d-activity" type="checkbox" checked><span>Show activity</span></label>
         <span class="status" id="brain3d-status"></span>
       </div>
       <div class="viewport3d">
@@ -258,6 +262,8 @@
         <div class="stat stat-left" id="brain3d-neurons"></div>
         <div class="stat stat-right" id="brain3d-connections"></div>
         <div class="tip" id="brain3d-tip" hidden></div>
+        <div class="stat stat-top" id="brain3d-activity-label" hidden></div>
+        <div class="heat-scale" id="brain3d-scale" hidden><span>quiet</span><i></i><span>active</span></div>
       </div>
       <p class="legend" id="brain3d-legend"></p>
       <p class="hint" id="brain3d-note"></p>
@@ -295,6 +301,7 @@
     <div id="brain-runs">
       <div class="panel-bar">
         <input id="brain-run-filter" type="search" placeholder="Filter runs: compass, level3, occ-b…" aria-label="Filter runs" spellcheck="false">
+        <label class="field">Model <select id="brain-run-family"><option value="">All</option></select></label>
         <span class="status" id="brain-runs-directory"></span>
       </div>
       <p class="hint" id="brain-run-count"></p>
@@ -387,6 +394,10 @@
       </section>
     </div>
     <div id="brain-network-details" hidden>
+      <section id="network-active-section" hidden>
+        <h2>Most active now</h2>
+        <div id="network-active" class="bars"></div>
+      </section>
       <section>
         <h2 id="network-node-title">Point at a node</h2>
         <dl id="network-node-facts"></dl>

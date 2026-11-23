@@ -175,10 +175,12 @@ function follow(frame) {
   }
   if (brain.view === "network") {
     paintNetworkActivity();
+    drawMostActive();
     return;
   }
   if (brain.view === "brain3d") {
     window.brain3d.activity();
+    drawMostActive();
     return;
   }
   drawView();
@@ -508,6 +510,12 @@ $("brain-heatmap").addEventListener("pointermove", (event) => {
 async function loadRuns() {
   if (!brain.runs) {
     brain.runs = await api("/api/brain/runs");
+    const families = [...new Set(brain.runs.runs.map((r) => r.family).filter(Boolean))].sort();
+    const select = $("brain-run-family");
+    for (const family of families) {
+      const count = brain.runs.runs.filter((r) => r.family === family).length;
+      select.append(new Option(`${family} (${count})`, family));
+    }
     $("brain-runs-directory").textContent = brain.runs.directory
       ? `${brain.runs.runs.length} reports in ${brain.runs.directory}`
       : "No run directory. Start the inspector with --runs DIR, the folder fly-brain writes its *.report.json files to.";
@@ -531,7 +539,8 @@ function metric(run, split, name) {
 
 function drawRuns() {
   const filter = $("brain-run-filter").value.trim().toLowerCase();
-  const runs = (brain.runs.runs || []).filter((r) => !filter || `${r.name} ${r.family} ${r.dataset_id || ""}`.toLowerCase().includes(filter));
+  const family = $("brain-run-family").value;
+  const runs = (brain.runs.runs || []).filter((r) => (!family || r.family === family) && (!filter || `${r.name} ${r.family} ${r.dataset_id || ""}`.toLowerCase().includes(filter)));
   const column = COLUMNS.find(([key]) => key === brain.sort.key);
   runs.sort((a, b) => {
     const x = column[2](a);
@@ -1187,6 +1196,25 @@ function drawNetwork() {
   context.textBaseline = "alphabetic";
 }
 
+/** The ten most active cell types at this step, for the Network and 3D side panel. */
+function drawMostActive() {
+  const activity = typeActivity();
+  $("network-active-section").hidden = !activity;
+  if (!activity) return;
+  const components = Object.fromEntries((net.graph ? net.graph.cell_types : []).map((t) => [t.name, t.component]));
+  const stages = Object.fromEntries(brain.trace.groups.map((g) => [g.cell_type, g.stage]));
+  const top = Object.entries(activity.values).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  $("network-active").replaceChildren(...top.map(([name, value]) => {
+    const row = element("div", null, "bar-row");
+    const bar = element("span", null, "bar");
+    bar.style.setProperty("--value", String(value / activity.peak));
+    const group = components[name] || stages[name];
+    bar.style.setProperty("--fill", STAGE_COLOURS[group] || STAGE_COLOURS.other);
+    row.append(element("span", name, "bar-label wide"), bar, element("span", number(value, 3), "num"));
+    return row;
+  }));
+}
+
 function paintNetworkActivity() {
   if (net.running <= 0) drawNetwork();
 }
@@ -1343,6 +1371,7 @@ $("network-search").addEventListener("input", (event) => {
 });
 
 $("brain-run-filter").addEventListener("input", () => brain.runs && drawRuns());
+$("brain-run-family").addEventListener("input", () => brain.runs && drawRuns());
 for (const input of document.querySelectorAll('input[name="brain-view"]')) {
   input.addEventListener("input", () => {
     setView(input.value);

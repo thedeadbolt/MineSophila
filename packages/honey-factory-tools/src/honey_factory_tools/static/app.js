@@ -454,6 +454,14 @@ $("filters").addEventListener("submit", (event) => {
   applyFilters(true).catch(report);
 });
 $("filters").addEventListener("reset", () => setTimeout(() => applyFilters(true).catch(report)));
+// Choices apply at once; typed ranges wait until the typing pauses.
+{
+  let typing = null;
+  $("filters").addEventListener("input", (event) => {
+    clearTimeout(typing);
+    typing = setTimeout(() => applyFilters(true).catch(report), event.target.tagName === "INPUT" ? 450 : 0);
+  });
+}
 $("find").addEventListener("submit", (event) => {
   event.preventDefault();
   const id = $("find-id").value.trim();

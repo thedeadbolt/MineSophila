@@ -32,9 +32,9 @@ function shader(gl, type, source) {
 function program(gl, fragment) {
   const p = gl.createProgram();
   gl.attachShader(p, shader(gl, gl.VERTEX_SHADER, `
-    attribute vec3 position; attribute vec4 colour; uniform mat4 matrix; uniform float size;
+    attribute vec3 position; attribute vec4 colour; attribute float scale; uniform mat4 matrix; uniform float size;
     varying vec4 v;
-    void main() { gl_Position = matrix * vec4(position, 1.0); gl_PointSize = size; v = colour; }`));
+    void main() { gl_Position = matrix * vec4(position, 1.0); gl_PointSize = size * scale; v = colour; }`));
   gl.attachShader(p, shader(gl, gl.FRAGMENT_SHADER, fragment));
   gl.linkProgram(p);
   if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
@@ -97,6 +97,8 @@ function build(graph) {
   view3d.bodyIndex = new Map(atlas.body_id.map((b, i) => [b, i]));
   view3d.neuronBuffer = buffer(gl, positions);
   view3d.neuronColours = buffer(gl, view3d.colours);
+  view3d.scales = new Float32Array(keep.length).fill(1);
+  view3d.neuronScales = buffer(gl, view3d.scales);
   // Background brain.
   const background = new Float32Array(atlas.background);
   const backgroundColours = new Float32Array((background.length / 3) * 4);
@@ -203,7 +205,7 @@ function draw(now) {
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
   gl.disable(gl.DEPTH_TEST);
   const m = glMatrix();
-  const layer = (prog, positions, colours, mode, count, size) => {
+  const layer = (prog, positions, colours, mode, count, size, scales = null) => {
     gl.useProgram(prog);
     gl.uniformMatrix4fv(gl.getUniformLocation(prog, "matrix"), false, m);
     gl.uniform1f(gl.getUniformLocation(prog, "size"), size * ratio);
@@ -215,11 +217,22 @@ function draw(now) {
     gl.bindBuffer(gl.ARRAY_BUFFER, colours);
     gl.enableVertexAttribArray(c);
     gl.vertexAttribPointer(c, 4, gl.FLOAT, false, 0, 0);
+    const sc = gl.getAttribLocation(prog, "scale");
+    if (sc >= 0) {
+      if (scales) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, scales);
+        gl.enableVertexAttribArray(sc);
+        gl.vertexAttribPointer(sc, 1, gl.FLOAT, false, 0, 0);
+      } else {
+        gl.disableVertexAttribArray(sc);
+        gl.vertexAttrib1f(sc, 1);
+      }
+    }
     gl.drawArrays(mode, 0, count);
   };
   if ($("brain3d-background").checked) layer(view3d.points, view3d.backgroundBuffer, view3d.backgroundColours, gl.POINTS, view3d.backgroundCount, 2.2);
   if ($("brain3d-edges").checked) layer(view3d.lines, view3d.lineBuffer, view3d.lineColours, gl.LINES, view3d.lineCount, 1);
-  layer(view3d.points, view3d.neuronBuffer, view3d.neuronColours, gl.POINTS, view3d.neuronCount, 3.2);
+  layer(view3d.points, view3d.neuronBuffer, view3d.neuronColours, gl.POINTS, view3d.neuronCount, 3.2, view3d.neuronScales);
   if (view3d.auto) request();
 }
 
@@ -229,46 +242,98 @@ function request() {
   requestAnimationFrame(draw);
 }
 
-/** Colours from the components shown, the hovered cell type and the trace's activity. */
+/** Heat for activity: dark slate, teal, amber, then white at the frame's peak. */
+const HEAT = [[0.12, 0.16, 0.22], [0.1, 0.62, 0.66], [1.0, 0.72, 0.18], [1.0, 0.97, 0.88]];
+function heat(t) {
+  const x = Math.max(0, Math.min(1, t)) * (HEAT.length - 1);
+  const i = Math.min(HEAT.length - 2, Math.floor(x));
+  const f = x - i;
+  return HEAT[i].map((a, k) => a + (HEAT[i + 1][k] - a) * f);
+}
+
+/** Colours and sizes from the components shown, the hovered cell type and, during clip
+    playback, the trace: active neurons glow hot, grow, and light up their connections;
+    cell types the trace does not cover fade back. */
 function paint() {
   if (!view3d.ready) return;
   const gl = view3d.gl;
   const types = view3d.graph.cell_types;
-  const activity = window.brainActivity ? window.brainActivity() : null;
+  const activity = $("brain3d-activity").checked && window.brainActivity ? window.brainActivity() : null;
   const hoverType = view3d.hover === null ? null : view3d.typeOf[view3d.hover];
   const colours = view3d.colours;
+  const scales = view3d.scales;
+  const level = new Float32Array(view3d.neuronCount).fill(-1);
+  // Stretch this frame's spread to the full scale, so differences between cell types show
+  // even when every value is high.
+  let low = Infinity;
+  if (activity) for (const v of Object.values(activity.values)) low = Math.min(low, v);
+  const span = activity ? Math.max(1e-6, activity.peak - low) : 1;
   for (let k = 0; k < view3d.neuronCount; k++) {
     const type = types[view3d.typeOf[k]];
     let alpha = view3d.hidden.has(type.component) ? 0 : view3d.base[4 * k + 3];
-    let gain = 1;
-    if (activity && activity.values[type.name] !== undefined) gain = 0.35 + 2.2 * (activity.values[type.name] / activity.peak);
-    else if (activity) gain = 0.35;
-    if (hoverType !== null) {
-      if (view3d.typeOf[k] === hoverType) { gain = Math.max(gain, 2.2); alpha = Math.max(alpha, 1); }
-      else alpha *= 0.35;
+    let rgb = [view3d.base[4 * k], view3d.base[4 * k + 1], view3d.base[4 * k + 2]];
+    let scale = 1;
+    if (activity) {
+      const value = activity.values[type.name];
+      if (value === undefined) {
+        rgb = [0.3, 0.33, 0.38];
+        alpha *= 0.18;
+        scale = 0.7;
+      } else {
+        const t = (value - low) / span;
+        level[k] = t;
+        rgb = heat(t);
+        // Thousands of points add up, so quiet neurons stay faint and only active ones burn.
+        alpha = alpha ? 0.06 + 0.55 * t * t : 0;
+        scale = 0.7 + 2.6 * t * t;
+      }
     }
-    colours[4 * k] = view3d.base[4 * k] * gain;
-    colours[4 * k + 1] = view3d.base[4 * k + 1] * gain;
-    colours[4 * k + 2] = view3d.base[4 * k + 2] * gain;
+    if (hoverType !== null) {
+      if (view3d.typeOf[k] === hoverType) {
+        scale = Math.max(scale, 2.2);
+        alpha = alpha ? 1 : 0;
+        rgb = rgb.map((c) => Math.min(1, c * 1.6 + 0.2));
+      } else alpha *= 0.3;
+    }
+    colours[4 * k] = rgb[0];
+    colours[4 * k + 1] = rgb[1];
+    colours[4 * k + 2] = rgb[2];
     colours[4 * k + 3] = alpha;
+    scales[k] = scale;
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, view3d.neuronColours);
   gl.bufferSubData(gl.ARRAY_BUFFER, 0, colours);
-  // Edges of hidden components disappear too.
-  if (view3d.hidden.size) {
-    const lines = view3d.lineColourBase.slice();
-    const atlas = view3d.graph.atlas;
-    view3d.lineEdges.forEach(([a, b], k) => {
-      const ca = types[atlas.cell_type[a]].component;
-      const cb = types[atlas.cell_type[b]].component;
-      if (view3d.hidden.has(ca) || view3d.hidden.has(cb)) { lines[8 * k + 3] = 0; lines[8 * k + 7] = 0; }
-    });
-    gl.bindBuffer(gl.ARRAY_BUFFER, view3d.lineColours);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, lines);
-  } else {
-    gl.bindBuffer(gl.ARRAY_BUFFER, view3d.lineColours);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, view3d.lineColourBase);
-  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, view3d.neuronScales);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, scales);
+  // Connections: hidden with their components; with activity, bright where the sending
+  // neuron is active and faint where it is quiet.
+  const lines = view3d.lineColourBase.slice();
+  const atlas = view3d.graph.atlas;
+  view3d.lineEdges.forEach(([a, b], k) => {
+    const ca = types[atlas.cell_type[a]].component;
+    const cb = types[atlas.cell_type[b]].component;
+    if (view3d.hidden.has(ca) || view3d.hidden.has(cb)) {
+      lines[8 * k + 3] = 0;
+      lines[8 * k + 7] = 0;
+      return;
+    }
+    if (!activity) return;
+    const t = level[view3d.slot[a]];
+    if (t < 0) {
+      lines[8 * k + 3] *= 0.12;
+      lines[8 * k + 7] *= 0.12;
+      return;
+    }
+    const hot = heat(t);
+    lines.set([hot[0], hot[1], hot[2], 0.03 + 0.55 * t * t], 8 * k);
+    lines.set([hot[0], hot[1], hot[2], 0.02 + 0.3 * t * t], 8 * k + 4);
+  });
+  gl.bindBuffer(gl.ARRAY_BUFFER, view3d.lineColours);
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, lines);
+  const label = $("brain3d-activity-label");
+  label.hidden = !activity;
+  if (activity) label.textContent = `Activity · ${activity.step.replace(":", " · step ")} · ${number(low, 3)} to ${number(activity.peak, 3)}`;
+  $("brain3d-scale").hidden = !activity;
   request();
 }
 
@@ -352,6 +417,7 @@ function describe(k, event) {
     request();
   });
   for (const id of ["brain3d-background", "brain3d-edges"]) $(id).addEventListener("input", request);
+  $("brain3d-activity").addEventListener("input", () => { view3d.activityKey = null; paint(); });
   $("brain3d-rotate").addEventListener("input", (event) => { view3d.auto = event.target.checked; request(); });
   for (const [id, yaw, pitch] of [["brain3d-front", 0, 0], ["brain3d-top", 0, -1.45], ["brain3d-side", Math.PI / 2, 0]]) {
     $(id).addEventListener("click", () => { view3d.yaw = yaw; view3d.pitch = pitch; request(); });

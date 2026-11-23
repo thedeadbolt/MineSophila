@@ -147,15 +147,59 @@ function remember(key, value) {
 }
 
 function togglePane(name, force) {
-  const hidden = document.body.classList.toggle(`hide-${name}`, force);
+  // The clip player's wide mode hides both panes; opening either pane leaves it.
+  if (document.body.classList.contains("wide") && name !== "timeline" && force !== true) {
+    document.body.classList.remove("wide");
+    $("clip-wide").setAttribute("aria-pressed", "false");
+    remember("wide", "");
+    try { localStorage.setItem("clip-wide", ""); } catch { /* storage may be unavailable */ }
+    document.body.classList.remove(`hide-${name}`);
+  } else {
+    document.body.classList.toggle(`hide-${name}`, force);
+  }
+  const hidden = document.body.classList.contains(`hide-${name}`);
   $(`toggle-${name}`).setAttribute("aria-pressed", String(!hidden));
-  remember(`hide-${name}`, hidden ? "1" : "");
+  remember(`hide-${name}`, hidden ? "1" : "0");
+  labelHandles();
   window.dispatchEvent(new Event("resize"));
 }
+
+/** A handle at the top of each side pane: "Hide" while it is open, and the strip's only
+    content, with the pane's name written down it, while it is folded. */
+function addHandles() {
+  const panes = [[document.querySelector(".results"), "list"], ...[...document.querySelectorAll(".workspace > .inspector")].map((p) => [p, "details"])];
+  for (const [pane, name] of panes) {
+    const handle = element("button", null, "pane-handle");
+    handle.type = "button";
+    handle.dataset.pane = name;
+    handle.append(element("span", "", "chevron"), element("span", "", "label"));
+    handle.addEventListener("click", () => togglePane(name));
+    pane.prepend(handle);
+  }
+}
+
+function labelHandles() {
+  const wide = document.body.classList.contains("wide");
+  for (const handle of document.querySelectorAll(".pane-handle")) {
+    const name = handle.dataset.pane;
+    const hidden = wide || document.body.classList.contains(`hide-${name}`);
+    const list = name === "list";
+    handle.querySelector(".chevron").textContent = hidden === list ? "»" : "«";
+    handle.querySelector(".label").textContent = hidden ? (list ? "List" : "Details") : list ? "Hide list" : "Hide details";
+    handle.title = `${hidden ? "Show" : "Hide"} the ${list ? "list" : "details"} (${list ? "[" : "]"})`;
+    handle.setAttribute("aria-expanded", String(!hidden));
+  }
+}
+
+addHandles();
 for (const name of ["list", "details", "timeline"]) {
   $(`toggle-${name}`).addEventListener("click", () => togglePane(name));
-  if (remember(`hide-${name}`)) togglePane(name, true);
+  const stored = remember(`hide-${name}`);
+  // On a narrower window the details start folded, until someone opens them.
+  if (stored === "1" || (stored === null && name === "details" && innerWidth < 1300)) togglePane(name, true);
 }
+labelHandles();
+$("clip-wide").addEventListener("click", () => setTimeout(labelHandles));
 
 function toggleHelp(force) {
   const sheet = $("shortcuts");
@@ -197,6 +241,26 @@ function makeCollapsible(root) {
   }
 }
 makeCollapsible(document);
+
+// The viewpoint strip under an image folds away too.
+for (const strip of document.querySelectorAll(".strip")) {
+  const heading = strip.querySelector(":scope > h2");
+  heading.tabIndex = 0;
+  heading.setAttribute("role", "button");
+  const set = (collapsed) => {
+    strip.classList.toggle("collapsed", collapsed);
+    heading.setAttribute("aria-expanded", String(!collapsed));
+    window.dispatchEvent(new Event("resize"));
+  };
+  set(Boolean(remember("collapsed:strip")));
+  const flip = () => {
+    const collapsed = !strip.classList.contains("collapsed");
+    set(collapsed);
+    remember("collapsed:strip", collapsed ? "1" : "");
+  };
+  heading.addEventListener("click", flip);
+  heading.addEventListener("keydown", (event) => (event.key === "Enter" || event.key === " ") && (event.preventDefault(), flip()));
+}
 
 /** Every card can fill its panel; Esc or the same button puts it back. */
 function closeMaximised() {
