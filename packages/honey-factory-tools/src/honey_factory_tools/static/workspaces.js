@@ -309,3 +309,8 @@ document.addEventListener("keydown", (event) => {
   } else return;
   event.preventDefault();
 });
+
+// Controls floating on a picture must not pan, zoom or reset the picture under them.
+for (const tools of document.querySelectorAll(".stage-tools, .viewport3d .overlay-bar")) {
+  for (const type of ["pointerdown", "wheel", "dblclick"]) tools.addEventListener(type, (event) => event.stopPropagation());
+}

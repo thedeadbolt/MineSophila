@@ -60,11 +60,11 @@ function setView(view) {
   $("brain-circuit").hidden = view !== "circuit";
   $("brain-network").hidden = view !== "network";
   $("brain-3d").hidden = view !== "brain3d";
-  $("brain-network-details").hidden = view !== "network" && view !== "brain3d";
+  $("brain-network-details").hidden = !["network", "brain3d", "circuit"].includes(view);
   if (view !== "brain3d" && window.brain3d) window.brain3d.hide();
   $("brain-runs").hidden = view !== "runs";
   $("brain-trace-details").hidden = view !== "playback";
-  $("brain-circuit-details").hidden = view !== "circuit";
+  $("brain-circuit-details").hidden = true;
   $("brain-run-details").hidden = view !== "runs";
   $("brain-circuit-run").hidden = view !== "circuit";
   $("brain-record").hidden = view !== "playback";
@@ -171,6 +171,7 @@ function follow(frame) {
   brain.frame = frame;
   if (brain.view === "circuit") {
     paintCircuitActivity();
+    drawMostActive();
     return;
   }
   if (brain.view === "network") {
@@ -676,34 +677,38 @@ function drawComponents(components) {
   }));
 }
 
-// Circuit: the selected run's components laid out in the order signals flow, from the
-// eye to the readout. The pathway between components follows the fly's anatomy; the
-// components, their sizes, the input and the readout come from the run's report.
+// Circuit: a wiring diagram of the selected run, drawn the way connectome papers draw
+// circuits. Each neuropil the model includes is a column, in the order signals flow;
+// its cell types are nodes sized by neuron count and coloured by transmitter; edges are
+// the synapses between cell types from the --connectome graph, as wide as their synapse
+// count, ending in an arrow when excitatory and a bar when inhibitory. Recurrent
+// connections inside a column arc beside it. The run's report says which components the
+// model compiled and which it reads out.
 
 const SVG = "http://www.w3.org/2000/svg";
-const COMPONENTS = {
-  eye: { label: "Compound eye", row: 0, col: 0, role: "fly-vision samples each frame through 1,726 ommatidia into R1_6, R7 and R8 signals." },
-  input: { label: "Input map", row: 0, col: 1, role: "Assigns eye signals to the connectome's photoreceptor ports." },
-  photoreceptors: { label: "Photoreceptors", cells: "R1–R6, R7, R8", row: 0, col: 2, role: "The connectome's photoreceptor neurons, driven by the eye signal." },
-  lamina_relays: { label: "Lamina relays", cells: "L1–L5 and other lamina cells", row: 0, col: 3, role: "The optic lobe's first relay: brightness and contrast channels." },
-  medulla_relays: { label: "Medulla relays", cells: "Mi, Tm and other medulla cells", row: 0, col: 4, role: "Columnar processing of colour, motion and form." },
-  visual_projection: { label: "Visual projection", cells: "lobula columnar and other projection cells", row: 0, col: 5, role: "Optic-lobe outputs that carry visual features into the central brain." },
-  visual_kenyon: { label: "Visual Kenyon cells", cells: "KC with visual input", row: 1, col: 5, role: "Mushroom-body Kenyon cells fed by vision; a candidate store for memory." },
-  anterior_visual_inputs: { label: "Anterior visual path", cells: "MeTu", stage: "MeTu", row: 1, col: 4, role: "Medulla-to-tubercle neurons: the compass pathway's visual input." },
-  tubercle_bulb: { label: "Tubercle to bulb", cells: "TuBu", stage: "TuBu", row: 1, col: 3, role: "Relays the anterior optic tubercle to the bulb." },
-  ring_neurons: { label: "Ring neurons", cells: "ER", stage: "ER", row: 1, col: 2, role: "Ellipsoid-body ring neurons that bring visual landmarks to the compass." },
-  compass: { label: "Compass", cells: "EPG, PEN, PEG, Δ7", stage: "compass", row: 1, col: 1, role: "The central complex's head-direction ring: a bump of activity tracks heading." },
-  steering: { label: "Steering", cells: "PFL", stage: "PFL", row: 1, col: 0, role: "Compares heading with a goal direction to steer." },
-  self_motion: { label: "Self-motion", cells: "yaw per frame", row: 2, col: 1, role: "The fly's own turning, fed to the compass so the bump can turn with it." },
-  readout: { label: "Readout", row: 2, col: 3, role: "Trained heads that read presence and bearing from the chosen components." },
-};
-const PATHWAY = [
-  ["eye", "input"], ["input", "photoreceptors"], ["photoreceptors", "lamina_relays"], ["lamina_relays", "medulla_relays"],
-  ["medulla_relays", "visual_projection"], ["medulla_relays", "anterior_visual_inputs"], ["visual_projection", "visual_kenyon"],
-  ["anterior_visual_inputs", "tubercle_bulb"], ["tubercle_bulb", "ring_neurons"], ["ring_neurons", "compass"],
-  ["compass", "steering"], ["self_motion", "compass"],
+const REGIONS = [
+  // component, neuropil heading, column, row: the visual system along the top, the
+  // anterior visual pathway into the central complex along the bottom.
+  ["photoreceptors", "Retina", 0, 0],
+  ["lamina_relays", "Lamina", 1, 0],
+  ["medulla_relays", "Medulla", 2, 0],
+  ["visual_projection", "Lobula complex", 3, 0],
+  ["visual_kenyon", "Mushroom body", 4, 0],
+  ["anterior_visual_inputs", "Medulla → AOTU", 0, 1],
+  ["tubercle_bulb", "AOTU → bulb", 1, 1],
+  ["ring_neurons", "Bulb → ellipsoid body", 2, 1],
+  ["compass", "Ellipsoid body, bridge", 3, 1],
+  ["steering", "Bridge → LAL", 4, 1],
 ];
-const NODE = { w: 156, h: 74, dx: 184, dy: 118, pad: 16 };
+const TRANSMITTERS = {
+  acetylcholine: { colour: "#e0a33a", name: "acetylcholine", sign: "excitatory" },
+  gaba: { colour: "#4f8fe0", name: "GABA", sign: "inhibitory" },
+  glutamate: { colour: "#9b7bff", name: "glutamate", sign: "inhibitory" },
+  histamine: { colour: "#c9ccd1", name: "histamine", sign: "inhibitory" },
+};
+const OTHER_TRANSMITTER = { colour: "#6b717a", name: "unclear", sign: "unknown" };
+const CIRCUIT = { columnWidth: 178, row: 25, top: 36, left: 150, maxTypes: 8, rowGap: 64 };
+const circuit = { svg: null, view: null, full: null, nodes: new Map(), focus: null };
 
 function svg(tag, attributes, text) {
   const node = document.createElementNS(SVG, tag);
@@ -715,7 +720,7 @@ function svg(tag, attributes, text) {
 function chooseCircuitRun() {
   if (brain.circuitRun) return brain.circuitRun.name;
   const runs = (brain.runs && brain.runs.runs) || [];
-  // The run that compiles the most components shows the most of the circuit.
+  // The run that compiles the most neurons shows the most of the circuit.
   let best = null;
   for (const run of runs) {
     if (!run.format || !run.format.includes("connectome")) continue;
@@ -724,161 +729,257 @@ function chooseCircuitRun() {
   return best ? best.name : runs.length ? runs[0].name : null;
 }
 
+function transmitterOf(name) {
+  return TRANSMITTERS[name] || OTHER_TRANSMITTER;
+}
+
 async function drawCircuit() {
   const target = $("brain-circuit-svg");
+  const graph = await ensureGraph();
   const name = chooseCircuitRun();
-  if (!name) {
+  if (!graph) {
     target.replaceChildren();
-    $("brain-circuit-note").textContent = "No run to draw. Start the inspector with --runs DIR.";
+    $("brain-circuit-note").textContent = "The circuit is drawn from the connectome graph. Build one with honey-factory-tools connectome-graph, then start the inspector with --connectome FILE.";
     return;
   }
-  await ensureGraph();
-  if (!brain.circuitRun || brain.circuitRun.name !== name) {
-    brain.circuitRun = { name, report: await api(`/api/brain/runs/${encodeURIComponent(name)}`) };
+  let report = {};
+  if (name) {
+    if (!brain.circuitRun || brain.circuitRun.name !== name) brain.circuitRun = { name, report: await api(`/api/brain/runs/${encodeURIComponent(name)}`) };
+    report = brain.circuitRun.report;
   }
-  const report = brain.circuitRun.report;
-  $("brain-circuit-run").textContent = `${name}${brain.run ? "" : " · most complete run; pick another in Runs"}`;
+  $("brain-circuit-run").textContent = name ? `${name}${brain.run ? "" : " · the most complete run; pick another in Runs"}` : "";
   const components = (report.connectome || {}).components || {};
+  const inModel = (component) => !name || !Object.keys(components).length || component in components;
   const model = report.model || {};
-  const compilation = model.compilation || {};
   const readouts = new Set(model.readout_components || []);
-  const connectome = Object.keys(components).length > 0;
-  const nodes = {};
-  const edges = [];
-  if (connectome) {
-    for (const [id, spec] of Object.entries(COMPONENTS)) {
-      const present = id === "eye" || id === "input" || id === "readout" || id in components || (id === "self_motion" && Boolean(model.self_motion));
-      if (id === "self_motion" && !present) continue;
-      nodes[id] = { ...spec, id, present, count: components[id] };
-    }
-    const sensory = (report.dataset || {}).sensory_features || {};
-    nodes.input.detail = `${model.input_transform ? humane(model.input_transform) + ", " : ""}${number(compilation.input_width || sensory.width || 0)} ports`;
-    nodes.eye.detail = "R1_6, R7, R8 per ommatidium";
-    nodes.readout.detail = `${compilation.output_width || 4} outputs from ${number(compilation.readout_neuron_count || 0)} neurons`;
-    // Real connectivity when the report has it (synapses between components), else from the
-    // --connectome graph, else the anatomical order.
-    const graph = net.graph;
-    const measured = (report.connectome || {}).component_edges || (graph ? graph.component_edges : null);
-    let cellTypes = (report.connectome || {}).component_cell_types;
-    if (!cellTypes && graph) {
-      cellTypes = {};
-      for (const t of graph.cell_types) (cellTypes[t.component] = cellTypes[t.component] || {})[t.name] = t.count;
-    }
-    cellTypes = cellTypes || {};
-    for (const [id, types] of Object.entries(cellTypes)) {
-      if (!nodes[id]) continue;
-      const ranked = Object.entries(types).sort((a, b) => b[1] - a[1]);
-      nodes[id].cellTypes = ranked;
-      nodes[id].cells = ranked.slice(0, 4).map(([name]) => name).join(", ") + (ranked.length > 4 ? ` +${ranked.length - 4}` : "");
-    }
-    for (const [from, to] of PATHWAY) if (from === "eye" || from === "input" || from === "self_motion" || !measured) {
-      if (nodes[from] && nodes[to]) edges.push({ from, to, present: nodes[from].present && nodes[to].present });
-    }
-    if (measured) {
-      const all = Object.values(measured).flatMap((targets) => Object.values(targets));
-      const peak = Math.max(1, ...all);
-      for (const [from, targets] of Object.entries(measured)) {
-        for (const [to, synapses] of Object.entries(targets)) {
-          // Weak links between distant stages would hide the main flow.
-          if (from === to || !nodes[from] || !nodes[to] || synapses < peak * 0.004) continue;
-          edges.push({ from, to, present: true, synapses, weight: 0.8 + 3.2 * Math.log1p(synapses) / Math.log1p(peak) });
-        }
-      }
-    }
-    for (const id of readouts) if (nodes[id]) edges.push({ from: id, to: "readout", present: true, readout: true });
-  } else {
-    // Models without a connectome: the eye, the features they learn from, the model, the readout.
-    const sensory = (report.dataset || {}).sensory_features;
-    const kind = sensory && !Array.isArray(sensory) && sensory.kind ? humane(sensory.kind) : "eye features";
-    const params = model.parameter_count || model.trainable_parameters;
-    const layout = [
-      ["eye", "Compound eye", "R1_6, R7, R8 per ommatidium"],
-      ["features", "Input features", `${kind}${model.input_width ? `, width ${number(model.input_width)}` : ""}`],
-      ["model", `${humane(report.format ? summaryFamily(report.format) : "model")}`, params ? `${number(params)} parameters` : model.kind ? humane(model.kind) : ""],
-      ["readout", "Readout", "presence and bearing"],
-    ];
-    layout.forEach(([id, label, detail], col) => (nodes[id] = { id, label, detail, row: 0, col: col + 1, present: true, role: COMPONENTS[id] ? COMPONENTS[id].role : "" }));
-    for (let k = 0; k + 1 < layout.length; k++) edges.push({ from: layout[k][0], to: layout[k + 1][0], present: true });
+  const compilation = model.compilation || {};
+  const limit = Number($("circuit-edges").value);
+  const showRecurrent = $("circuit-recurrent").checked;
+
+  // Nodes: per region, its strongest cell types, the rest folded into one node.
+  const strength = new Float64Array(graph.cell_types.length);
+  for (const [a, b, w] of graph.type_edges) {
+    strength[a] += w;
+    strength[b] += w;
   }
-  const cols = 1 + Math.max(...Object.values(nodes).map((n) => n.col));
-  const rows = 1 + Math.max(...Object.values(nodes).map((n) => n.row));
-  const width = NODE.pad * 2 + (cols - 1) * NODE.dx + NODE.w;
-  const height = NODE.pad * 2 + (rows - 1) * NODE.dy + NODE.h;
-  target.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  const nodeOf = new Int32Array(graph.cell_types.length).fill(-1);
+  const nodes = [];
+  const regions = [];
+  for (const [component, heading, column, row] of REGIONS) {
+    const types = graph.cell_types.map((t, i) => [t, i]).filter(([t]) => t.component === component);
+    if (!types.length) continue;
+    types.sort((x, y) => strength[y[1]] - strength[x[1]]);
+    const shown = types.slice(0, CIRCUIT.maxTypes);
+    const folded = types.slice(CIRCUIT.maxTypes);
+    const members = [];
+    for (const [t, i] of shown) {
+      nodeOf[i] = nodes.length;
+      members.push(nodes.length);
+      nodes.push({ label: t.name, types: [i], count: t.count, transmitter: t.transmitter, component });
+    }
+    if (folded.length) {
+      const count = folded.reduce((sum, [t]) => sum + t.count, 0);
+      const tally = {};
+      for (const [t] of folded) tally[t.transmitter] = (tally[t.transmitter] || 0) + t.count;
+      const transmitter = Object.entries(tally).sort((a, b) => b[1] - a[1])[0][0];
+      for (const [, i] of folded) nodeOf[i] = nodes.length;
+      members.push(nodes.length);
+      nodes.push({ label: `${folded.length} more types`, types: folded.map(([, i]) => i), count, transmitter, component, folded: true });
+    }
+    regions.push({ component, heading, column, row, members, neurons: types.reduce((s, [t]) => s + t.count, 0) });
+  }
+
+  // Place regions: columns left to right, the two rows one under the other.
+  const rowHeight = [0, 1].map((row) => Math.max(0, ...regions.filter((r) => r.row === row).map((r) => 44 + r.members.length * CIRCUIT.row)));
+  const rowTop = [CIRCUIT.top, CIRCUIT.top + rowHeight[0] + CIRCUIT.rowGap];
+  let height = 0;
+  for (const region of regions) {
+    region.x = CIRCUIT.left + region.column * CIRCUIT.columnWidth;
+    region.y = rowTop[region.row];
+    region.h = 44 + region.members.length * CIRCUIT.row;
+    height = Math.max(height, region.y + region.h);
+    const peak = Math.max(...region.members.map((m) => nodes[m].count));
+    region.members.forEach((m, k) => {
+      const node = nodes[m];
+      node.x = region.x;
+      node.y = region.y + 40 + k * CIRCUIT.row;
+      node.r = 3.5 + 7.5 * Math.sqrt(node.count / Math.max(peak, 1));
+      node.region = region;
+    });
+  }
+  const columns = Math.max(...regions.map((r) => r.column)) + 1;
+  const width = CIRCUIT.left + (columns - 1) * CIRCUIT.columnWidth + 252;
+  height = Math.max(height + 30, 300);
+
+  // Edges between nodes, summed over folded types, strongest first.
+  const sums = new Map();
+  for (const [a, b, w] of graph.type_edges) {
+    const na = nodeOf[a];
+    const nb = nodeOf[b];
+    if (na < 0 || nb < 0) continue;
+    const key = na * 100000 + nb;
+    sums.set(key, (sums.get(key) || 0) + w);
+  }
+  let edges = [...sums.entries()].map(([key, w]) => ({ a: Math.floor(key / 100000), b: key % 100000, w }));
+  edges = edges.filter((e) => showRecurrent || nodes[e.a].region !== nodes[e.b].region);
+  edges.sort((x, y) => y.w - x.w);
+  edges = edges.slice(0, limit);
+  const peakWeight = Math.max(1, ...edges.map((e) => e.w));
+
+  const root = svg("svg");
   const defs = svg("defs");
-  for (const [id, colour] of [["arrow", "var(--faint)"], ["arrow-honey", "var(--honey)"]]) {
-    const marker = svg("marker", { id, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" });
-    marker.append(svg("path", { d: "M0 0 10 5 0 10z", fill: colour }));
-    defs.append(marker);
+  for (const [sign, colour] of [["excitatory", "#c9a24a"], ["inhibitory", "#5d8fd8"], ["unknown", "#7a8089"]]) {
+    for (const focus of ["", "-focus"]) {
+      const fill = focus ? "#ffffff" : colour;
+      const marker = svg("marker", { id: `end-${sign}${focus}`, viewBox: "0 0 10 10", refX: sign === "inhibitory" ? 5 : 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto", markerUnits: "userSpaceOnUse" });
+      if (sign === "excitatory") marker.append(svg("path", { d: "M0 1 9 5 0 9z", fill }));
+      else if (sign === "inhibitory") marker.append(svg("rect", { x: 4, y: 0, width: 2.4, height: 10, fill }));
+      else marker.append(svg("circle", { cx: 6, cy: 5, r: 3.5, fill }));
+      defs.append(marker);
+    }
   }
-  const place = (n) => [NODE.pad + n.col * NODE.dx, NODE.pad + n.row * NODE.dy];
-  const edgeLayer = svg("g");
+  root.append(defs);
+
+  // Region bands with their neuropil, component and neuron count.
+  const bandLayer = svg("g");
+  for (const region of regions) {
+    const present = inModel(region.component);
+    const band = svg("g", { class: `band${present ? "" : " absent"}${readouts.has(region.component) ? " read" : ""}` });
+    band.append(svg("rect", { x: region.x - 30, y: region.y, width: 160, height: region.h, rx: 8, class: "band-box" }));
+    band.append(svg("text", { x: region.x - 24, y: region.y + 16, class: "band-title" }, region.heading));
+    band.append(svg("text", { x: region.x - 24, y: region.y + 29, class: "band-sub" }, `${humane(region.component)} · ${number(region.neurons)}${present ? "" : " · not in this model"}`));
+    bandLayer.append(band);
+  }
+  root.append(bandLayer);
+
+  // The eye feeds the photoreceptors; the readout takes the components the model reads.
+  const terminals = svg("g", { class: "terminals" });
+  const retina = regions.find((r) => r.component === "photoreceptors");
+  if (retina) {
+    const y = retina.y + retina.h / 2;
+    terminals.append(svg("rect", { x: 14, y: y - 30, width: 92, height: 60, rx: 8, class: "terminal" }));
+    terminals.append(svg("text", { x: 24, y: y - 9, class: "band-title" }, "Compound eye"));
+    terminals.append(svg("text", { x: 24, y: y + 6, class: "band-sub" }, "fly-vision"));
+    terminals.append(svg("text", { x: 24, y: y + 19, class: "band-sub" }, compilation.input_width ? `${number(compilation.input_width)} ports` : "R1_6, R7, R8"));
+    terminals.append(svg("path", { d: `M106 ${y} L${retina.x - 36} ${y}`, class: "terminal-edge", "marker-end": "url(#end-excitatory)" }));
+  }
+  if (readouts.size) {
+    const x = CIRCUIT.left + (columns - 1) * CIRCUIT.columnWidth + 150;
+    const y = rowTop[1] + 20;
+    terminals.append(svg("rect", { x, y, width: 92, height: 60, rx: 8, class: "terminal read" }));
+    terminals.append(svg("text", { x: x + 10, y: y + 21, class: "band-title" }, "Readout"));
+    terminals.append(svg("text", { x: x + 10, y: y + 36, class: "band-sub" }, "presence, bearing"));
+    terminals.append(svg("text", { x: x + 10, y: y + 49, class: "band-sub" }, compilation.readout_neuron_count ? `${number(compilation.readout_neuron_count)} neurons` : ""));
+    for (const region of regions) {
+      if (!readouts.has(region.component)) continue;
+      const sx = region.x + 130;
+      const sy = region.y + 20;
+      terminals.append(svg("path", { d: `M${sx} ${sy} C${sx + 60} ${sy}, ${x - 60} ${y + 30}, ${x} ${y + 30}`, class: "readout-edge", "marker-end": "url(#end-excitatory)" }));
+    }
+  }
+  root.append(terminals);
+
+  // Edges.
+  const edgeLayer = svg("g", { class: "edges" });
   for (const edge of edges) {
-    const a = nodes[edge.from];
-    const b = nodes[edge.to];
-    const [ax, ay] = place(a);
-    const [bx, by] = place(b);
+    const a = nodes[edge.a];
+    const b = nodes[edge.b];
+    const sign = transmitterOf(a.transmitter).sign;
+    const width = 0.5 + 4.5 * (Math.log1p(edge.w) / Math.log1p(peakWeight));
     let d;
-    if (a.row === b.row) {
-      const forward = b.col > a.col;
-      const y = ay + NODE.h / 2;
-      d = `M${forward ? ax + NODE.w : ax} ${y} L${forward ? bx : bx + NODE.w} ${y}`;
-    } else if (a.col === b.col) {
-      const down = b.row > a.row;
-      d = `M${ax + NODE.w / 2} ${down ? ay + NODE.h : ay} L${bx + NODE.w / 2} ${down ? by : by + NODE.h}`;
+    if (edge.a === edge.b) {
+      d = `M${a.x + a.r * 0.7} ${a.y - a.r * 0.7} C${a.x + 26} ${a.y - 22}, ${a.x + 26} ${a.y + 22}, ${a.x + a.r} ${a.y + 2}`;
+    } else if (a.region === b.region) {
+      // Recurrent inside a region: an arc out to the right of the column.
+      const bulge = 30 + Math.min(60, Math.abs(b.y - a.y) * 0.35);
+      d = `M${a.x + a.r} ${a.y} C${a.x + bulge} ${a.y}, ${b.x + bulge} ${b.y}, ${b.x + b.r + 3} ${b.y}`;
+    } else if (b.region.column > a.region.column || a.region.row !== b.region.row) {
+      // Forward, or down from the visual system into the central pathway.
+      const dx = Math.max(50, Math.abs(b.x - a.x) * 0.45);
+      d = `M${a.x + a.r} ${a.y} C${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x - b.r - 3} ${b.y}`;
     } else {
-      const sx = ax + NODE.w / 2;
-      const sy = b.row > a.row ? ay + NODE.h : ay;
-      const ex = bx + NODE.w / 2;
-      const ey = b.row > a.row ? by : by + NODE.h;
-      const mid = (sy + ey) / 2;
-      d = `M${sx} ${sy} C${sx} ${mid} ${ex} ${mid} ${ex} ${ey}`;
+      // Feedback to an earlier column of the same row: above the top row, below the bottom one.
+      const top = a.region.row === 0;
+      const edge = top ? Math.min(a.region.y, b.region.y) - 14 : Math.max(a.region.y + a.region.h, b.region.y + b.region.h) + 14;
+      d = `M${a.x} ${top ? a.y - a.r : a.y + a.r} C${a.x} ${edge}, ${b.x} ${edge}, ${b.x} ${top ? b.y - b.r - 3 : b.y + b.r + 3}`;
     }
-    edgeLayer.append(svg("path", {
-      d, fill: "none",
-      stroke: edge.readout ? "var(--honey)" : "var(--faint)",
-      "stroke-width": edge.readout ? 1.6 : edge.weight || 1.4,
-      "stroke-dasharray": edge.present ? (edge.readout ? "5 4" : "") : "3 4",
-      opacity: edge.present ? 1 : 0.4,
-      "marker-end": `url(#${edge.readout ? "arrow-honey" : "arrow"})`,
-    }));
-    if (edge.synapses) edgeLayer.lastChild.append(svg("title", {}, `${nodes[edge.from].label} → ${nodes[edge.to].label}: ${number(edge.synapses)} synapses`));
+    const path = svg("path", {
+      d, class: `edge ${sign}`, "stroke-width": width.toFixed(2), "marker-end": `url(#end-${sign})`,
+      "data-a": edge.a, "data-b": edge.b,
+    });
+    path.append(svg("title", {}, `${a.label} → ${b.label}: ${number(edge.w)} synapses (${transmitterOf(a.transmitter).name})`));
+    edgeLayer.append(path);
   }
-  const nodeLayer = svg("g");
-  brain.circuitNodes = {};
-  for (const node of Object.values(nodes)) {
-    const [x, y] = place(node);
-    const group = svg("g", { class: `node${node.present ? "" : " absent"}${readouts.has(node.id) ? " read" : ""}`, transform: `translate(${x} ${y})`, tabindex: 0, role: "button", "aria-label": node.label });
-    const box = svg("rect", { width: NODE.w, height: NODE.h, rx: 6, class: "box" });
-    const fill = svg("rect", { width: NODE.w, height: NODE.h, rx: 6, class: "activity", opacity: 0 });
-    group.append(box, fill, svg("text", { x: 10, y: 21, class: "label" }, node.label));
-    const count = node.count !== undefined ? `${number(node.count)} neurons` : node.detail || (node.present ? "" : "not in this model");
-    group.append(svg("text", { x: 10, y: 40, class: "count" }, count.length > 21 ? `${count.slice(0, 20)}…` : count));
-    if (node.detail && node.count === undefined) group.lastChild.append(svg("title", {}, node.detail));
-    if (node.cells) group.append(svg("text", { x: 10, y: 58, class: "cells" }, node.cells.length > 27 ? `${node.cells.slice(0, 26)}…` : node.cells));
-    else if (node.count !== undefined && node.detail) group.append(svg("text", { x: 10, y: 58, class: "cells" }, node.detail));
-    if (node.count !== undefined) {
-      const peak = Math.max(...Object.values(components));
-      const share = Math.sqrt(node.count / peak);
-      group.append(svg("rect", { x: 10, y: NODE.h - 8, width: (NODE.w - 20) * share, height: 3, rx: 1.5, class: "size" }));
-    }
-    const select = () => describeNode(node, report);
-    group.addEventListener("click", select);
-    group.addEventListener("keydown", (event) => event.key === "Enter" && select());
+  root.append(edgeLayer);
+
+  // Nodes, labelled to their right.
+  const nodeLayer = svg("g", { class: "nodes" });
+  circuit.nodes = new Map();
+  nodes.forEach((node, index) => {
+    const t = transmitterOf(node.transmitter);
+    const present = inModel(node.component);
+    const group = svg("g", { class: `cnode${node.folded ? " folded" : ""}${present ? "" : " absent"}`, transform: `translate(${node.x} ${node.y})`, tabindex: 0, "data-index": index });
+    const glow = svg("circle", { r: node.r + 7, class: "glow", opacity: 0 });
+    const dot = svg("circle", { r: node.r, fill: node.folded ? "none" : t.colour, stroke: t.colour, class: "dot" });
+    group.append(glow, dot, svg("text", { x: 14, y: 4, class: "clabel" }, node.label.length > 14 ? `${node.label.slice(0, 13)}…` : node.label));
+    group.append(svg("title", {}, `${node.label} · ${number(node.count)} neurons · ${t.name}`));
+    const focus = () => focusNode(index, nodes, edges);
+    group.addEventListener("pointerenter", focus);
+    group.addEventListener("focus", focus);
+    group.addEventListener("pointerleave", () => focusNode(null, nodes, edges));
+    group.addEventListener("blur", () => focusNode(null, nodes, edges));
     nodeLayer.append(group);
-    const meter = svg("rect", { x: 10, y: 4, width: 0, height: 3, rx: 1.5, class: "meter" });
-    group.append(meter);
-    brain.circuitNodes[node.id] = { node, fill, meter };
-  }
-  target.replaceChildren(defs, edgeLayer, nodeLayer);
-  $("brain-circuit-note").textContent = connectome
-    ? `${Object.keys(components).length} components, ${number(compilation.neuron_count || 0)} neurons and ${number(compilation.edge_count || 0)} connections in this model. ${(report.connectome || {}).component_edges ? "Arrow widths show this run's synapse counts between components (hover one)." : net.graph ? "Arrow widths show MaleCNS synapse counts between components from the connectome graph (hover one)." : "Arrows follow the fly's anatomy; start with --connectome to draw real synapse counts."} Dashed amber arrows mark what the readout uses.`
-    : "This model has no connectome; it learns directly from eye features.";
+    circuit.nodes.set(index, { node, glow, dot });
+  });
+  root.append(nodeLayer);
+
+  for (const attribute of root.attributes) target.setAttribute(attribute.name, attribute.value);
+  target.replaceChildren(...root.childNodes);
+  circuit.full = { x: 0, y: 0, w: width, h: height };
+  circuit.view = { ...circuit.full };
+  setViewBox();
+  circuit.graphNodes = nodes;
+
+  // Legend: transmitters, edge ends, widths.
+  $("circuit-legend").replaceChildren(
+    ...Object.values(TRANSMITTERS).map((t) => {
+      const key = element("span", `${t.name} (${t.sign})`, "key");
+      key.style.setProperty("--key", t.colour);
+      return key;
+    }),
+    element("span", "→ excitatory   ⊣ inhibitory   width: synapses", "key plain"),
+  );
+  $("brain-circuit-note").textContent = `${regions.length} neuropils and ${nodes.length} cell-type nodes from MaleCNS; the ${number(edges.length)} strongest connections between them are drawn. Each column keeps its ${CIRCUIT.maxTypes} most connected cell types and folds the rest into one hollow node.${name ? ` Faded columns are not in ${name}; amber-outlined columns feed its readout.` : ""} Scroll to zoom, drag to pan, double-click to fit.`;
   paintCircuitActivity();
 }
 
-function summaryFamily(format) {
-  return format.replace(/^fly-brain-/, "").replace(/-v1$/, "").replace(/-report$/, "");
+function focusNode(index, nodes, edges) {
+  const target = $("brain-circuit-svg");
+  circuit.focus = index;
+  target.classList.toggle("focus", index !== null);
+  const linked = new Set(index === null ? [] : [index]);
+  for (const path of target.querySelectorAll(".edge")) {
+    const a = Number(path.dataset.a);
+    const b = Number(path.dataset.b);
+    const on = index !== null && (a === index || b === index);
+    path.classList.toggle("on", on);
+    if (on) {
+      linked.add(a);
+      linked.add(b);
+      const sign = path.classList.contains("inhibitory") ? "inhibitory" : path.classList.contains("excitatory") ? "excitatory" : "unknown";
+      path.setAttribute("marker-end", `url(#end-${sign}-focus)`);
+    } else {
+      const sign = path.classList.contains("inhibitory") ? "inhibitory" : path.classList.contains("excitatory") ? "excitatory" : "unknown";
+      path.setAttribute("marker-end", `url(#end-${sign})`);
+    }
+  }
+  for (const group of target.querySelectorAll(".cnode")) group.classList.toggle("linked", linked.has(Number(group.dataset.index)));
+  if (index !== null && nodes[index].types.length === 1 && window.brainDescribeType) window.brainDescribeType(nodes[index].types[0]);
+}
+
+function setViewBox() {
+  const v = circuit.view;
+  $("brain-circuit-svg").setAttribute("viewBox", `${v.x} ${v.y} ${v.w} ${v.h}`);
 }
 
 function stageActivity() {
@@ -895,32 +996,69 @@ function stageActivity() {
   return { means, peak };
 }
 
+/** During playback each cell type's node glows with its activity at this step. */
 function paintCircuitActivity() {
-  if (!brain.circuitNodes) return;
-  const activity = brain.traceClip && brain.frame && brain.traceClip === brain.frame.clipId ? stageActivity() : null;
-  for (const { node, fill, meter } of Object.values(brain.circuitNodes)) {
-    const key = activity && activity.means[node.id] !== undefined ? node.id : node.stage;
-    const value = activity && activity.means[key] !== undefined ? activity.means[key] / activity.peak : 0;
-    fill.setAttribute("opacity", String(0.28 * value));
-    if (meter) meter.setAttribute("width", String((NODE.w - 20) * value));
+  if (!circuit.nodes.size) return;
+  const activity = brain.traceClip && brain.frame && brain.traceClip === brain.frame.clipId && $("circuit-activity").checked ? typeActivity() : null;
+  const names = net.graph ? net.graph.cell_types : [];
+  let low = Infinity;
+  if (activity) for (const v of Object.values(activity.values)) low = Math.min(low, v);
+  const span = activity ? Math.max(1e-6, activity.peak - low) : 1;
+  for (const { node, glow } of circuit.nodes.values()) {
+    let value = null;
+    if (activity) {
+      for (const i of node.types) {
+        const v = activity.values[names[i].name];
+        if (v !== undefined) value = Math.max(value ?? 0, v);
+      }
+    }
+    const t = value === null ? 0 : (value - low) / span;
+    glow.setAttribute("opacity", String(value === null ? 0 : 0.15 + 0.75 * t));
+    glow.setAttribute("r", String(node.r + 4 + 10 * t));
   }
 }
 
-function describeNode(node, report) {
-  $("brain-node-title").textContent = node.label;
-  $("brain-node-role").textContent = node.role || "";
-  const model = report.model || {};
-  const activity = stageActivity();
-  const key = activity && activity.means[node.id] !== undefined ? node.id : node.stage;
-  facts($("brain-node-facts"), [
-    ["In this model", node.present ? "yes" : "no"],
-    ["Neurons", node.count !== undefined ? number(node.count) : undefined],
-    ["Cell types", node.cellTypes ? node.cellTypes.map(([name, n]) => `${name} ${n}`).join(", ") : undefined],
-    ["Typical cell types", node.cellTypes ? undefined : node.cells],
-    ["Details", node.detail],
-    ["Read out", (model.readout_components || []).includes(node.id) ? "yes" : undefined],
-    ["Activity now", activity && activity.means[key] !== undefined ? `${number(activity.means[key], 4)} mean |activity|` : undefined],
-  ]);
+{
+  const target = $("brain-circuit-svg");
+  let drag = null;
+  const scale = () => circuit.view.w / target.clientWidth;
+  target.addEventListener("wheel", (event) => {
+    if (!circuit.view) return;
+    event.preventDefault();
+    const box = target.getBoundingClientRect();
+    const fx = (event.clientX - box.left) / box.width;
+    const fy = (event.clientY - box.top) / box.height;
+    const factor = Math.exp(event.deltaY * 0.0012);
+    const v = circuit.view;
+    const w = Math.max(200, Math.min(circuit.full.w * 2, v.w * factor));
+    const h = (w / v.w) * v.h;
+    circuit.view = { x: v.x + (v.w - w) * fx, y: v.y + (v.h - h) * fy, w, h };
+    setViewBox();
+  }, { passive: false });
+  target.addEventListener("pointerdown", (event) => {
+    if (event.target.closest(".cnode")) return;
+    drag = { x: event.clientX, y: event.clientY, id: event.pointerId };
+    target.setPointerCapture(event.pointerId);
+  });
+  target.addEventListener("pointermove", (event) => {
+    if (!drag || drag.id !== event.pointerId) return;
+    const s = scale();
+    circuit.view.x -= (event.clientX - drag.x) * s;
+    circuit.view.y -= (event.clientY - drag.y) * s;
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+    setViewBox();
+  });
+  const release = () => (drag = null);
+  target.addEventListener("pointerup", release);
+  target.addEventListener("pointercancel", release);
+  target.addEventListener("dblclick", () => {
+    if (!circuit.full) return;
+    circuit.view = { ...circuit.full };
+    setViewBox();
+  });
+  for (const id of ["circuit-edges", "circuit-recurrent"]) $(id).addEventListener("input", () => drawCircuit().catch(report));
+  $("circuit-activity").addEventListener("input", paintCircuitActivity);
 }
 
 // Network: the connectome itself, from --connectome. Nodes are cell types (or, at the
