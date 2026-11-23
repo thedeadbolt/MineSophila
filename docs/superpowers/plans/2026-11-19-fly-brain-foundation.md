@@ -759,6 +759,43 @@ The model has Delta7, EPG and PFL3 itself, about 11.5% of PFL3's real input.
 5. Score the bearing read from PFL3 against the dead-reckoning ceiling (16.8° on batch B) and
    the GRUs.
 
+**9i step 2 findings, 2026-11-23 (connectome analysis, for review):**
+
+- **Fan-shaped-body columns map to heading through bridge-to-FB columnar neurons.** PFN, PFL,
+  PFR and PFG instance names carry both a bridge glomerulus and an FB column (e.g.
+  `PFL3_L1_C3`). Across the PFN families, heading falls 45° per column, with symmetric
+  left/right offsets.
+  - FC2 angles measured from PFN-input connectivity are compressed at the edges: C1 311°,
+    C5 185°, C9 24°, about 36° per column. The naive column rule is off by about 35°.
+  - So FB angles are defined by connectivity: the weighted circular mean of angled inputs. This
+    covers all 92 FC2 and 188 of 189 hΔ neurons; hΔ input concentration has median 0.43.
+- **Visual information reaches FC2 only indirectly.**
+  - FC2 input (edges of at least 5 synapses): 61% FB tangentials, 28% hΔ, 4.5% vΔ, 4% PFN.
+  - hΔ input: 68% FB tangentials, 9% vΔ, 8.5% PFN.
+  - No visual projection neuron synapses directly onto FC2 or hΔ. Two-hop routes run through
+    FB tangentials (FB8B, FB4L, FB5A, FB1H, FB2D) and ExR3/5/6. These are broad,
+    non-columnar cells, so they can say "honey now" but not "honey at this angle".
+- **Recommended write mechanism: vector addition through PFN gain modulation.** This follows Lyu,
+  Abbott & Maimon 2022 and Lu et al. 2022.
+  - PFNs carry the heading bump shifted by about ±45° per hemisphere. Their gain is set by
+    egocentric signals arriving through the noduli, and hΔ sums them into an allocentric
+    vector: heading rotated by an egocentric angle. With honey bearing as that angle, the sum is
+    the honey's allocentric direction, which FC2 should hold.
+  - Proposed model: add PFN (types PFNa/d/m/v), hΔ and FC2 components. Add a noduli input port on
+    PFN that carries the egocentric honey direction components (cos and sin of bearing, times
+    presence).
+  - The port's source is the model's own visual estimate, not ground truth: a learned linear map
+    from visual-projection activity, a stand-in for the multi-synaptic noduli route. Status:
+    approximation, and no privileged input.
+  - Thresholded release (ADR 0028) on PFN supplies the multiplicative gain. FB tangential
+    "honey visible" drive is optional, as a write gate.
+- **Alternatives considered:**
+  1. Learned VPN→FC2 shortcut: cannot add heading linearly.
+  2. Include the two-hop FB tangentials and let training find a route: they are non-columnar,
+     and the route is unclear.
+  3. A non-biological "goal write" port computed from the readout and EPG phase: simplest, but
+     least faithful.
+
 **End of 9i: viewer deliverables.** Before 9i closes:
 - land `trace-clip` (below);
 - include FC2 and hΔ per-neuron angles, FC2 `goal_phase` and `goal_strength`, PFL3 activity,
