@@ -101,6 +101,44 @@ Two things are missing:
    honey relative to heading. In the fly, the fan-shaped body holds a goal and PFL3 compares it
    with heading. Our CX has no fan-shaped body.
 
+## Compass integrator (9i), batch B level 3, test split
+
+The bridge angle mapping used by 9h was mirrored on the left (fixed in 3e8ffc6), so the 9h
+ring-compass runs above used a scrambled harmonic score. The compass is now fitted as an
+angular integrator (ADR 0028):
+- on the compass alone, by gradient;
+- with recorded yaw;
+- with PEN release behind a smooth threshold;
+- with a target bump gain `k` (degrees of bump rotation per degree of yaw).
+
+The fitted values are then put into the full level-1 brain and scored on test clips. The
+dead-reckoning error takes the last visible true bearing minus the bump's rotation since then,
+corrected by the bump's measured gain. It measures the integrator alone: storing the onset
+bearing is FC2's job (9i step 2).
+
+| Compass | Transitions / frame | Target `k` | Measured gain | 16-frame corr | Dead reckoning |
+|---|---:|---:|---:|---:|---:|
+| Hold last bearing (no update) | – | – | – | – | 61.8° |
+| 9h ring, silent-compass fix | 2 | – | 0.65 | 0.42 | 72.2° |
+| Fitted | 2 | 1.0 | 1.44 | 0.69 | 63.4° |
+| Fitted | 2 | 0.5 | 0.54 | 0.41 | 46.1° |
+| Fitted | 2 | 0.3 | 0.35 | 0.38 | 34.3° |
+| Fitted | 4 | 0.5 | 0.38 | 0.65 | **22.7°** |
+| Fitted, trained longer | 4 | 0.5 | 0.31 | 0.74 | 34.2° |
+| Fitted | 4 | 0.3 | 0.22 | 0.40 | 26.6° |
+| True yaw (ceiling) | – | – | 1 | 1 | 16.8° |
+
+- **Gain one is out of reach.** The compass rotates at most about 2–3°/frame at two transitions
+  per frame. 41% of test frames turn faster than 4°/tick, up to 9°/tick. A lower target `k`
+  keeps fast turns within range.
+- **Four transitions per frame help.** τ ≈ 25 ms instead of 50 ms roughly doubles the maximum
+  rotation per frame. The best fit is within 6° of the ceiling.
+- **Spread between fits is large.** Fits at the same settings land between 23° and 34°, so the
+  best single number is optimistic. The canonical run is `fit-compass-integrator` with
+  `configs/compass-integrator-fit-v1.json`.
+- Fitted PEN thresholds sit slightly below rest (θ ≈ −0.1). Seeded headings drift by 11–18°
+  over 30 frames with no turning.
+
 ## Level 4 (batch B), test split
 
 600 clips from 150 scenes; the test split has 6,340 occluded frames with honey present. Occluded
