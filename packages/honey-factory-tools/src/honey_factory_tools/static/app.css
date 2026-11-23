@@ -7,6 +7,8 @@
    so the page never calls out to a font host). */
 :root {
   color-scheme: dark;
+  --list: 19rem;     /* the left pane; 0 when hidden */
+  --details: 21rem;  /* the right pane; 0 when hidden */
   --bg: #131519;        /* rail and masthead */
   --surface: #1a1d22;   /* panes */
   --raised: #23272e;    /* controls */
@@ -131,7 +133,7 @@ a.workspace-link:hover { background: var(--raised); color: var(--ink); }
 
 /* Three panes: results, stage, inspector */
 .workspace {
-  display: grid; grid-template-columns: 19rem minmax(0, 1fr) 21rem;
+  display: grid; grid-template-columns: var(--list) minmax(0, 1fr) var(--details);
   flex: 1 1 auto; min-height: 0;
 }
 .workspace > * { overflow: auto; min-height: 0; }
@@ -308,14 +310,7 @@ dd { margin: 0; overflow-wrap: anywhere; color: var(--ink); }
 #results li button.result .chip { justify-self: start; }
 #results li button.result .muted { grid-column: 1 / -1; font-size: 0.74rem; color: var(--muted); }
 /* The player gets the room: narrower side panes, and none at all in wide mode. */
-body.clips .workspace { grid-template-columns: 16rem minmax(0, 1fr) 18.5rem; grid-template-rows: minmax(0, 1fr); }
-body.clips .results { grid-column: 1; grid-row: 1; }
-body.clips #clip-view { grid-column: 2; grid-row: 1; }
-body.clips #clip-details { grid-column: 3; grid-row: 1; }
 body.clips .viewer { gap: 0.5rem; padding: 0.6rem 0.8rem 0.7rem; overflow: auto; }
-body.clips.wide .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-body.clips.wide .results, body.clips.wide #clip-details { display: none; }
-body.clips.wide #clip-view { grid-column: 1; grid-row: 1; }
 @media (max-width: 1180px) {
   body.clips .workspace { grid-template-columns: 15rem minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
   body.clips .results { grid-column: 1; grid-row: 1 / span 2; }
@@ -332,7 +327,7 @@ body.clips.wide #clip-view { grid-column: 1; grid-row: 1; }
 .scrub input { flex: 1; accent-color: var(--honey); }
 .scrub output { color: var(--muted); white-space: nowrap; min-width: 13rem; text-align: right; font: var(--step--1) var(--mono); }
 .timeline { display: grid; gap: 0.35rem; }
-.timeline canvas { width: 100%; height: 5.5rem; display: block; cursor: pointer; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); }
+.timeline canvas { width: 100%; height: 6.5rem; display: block; cursor: pointer; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); }
 .timeline h2 { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; align-items: baseline; font-size: 0.74rem; color: var(--muted); font-weight: 400; }
 .lanes { color: var(--faint); }
 .legend { display: inline-flex; flex-wrap: wrap; gap: 0.15rem 0.7rem; font-weight: 400; }
@@ -344,8 +339,6 @@ body[data-workspace="eye"] .scene-only, body[data-workspace="brain"] .scene-only
 body[data-workspace="eye"] .viewer > .stage, body[data-workspace="brain"] .viewer > .stage,
 body[data-workspace="eye"] #details, body[data-workspace="brain"] #details,
 body[data-workspace="eye"] #clip-details, body[data-workspace="brain"] #clip-details { display: none !important; }
-body.clips .side-panel { grid-column: 3; grid-row: 1; }
-body.clips.wide .side-panel { display: none; }
 @media (max-width: 1180px) {
   .side-panel { grid-column: 2; grid-row: 2; border-left: 0; border-top: 1px solid var(--rule); }
   body.clips .side-panel { grid-column: 2; grid-row: 2; max-height: 30vh; }
@@ -364,7 +357,6 @@ body.clips.wide .side-panel { display: none; }
 .card canvas { width: 100%; display: block; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-stage); }
 
 .eye-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem 1rem; }
-.eye-grid canvas { aspect-ratio: 310 / 160; }
 #eye-camera, #eye-decoded { background: var(--stage); cursor: crosshair; }
 #eye-hex { cursor: crosshair; }
 #eye-globe { cursor: grab; touch-action: none; }
@@ -384,10 +376,6 @@ canvas.map { width: 100%; aspect-ratio: 4 / 3; display: block; border: 1px solid
 
 .brain-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 0.8rem 1rem; }
 .brain-grid .heat, .brain-grid .decisions { grid-column: 1 / -1; }
-#brain-view { aspect-ratio: 310 / 160; background: var(--stage); }
-#brain-heatmap { height: max(14rem, 34vh); }
-#brain-compass { aspect-ratio: 1; }
-#brain-decisions { height: 14rem; }
 .decisions { min-height: 0; }
 .empty { border: 1px dashed var(--rule); border-radius: var(--radius); padding: 1rem 1.2rem; color: var(--muted); }
 .empty p { margin: 0 0 0.6rem; max-width: 60ch; }
@@ -433,5 +421,90 @@ table.data.compact tbody tr:hover { background: none; }
 
 /* Network */
 #brain-network { display: flex; flex-direction: column; gap: 0.5rem; flex: 1 1 auto; min-height: 0; }
-#network-canvas { width: 100%; height: max(26rem, 58vh); display: block; background: var(--bg); border: 1px solid var(--rule); border-radius: var(--radius-stage); cursor: grab; touch-action: none; }
+#network-canvas { width: 100%; height: 100%; display: block; background: var(--bg); border: 1px solid var(--rule); border-radius: var(--radius-stage); cursor: grab; touch-action: none; }
 #network-search { width: 16rem; max-width: 100%; }
+
+/* 3D brain */
+#brain-3d { display: flex; flex-direction: column; gap: 0.5rem; flex: 1 1 auto; min-height: 0; }
+.viewport3d {
+  position: relative; flex: 1 1 auto; min-height: 24rem; border-radius: var(--radius-stage); overflow: hidden;
+  border: 1px solid var(--rule); background: radial-gradient(ellipse at 50% 45%, #1b2228 0%, #0d1013 70%);
+}
+#brain3d-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.stat { position: absolute; bottom: 0.7rem; font: 600 1rem var(--mono); color: #e8e6e1; text-shadow: 0 1px 3px #000; pointer-events: none; }
+.stat-left { left: 0.9rem; }
+.stat-right { right: 0.9rem; }
+.tip {
+  position: absolute; z-index: 2; pointer-events: none; display: grid; gap: 0.1rem; max-width: 16rem;
+  padding: 0.35rem 0.55rem; border-radius: var(--radius); background: rgb(10 12 15 / 0.88); border: 1px solid #2d3239;
+  color: #e8e6e1; font-size: var(--step--1);
+}
+.tip span { color: #949aa3; }
+.toggle-key { border: 0; background: none; padding: 0.1rem 0.3rem; font-size: var(--step--1); color: var(--ink); cursor: pointer; border-radius: var(--radius); }
+.toggle-key[aria-pressed="false"] { opacity: 0.35; text-decoration: line-through; }
+.toggle-key:hover { background: var(--raised); }
+#eye-decoded.wipe { cursor: ew-resize; }
+
+/* Layout: pane widths, hiding panes and the timeline, and canvases that fill their card.
+   Canvases take their size from the layout (flex-basis 0), never from their own pixels. */
+body.clips { --list: 16rem; --details: 18.5rem; }
+body.hide-list, body.clips.hide-list, body.clips.wide { --list: 0px; }
+body.hide-details, body.clips.hide-details, body.clips.wide { --details: 0px; }
+@media (min-width: 1181px) {
+  .workspace { grid-template-rows: minmax(0, 1fr); transition: grid-template-columns 0.18s ease; }
+  .workspace > .results { grid-column: 1; grid-row: 1; }
+  .workspace > .viewer { grid-column: 2; grid-row: 1; }
+  .workspace > .inspector { grid-column: 3; grid-row: 1; }
+  body.hide-list .results, body.clips.wide .results,
+  body.hide-details .workspace > .inspector, body.clips.wide .workspace > .inspector { visibility: hidden; overflow: hidden; padding: 0; border: 0; }
+}
+body.hide-timeline .timeline { display: none; }
+.pane-toggles { display: inline-flex; gap: 0.3rem; }
+.pane-toggles button { padding: 0.25rem 0.55rem; font-size: var(--step--1); color: var(--muted); }
+.pane-toggles button[aria-pressed="true"] { color: var(--ink); background: var(--raised); }
+@media (max-width: 1180px) { .pane-toggles .wide-only { display: none; } }
+
+.viewer > .workspace-panel { flex: 1 1 auto; min-height: 20rem; }
+#brain-panel > div:not([hidden]):not(.panel-bar) { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.card { display: flex; flex-direction: column; min-height: 0; }
+.card > canvas { flex: 1 1 0; min-height: 4rem; height: 0; }
+.eye-grid { flex: 1 1 auto; min-height: 0; grid-template-rows: repeat(2, minmax(9rem, 1fr)); }
+.brain-grid { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(10rem, 1.3fr) minmax(8rem, 1fr) minmax(7rem, 0.75fr); }
+#brain-view { background: var(--stage); }
+#brain-heatmap + .hint { margin: 0; }
+.viewport2d { position: relative; flex: 1 1 0; min-height: 18rem; }
+#brain-runs .table-scroll { flex: 1 1 0; min-height: 10rem; }
+#brain-circuit-svg { flex: 1 1 0; min-height: 16rem; max-height: none; }
+
+/* A card can take the whole panel. */
+.card figcaption { position: relative; padding-right: 1.8rem; }
+.max-card {
+  position: absolute; right: 0; top: -0.15rem; padding: 0 0.35rem; line-height: 1.4; font-size: 0.9rem;
+  background: none; border-color: transparent; color: var(--muted);
+}
+.max-card:hover { color: var(--ink); background: var(--raised); }
+.has-max > .card:not(.max) { display: none; }
+.has-max > .card.max { grid-column: 1 / -1; grid-row: 1 / -1; }
+
+/* Collapsible sections in the side panels */
+.inspector section.collapsible > h2, .inspector section.collapsible > .section-head h2 { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.35rem; }
+.inspector section.collapsible > h2::before, .inspector section.collapsible > .section-head h2::before {
+  content: ""; width: 0.45rem; height: 0.45rem; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg) translate(-2px, -2px); transition: transform 0.12s ease; flex: none;
+}
+.inspector section.collapsed > h2::before, .inspector section.collapsed > .section-head h2::before { transform: rotate(-45deg); }
+.inspector section.collapsed > :not(h2):not(.section-head), .inspector section.collapsed > .section-head > :not(h2) { display: none; }
+.inspector section.collapsed { padding-bottom: 0.45rem; }
+.inspector section.collapsed > h2, .inspector section.collapsed > .section-head { margin-bottom: 0; }
+
+/* Shortcuts sheet */
+.popover {
+  position: fixed; z-index: 20; top: 3.4rem; right: 1rem; width: min(26rem, calc(100vw - 2rem));
+  padding: 0.9rem 1.1rem; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--rule);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+}
+.popover h2 { font-size: var(--step-0); margin-bottom: 0.6rem; }
+.popover dl { grid-template-columns: max-content minmax(0, 1fr); }
+kbd { font: 0.72rem var(--mono); padding: 0.05rem 0.35rem; border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px; background: var(--bg); color: var(--ink); }
+body:not(.clips) #toggle-timeline { display: none; }
+.legend { font-size: var(--step--1); }

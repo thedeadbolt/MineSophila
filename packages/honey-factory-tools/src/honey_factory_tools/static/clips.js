@@ -258,6 +258,7 @@ function show(index) {
     clipId: clip.id, index: clip.index, frame: clip.frames[clip.index], frames: clip.frames,
     record: clip.record, scene: clip.scene, image: clip.rgb[clip.index] || null, playing: clip.playing,
   } }));
+  if (clip.compose) clip.compose();
 }
 
 /** The clip seen from above, north up: the whole path, the path so far, the fly's 310°
@@ -392,8 +393,9 @@ function drawTimeline() {
   const canvas = $("clip-timeline");
   const width = Math.max(300, Math.round(canvas.clientWidth * devicePixelRatio));
   const height = Math.max(60, Math.round(canvas.clientHeight * devicePixelRatio));
-  const lane = Math.round(height * 0.16);
-  const bearing = height - 2 * lane - Math.round(6 * devicePixelRatio);
+  const lane = Math.round(height * 0.14);
+  const bearing = height - 3 * lane - Math.round(10 * devicePixelRatio);
+  const turnTop = lane + bearing + 4 + lane + Math.round(4 * devicePixelRatio);
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
@@ -420,6 +422,21 @@ function drawTimeline() {
       context.fillRect(x, lane + bearing + 4 + lane - 2 - mark, Math.ceil(step), mark);
     }
   });
+  // Teacher turn: one bar per frame, up for a right turn, down for a left one.
+  const turns = frames.map((_, n) => {
+    const labels = tickLabelsAt(n);
+    return labels && labels.teacher ? labels.teacher.turn_rate : null;
+  });
+  const turnPeak = Math.max(1e-6, ...turns.map((t) => Math.abs(t || 0)));
+  const middle = turnTop + (lane - 2) / 2;
+  context.fillStyle = "rgba(24, 200, 240, 0.85)";
+  turns.forEach((t, n) => {
+    if (!t) return;
+    const h = (t / turnPeak) * ((lane - 2) / 2);
+    context.fillRect(n * step, h > 0 ? middle - h : middle, Math.ceil(step), Math.max(1, Math.abs(h)));
+  });
+  context.fillStyle = "rgba(127, 127, 127, 0.4)";
+  context.fillRect(0, middle, width, 1);
   const top = lane;
   context.strokeStyle = "rgba(127, 127, 127, 0.5)";
   context.beginPath();
@@ -517,24 +534,27 @@ function advance(now) {
   requestAnimationFrame(advance);
 }
 
-/** Plays the clip once from the start while the player canvas is recorded as WebM. */
-function startRecording() {
-  const canvas = $("clip-canvas");
+/** Plays the clip once from the start while a canvas is recorded as WebM: the player by
+    default, or another workspace's canvas, redrawn by ``compose`` after every frame. */
+function startRecording(canvas = $("clip-canvas"), compose = null, name = `${clip.id}.webm`, button = $("clip-record")) {
   if (!canvas.captureStream || typeof MediaRecorder === "undefined" || clip.rgb.length === 0) return;
   pause();
+  clip.compose = compose;
   show(0);
   const type = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm";
   const recorder = new MediaRecorder(canvas.captureStream(FPS), { mimeType: type, videoBitsPerSecond: 12_000_000 });
   const chunks = [];
   recorder.addEventListener("dataavailable", (event) => event.data.size && chunks.push(event.data));
   recorder.addEventListener("stop", () => {
-    const link = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob(chunks, { type: "video/webm" })), download: `${clip.id}.webm` });
+    const link = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob(chunks, { type: "video/webm" })), download: name });
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
   });
   clip.recording = recorder;
-  $("clip-record").textContent = "Recording…";
-  $("clip-record").disabled = true;
+  clip.recordButton = button;
+  clip.recordLabel = button.textContent;
+  button.textContent = "Recording…";
+  button.disabled = true;
   recorder.start();
   play();
 }
@@ -542,9 +562,10 @@ function startRecording() {
 function finishRecording() {
   const recorder = clip.recording;
   clip.recording = null;
+  clip.compose = null;
   pause();
-  $("clip-record").textContent = "Record video";
-  $("clip-record").disabled = false;
+  clip.recordButton.textContent = clip.recordLabel;
+  clip.recordButton.disabled = false;
   // Hold the last frame briefly so it lands in the video.
   setTimeout(() => recorder.state !== "inactive" && recorder.stop(), 200);
 }
@@ -554,7 +575,8 @@ $("clip-back").addEventListener("click", () => { pause(); show(clip.index - 1); 
 $("clip-forward").addEventListener("click", () => { pause(); show(clip.index + 1); });
 $("clip-scrub").addEventListener("input", (event) => { pause(); show(Number(event.target.value)); });
 $("clip-overlay").addEventListener("input", drawFrame);
-$("clip-record").addEventListener("click", startRecording);
+$("clip-record").addEventListener("click", () => startRecording());
+window.viewerRecord = startRecording;
 new ResizeObserver(() => clip.record && drawMap()).observe($("clip-map"));
 $("clip-box").addEventListener("input", drawFrame);
 $("clip-detail").addEventListener("input", refineDetail);

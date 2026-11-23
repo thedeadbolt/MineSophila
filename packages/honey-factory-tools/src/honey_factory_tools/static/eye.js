@@ -22,6 +22,7 @@ const eye = {
   loading: null,
   pending: null,
   hover: null,
+  wipe: 0.5,
   globe: { yaw: -0.5, pitch: 0.35 },
   hexPoints: [],
   globePoints: [],
@@ -152,6 +153,9 @@ function recoveredColours() {
   const [r16, r7, r8] = data.activations;
   const linear = eye.layout.subtype.map((subtype, i) => {
     if (!data.valid[i]) return null;
+    // Dorsal-rim ommatidia carry Rh3 in both R7 and R8, so they cannot tell colours apart:
+    // show them grey at the brightness their R1_6 (Rh1, white = 1) reports.
+    if (subtype === "dra") return [r16[i], r16[i], r16[i]];
     const inv = inverses[subtype];
     const a = [r16[i], r7[i], r8[i]];
     return inv.map((row) => Math.max(0, row[0] * a[0] + row[1] * a[1] + row[2] * a[2]));
@@ -283,6 +287,30 @@ function drawDecoded() {
   const box = contain(canvas, w / h);
   context.imageSmoothingEnabled = false;
   context.drawImage(off, box.x, box.y, box.w, box.h);
+  if ($("eye-compare").checked && eye.camera) {
+    // Camera to the left of the wipe, the eye's reconstruction to the right.
+    const split = box.x + box.w * eye.wipe;
+    context.save();
+    context.beginPath();
+    context.rect(box.x, box.y, split - box.x, box.h);
+    context.clip();
+    context.imageSmoothingEnabled = true;
+    context.drawImage(eye.camera, box.x, box.y, box.w, box.h);
+    context.restore();
+    const ratio = devicePixelRatio;
+    context.fillStyle = cssVar("--honey");
+    context.fillRect(split - ratio, box.y, 2 * ratio, box.h);
+    context.beginPath();
+    context.arc(split, box.y + box.h / 2, 7 * ratio, 0, 2 * Math.PI);
+    context.fill();
+    context.font = `${11 * ratio}px ${cssVar("--sans")}`;
+    context.fillStyle = "#fff";
+    context.shadowColor = "#000";
+    context.shadowBlur = 3 * ratio;
+    context.fillText("camera", box.x + 6 * ratio, box.y + 14 * ratio);
+    context.fillText("fly's eye", box.x + box.w - 56 * ratio, box.y + 14 * ratio);
+    context.shadowBlur = 0;
+  }
   if (eye.hover !== null) {
     const [fx, fy] = panoramaXY(eye.hover);
     marker(context, box.x + fx * box.w, box.y + fy * box.h, 2.6 / 310 * box.w + 3);
@@ -541,7 +569,34 @@ function panoramaHover(box, event, canvas) {
   return index === 0xffff ? null : index;
 }
 
-$("eye-decoded").addEventListener("pointermove", (event) => setHover(panoramaHover(eye.decodedBox, event, $("eye-decoded"))));
+{
+  const canvas = $("eye-decoded");
+  let wiping = false;
+  const wipeTo = (event) => {
+    const box = eye.decodedBox;
+    if (!box) return;
+    const [px] = pointer(canvas, event);
+    eye.wipe = Math.max(0, Math.min(1, (px - box.x) / box.w));
+    drawDecoded();
+  };
+  canvas.addEventListener("pointerdown", (event) => {
+    if (!$("eye-compare").checked) return;
+    wiping = true;
+    canvas.setPointerCapture(event.pointerId);
+    wipeTo(event);
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    if (wiping) wipeTo(event);
+    else setHover(panoramaHover(eye.decodedBox, event, canvas));
+  });
+  const stop = () => (wiping = false);
+  canvas.addEventListener("pointerup", stop);
+  canvas.addEventListener("pointercancel", stop);
+  $("eye-compare").addEventListener("input", () => {
+    canvas.classList.toggle("wipe", $("eye-compare").checked);
+    if (eye.data) drawDecoded();
+  });
+}
 $("eye-camera").addEventListener("pointermove", (event) => setHover(panoramaHover(eye.cameraBox, event, $("eye-camera"))));
 $("eye-hex").addEventListener("pointermove", (event) => {
   const [px, py] = pointer($("eye-hex"), event);

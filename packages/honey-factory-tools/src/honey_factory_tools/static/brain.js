@@ -33,13 +33,18 @@ async function show(sel) {
   filterClipList(true);
   const dataset = sel.dataset || {};
   const traced = ((dataset.workspaces || {}).brain || {}).traced_clips || [];
-  const asked = location.hash.match(/^#brain-(playback|circuit|network|runs)$/);
+  const asked = location.hash.match(/^#brain-(playback|circuit|network|brain3d|runs)$/);
   if (!brain.view) brain.view = asked ? asked[1] : dataset.kind === "clips" && traced.length ? "playback" : "runs";
   setView(brain.view);
   if (brain.view !== "runs" && brain.view !== "network") openFirstTraced(sel);
   if (brain.view === "runs") await loadRuns();
   else if (brain.view === "network") {
     await loadNetwork();
+    await loadTrace(sel);
+  } else if (brain.view === "brain3d") {
+    const graph = await ensureGraph();
+    if (!graph) $("brain3d-status").textContent = "No connectome graph. Build one with honey-factory-tools connectome-graph, then start the inspector with --connectome FILE.";
+    else window.brain3d.show(graph);
     await loadTrace(sel);
   } else if (brain.view === "circuit") {
     await loadRuns();
@@ -54,15 +59,48 @@ function setView(view) {
   $("brain-playback").hidden = view !== "playback";
   $("brain-circuit").hidden = view !== "circuit";
   $("brain-network").hidden = view !== "network";
-  $("brain-network-details").hidden = view !== "network";
+  $("brain-3d").hidden = view !== "brain3d";
+  $("brain-network-details").hidden = view !== "network" && view !== "brain3d";
+  if (view !== "brain3d" && window.brain3d) window.brain3d.hide();
   $("brain-runs").hidden = view !== "runs";
   $("brain-trace-details").hidden = view !== "playback";
   $("brain-circuit-details").hidden = view !== "circuit";
   $("brain-run-details").hidden = view !== "runs";
   $("brain-circuit-run").hidden = view !== "circuit";
+  $("brain-record").hidden = view !== "playback";
 }
 
 // Playback
+
+/** One video frame of the model running: the fly's view, the compass, the activity map and
+    the readout, side by side, with the clip and step written on it. */
+function composeRecording(canvas) {
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#131519";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  const place = (source, x, y, w, h) => {
+    if (!source.width || !source.height) return;
+    const scale = Math.min(w / source.width, h / source.height);
+    context.drawImage(source, x + (w - source.width * scale) / 2, y + (h - source.height * scale) / 2, source.width * scale, source.height * scale);
+  };
+  place($("brain-view"), 20, 50, 1180, 610);
+  place($("brain-compass"), 1220, 50, 680, 610);
+  place($("brain-heatmap"), 20, 680, 1880, 250);
+  place($("brain-decisions"), 20, 940, 1880, 130);
+  context.fillStyle = "#e8e6e1";
+  context.font = "600 26px monospace";
+  context.fillText(`${brain.traceClip}  ·  step ${brain.step}  ·  frame ${brain.frame ? brain.frame.index : 0}`, 20, 34);
+  if (brain.trace && brain.trace.header.synthetic) {
+    context.fillStyle = "#f07f72";
+    context.fillText("synthetic demo trace", 1560, 34);
+  }
+}
+
+$("brain-record").addEventListener("click", () => {
+  if (!brain.trace || !window.viewerRecord) return;
+  const canvas = Object.assign(document.createElement("canvas"), { width: 1920, height: 1080 });
+  window.viewerRecord(canvas, () => composeRecording(canvas), `${brain.traceClip}-model.webm`, $("brain-record"));
+});
 
 async function loadTrace(sel) {
   if (!brain.active || brain.view === "runs") return;
@@ -137,6 +175,10 @@ function follow(frame) {
   }
   if (brain.view === "network") {
     paintNetworkActivity();
+    return;
+  }
+  if (brain.view === "brain3d") {
+    window.brain3d.activity();
     return;
   }
   drawView();
@@ -940,7 +982,7 @@ function buildNetwork() {
     edges = [...g.neuron_edges].sort((x, y) => y[2] - x[2]).slice(0, limit).filter(([a, b]) => a !== b).map(([a, b, w]) => ({ a, b, w, pairs: 1 }));
   }
   const columns = [...new Set(nodes.map((n) => column(n.component)))].sort((a, b) => a - b);
-  const spacing = 170;
+  const spacing = net.level === "types" ? 300 : 240;
   const place = (c) => (columns.indexOf(c) - (columns.length - 1) / 2) * spacing;
   for (const n of nodes) {
     n.cx = place(column(n.component));
@@ -1005,15 +1047,15 @@ function step() {
       for (let j = i + 1; j < nodes.length; j++) {
         const b = nodes[j];
         const dx = b.x - a.x;
-        if (dx > 220 || dx < -220) continue;
+        if (dx > 320 || dx < -320) continue;
         const dy = b.y - a.y;
         const d2 = dx * dx + dy * dy + 0.01;
-        if (d2 > 48000) continue;
+        if (d2 > 90000) continue;
         const d = Math.sqrt(d2);
-        const min = a.r + b.r + 4;
+        const min = a.r + b.r + 10;
         // Inverse-square repulsion, capped so near-coincident nodes cannot explode, plus a
         // firm push apart while they overlap.
-        const force = Math.min(3, (alpha * 900) / d2) + (d < min ? (min - d) * 0.25 : 0);
+        const force = Math.min(4, (alpha * 2600) / d2) + (d < min ? (min - d) * 0.3 : 0);
         const fx = (dx / d) * force;
         const fy = (dy / d) * force;
         a.vx -= fx; a.vy -= fy;
@@ -1031,7 +1073,7 @@ function step() {
     for (const n of nodes) {
       if (n.pinned) { n.vx = n.vy = 0; continue; }
       n.vx += (n.cx - n.x) * 0.06 * alpha;
-      n.vy += -n.y * 0.0015 * alpha;
+      n.vy += -n.y * 0.0008 * alpha;
       n.vx *= 0.6;
       n.vy *= 0.6;
       n.x += n.vx;
@@ -1051,6 +1093,11 @@ function fitNetwork() {
   const k = Math.min((canvas.clientWidth * ratio) / (x1 - x0), (canvas.clientHeight * ratio) / (y1 - y0));
   net.view = { k, x: (canvas.clientWidth * ratio) / 2 - ((x0 + x1) / 2) * k, y: (canvas.clientHeight * ratio) / 2 - ((y0 + y1) / 2) * k };
 }
+
+window.brainActivity = () => {
+  const activity = typeActivity();
+  return activity ? { ...activity, step: `${brain.traceClip}:${brain.step}` } : null;
+};
 
 function typeActivity() {
   if (!brain.trace || !brain.frame || brain.traceClip !== brain.frame.clipId) return null;
@@ -1144,6 +1191,37 @@ function paintNetworkActivity() {
   if (net.running <= 0) drawNetwork();
 }
 
+/** The side panel for one cell type of the graph: used by the 3D brain on hover. */
+window.brainDescribeType = (typeIndex) => {
+  const g = net.graph;
+  if (!g) return;
+  const type = g.cell_types[typeIndex];
+  $("network-node-title").textContent = type.name;
+  const activity = typeActivity();
+  facts($("network-node-facts"), [
+    ["Component", humane(type.component)],
+    ["Neurons", number(type.count)],
+    ["Transmitter", type.transmitter],
+    ["Sides", Object.entries(type.sides).map(([side, n]) => `${side} ${n}`).join(", ")],
+    ["Activity now", activity && activity.values[type.name] !== undefined ? number(activity.values[type.name], 4) : undefined],
+  ]);
+  const rows = (list, key) => {
+    const top = list.sort((a, b) => b[2] - a[2]).slice(0, 8);
+    const peak = Math.max(1, ...top.map((e) => e[2]));
+    return top.map((e) => {
+      const other = g.cell_types[e[key]];
+      const row = element("div", null, "bar-row");
+      const bar = element("span", null, "bar");
+      bar.style.setProperty("--value", String(e[2] / peak));
+      bar.style.setProperty("--fill", STAGE_COLOURS[other.component] || STAGE_COLOURS.other);
+      row.append(element("span", other.name, "bar-label wide"), bar, element("span", number(e[2]), "num"));
+      return row;
+    });
+  };
+  $("network-inputs").replaceChildren(...rows(g.type_edges.filter((e) => e[1] === typeIndex && e[0] !== typeIndex), 0));
+  $("network-outputs").replaceChildren(...rows(g.type_edges.filter((e) => e[0] === typeIndex && e[1] !== typeIndex), 1));
+};
+
 function describeNetworkNode(index) {
   if (index === null) return;
   const n = net.nodes[index];
@@ -1221,6 +1299,18 @@ function describeNetworkNode(index) {
         bestDistance = d;
       }
     }
+    const tip = $("network-tip");
+    if (best === null) tip.hidden = true;
+    else {
+      const n = net.nodes[best];
+      const box = canvas.getBoundingClientRect();
+      const inputs = net.adjacency[best].in.length;
+      const outputs = net.adjacency[best].out.length;
+      tip.replaceChildren(element("strong", net.level === "neurons" ? n.instance : n.name), element("span", `${humane(n.component)} · ${net.level === "types" ? `${number(n.count)} neurons · ` : ""}${inputs} inputs, ${outputs} outputs`));
+      tip.style.left = `${Math.min(box.width - 230, event.clientX - box.left + 14)}px`;
+      tip.style.top = `${event.clientY - box.top + 12}px`;
+      tip.hidden = false;
+    }
     if (best !== net.hover) {
       net.hover = best;
       describeNetworkNode(best);
@@ -1230,7 +1320,8 @@ function describeNetworkNode(index) {
   const release = () => (drag = null);
   canvas.addEventListener("pointerup", release);
   canvas.addEventListener("pointercancel", release);
-  canvas.addEventListener("dblclick", () => { fitNetwork(); drawNetwork(); });
+  canvas.addEventListener("pointerleave", () => ($("network-tip").hidden = true));
+  canvas.addEventListener("dblclick", () => { net.userMoved = false; fitNetwork(); drawNetwork(); });
   // The canvas may be laid out after the graph is built (a hidden panel has no size), so
   // fit again whenever it changes size, unless someone has panned or zoomed.
   new ResizeObserver(() => {
@@ -1268,6 +1359,7 @@ workspaces.register("brain", {
   show: (sel) => show(sel).catch(report),
   hide() {
     brain.active = false;
+    if (window.brain3d) window.brain3d.hide();
     filterClipList(false);
   },
   frame(sel) {

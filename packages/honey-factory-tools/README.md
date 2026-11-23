@@ -87,7 +87,9 @@ the URL opens a workspace, and for a clip dataset `?clip=s000123-c02` opens that
   Each view can show **Colour**, R1_6, R7, R8, a false-colour mix or honey coverage.
   Colour is computed from the receptors: for each ommatidium, the linear R, G, B light that
   would produce its R1_6, R7 and R8 catches under its subtype's rhodopsins (a regularised
-  inverse of fly-vision's spectral model, which is linear while adaptation is off). Point at an
+  inverse of fly-vision's spectral model, which is linear while adaptation is off).
+  Dorsal-rim ommatidia have Rh3 in both R7 and R8, so they cannot tell colours apart and
+  are drawn grey. **Compare with camera** puts a draggable wipe over the decoded image. Point at an
   ommatidium to read its receptors and rhodopsins. The side panel plots the rhodopsin
   curves on both pigment axes. `--no-eye` turns the workspace off.
 - **Brain**: fly-brain output, read from files. `--runs DIR` lists the `*.report.json`
@@ -101,6 +103,14 @@ the URL opens a workspace, and for a clip dataset `?clip=s000123-c02` opens that
   truth, next to the fly's own view of that frame. In Brain the clip list shows only clips
   that have a trace. During playback the circuit's boxes also fill with each stage's
   activity.
+- **3D brain** (Brain): every model neuron at its soma in MaleCNS space, a sampled cloud
+  of the rest of the brain for its outline, and the 12,000 strongest connections, drawn
+  with WebGL. Drag to turn, scroll to zoom, point at a neuron for its cell type, and click
+  a component in the legend to hide it. Neurons without a recorded soma (most
+  photoreceptors and lamina cells) are placed among their partners. During playback,
+  neurons brighten with their cell type's activity.
+- **Record video** (Brain playback): plays the clip once and saves the fly's view, compass,
+  activity map and readout as a 1920×1080 WebM.
 - **Network** (Brain): the connectome itself, from `--connectome FILE`. One node per cell
   type, or every central-complex neuron with the compass neurons on a ring at their
   bridge angle. Edges are synapse counts, coloured by the presynaptic transmitter. The
@@ -117,7 +127,10 @@ uv run honey-factory-tools connectome-graph /mnt/fastvault/minesophila/connectom
 ```
 
 While anything loads, the masthead shows what it is waiting for, how many requests are
-done and the elapsed time.
+done and the elapsed time. The masthead also hides the list, the details or the clip
+timeline (`[`, `]`, `t`), and `?` lists every shortcut. Side-panel sections fold away
+when you click their headings. Any view can fill its panel with its ⤢ button. These
+choices are remembered in the browser.
 
 ```sh
 uv run honey-factory-tools inspect <clip dataset> \

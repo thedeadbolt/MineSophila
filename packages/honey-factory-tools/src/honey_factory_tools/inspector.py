@@ -68,6 +68,7 @@ _STATIC = {
     "/static/workspaces.js": ("workspaces.js", "text/javascript; charset=utf-8"),
     "/static/eye.js": ("eye.js", "text/javascript; charset=utf-8"),
     "/static/brain.js": ("brain.js", "text/javascript; charset=utf-8"),
+    "/static/brain3d.js": ("brain3d.js", "text/javascript; charset=utf-8"),
 }
 _INT_FILTERS = ("viewpoint", "min_pixels", "max_pixels")
 _FLOAT_FILTERS = ("min_ratio", "max_ratio", "min_distance", "max_distance")

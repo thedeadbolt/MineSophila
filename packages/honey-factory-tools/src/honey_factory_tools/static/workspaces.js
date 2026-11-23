@@ -132,3 +132,116 @@ function fitCanvas(canvas) {
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
+
+// Comfort: panes, timeline, collapsible sections, maximised cards and shortcuts. Each choice
+// is remembered in this browser where storage is available.
+
+function remember(key, value) {
+  try {
+    if (value === undefined) return localStorage.getItem(`viewer:${key}`);
+    localStorage.setItem(`viewer:${key}`, value);
+  } catch {
+    // Without storage the choice lasts for this page only.
+  }
+  return null;
+}
+
+function togglePane(name, force) {
+  const hidden = document.body.classList.toggle(`hide-${name}`, force);
+  $(`toggle-${name}`).setAttribute("aria-pressed", String(!hidden));
+  remember(`hide-${name}`, hidden ? "1" : "");
+  window.dispatchEvent(new Event("resize"));
+}
+for (const name of ["list", "details", "timeline"]) {
+  $(`toggle-${name}`).addEventListener("click", () => togglePane(name));
+  if (remember(`hide-${name}`)) togglePane(name, true);
+}
+
+function toggleHelp(force) {
+  const sheet = $("shortcuts");
+  sheet.hidden = force === undefined ? !sheet.hidden : !force;
+  $("toggle-help").setAttribute("aria-expanded", String(!sheet.hidden));
+}
+$("toggle-help").addEventListener("click", () => toggleHelp());
+document.addEventListener("click", (event) => {
+  if (!$("shortcuts").hidden && !event.target.closest("#shortcuts, #toggle-help")) toggleHelp(false);
+});
+
+/** Section headings in the side panels fold their section away. */
+function makeCollapsible(root) {
+  for (const section of root.querySelectorAll(".inspector section")) {
+    if (section.classList.contains("collapsible")) continue;
+    const heading = section.querySelector(":scope > h2, :scope > .section-head h2");
+    if (!heading) continue;
+    section.classList.add("collapsible");
+    heading.tabIndex = 0;
+    heading.setAttribute("role", "button");
+    const key = `collapsed:${section.closest(".inspector").id}:${heading.textContent.trim()}`;
+    const set = (collapsed) => {
+      section.classList.toggle("collapsed", collapsed);
+      heading.setAttribute("aria-expanded", String(!collapsed));
+    };
+    set(Boolean(remember(key)));
+    const flip = () => {
+      const collapsed = !section.classList.contains("collapsed");
+      set(collapsed);
+      remember(key, collapsed ? "1" : "");
+    };
+    heading.addEventListener("click", flip);
+    heading.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        flip();
+      }
+    });
+  }
+}
+makeCollapsible(document);
+
+/** Every card can fill its panel; Esc or the same button puts it back. */
+function closeMaximised() {
+  for (const card of document.querySelectorAll(".card.max")) {
+    card.classList.remove("max");
+    card.parentElement.classList.remove("has-max");
+    card.querySelector(".max-card").textContent = "⤢";
+  }
+  window.dispatchEvent(new Event("resize"));
+}
+for (const card of document.querySelectorAll("figure.card")) {
+  const button = element("button", "⤢", "max-card");
+  button.type = "button";
+  button.title = "Fill the panel with this view (Esc to return)";
+  button.addEventListener("click", () => {
+    const opening = !card.classList.contains("max");
+    closeMaximised();
+    if (opening) {
+      card.classList.add("max");
+      card.parentElement.classList.add("has-max");
+      button.textContent = "⤡";
+    }
+    window.dispatchEvent(new Event("resize"));
+  });
+  card.querySelector("figcaption").append(button);
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.target.closest("input, select, textarea") || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.key === "Escape") {
+    toggleHelp(false);
+    closeMaximised();
+    return;
+  }
+  if (event.key === "?") {
+    toggleHelp();
+    return;
+  }
+  if (event.key === "[") togglePane("list");
+  else if (event.key === "]") togglePane("details");
+  else if (event.key === "t" && document.body.classList.contains("clips")) togglePane("timeline");
+  else if (event.shiftKey && ["KeyS", "KeyE", "KeyB"].includes(event.code)) {
+    const name = { KeyS: "scene", KeyE: "eye", KeyB: "brain" }[event.code];
+    const link = document.querySelector(`.workspace-link[data-workspace="${name}"]`);
+    if (link && link.getAttribute("aria-disabled") !== "true") link.click();
+  } else return;
+  event.preventDefault();
+});

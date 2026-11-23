@@ -121,8 +121,11 @@ def build(directory: Path, minimum_synapse_count: int = 5, max_type_edges: int =
             raise ConnectomeError(f"{directory} has no {name}")
     annotations = feather.read_table(
         directory / ANNOTATIONS,
-        columns=["bodyId", "type", "instance", "superclass", "class", "somaSide"],
-    ).to_pylist()
+        columns=[
+            "bodyId", "type", "instance", "superclass", "class", "somaSide",
+            "somaLocation", "tosomaLocation",
+        ],
+    ).to_pylist()  # fmt: skip
     body: dict[int, Record] = {}
     kenyon: set[int] = set()
     for row in annotations:
@@ -186,9 +189,11 @@ def build(directory: Path, minimum_synapse_count: int = 5, max_type_edges: int =
     )
 
     transmitters = _transmitters(directory, set(body))
-    return _summarise(
+    graph = _summarise(
         body, pre_ids, post_ids, weights, transmitters, minimum_synapse_count, max_type_edges
     )
+    graph["atlas"] = _atlas(body, annotations, graph["cell_types"], pre_ids, post_ids, weights)
+    return graph
 
 
 def _transmitters(directory: Path, bodies: set[int]) -> dict[int, str]:
@@ -295,6 +300,84 @@ def _summarise(
         ],
         "neuron_edges": neuron_edges,
         "inhibitory_transmitters": sorted(INHIBITORY),
+    }
+
+
+ATLAS_SCALE = 50  # voxels per stored unit
+ATLAS_BACKGROUND = 40000
+ATLAS_EDGES = 12000
+
+
+def _soma(row: Record) -> list[int] | None:
+    location = row.get("somaLocation") or row.get("tosomaLocation")
+    return [int(v) for v in location] if location else None
+
+
+def _atlas(
+    body: dict[int, Record],
+    annotations: list[Record],
+    cell_types: list[Record],
+    pre_ids: Any,
+    post_ids: Any,
+    weights: Any,
+) -> Record:
+    """Every model neuron at its soma, so the network can be drawn in the shape of the brain.
+
+    Neurons without a recorded soma (most photoreceptors and lamina cells, whose cell bodies
+    lie outside the imaged volume) take the synapse-weighted mean position of their partners,
+    repeated so positions spread outwards from the medulla, plus a small fixed offset per
+    body so they do not stack. ``background`` is a fixed sample of the other brain neurons'
+    somas (the nerve cord left out), which draws the outline of the brain."""
+    order = {name: rank for rank, name in enumerate(COMPONENT_ORDER)}
+    type_index = {t["name"]: i for i, t in enumerate(cell_types)}
+    ids = sorted(body, key=lambda b: (order[body[b]["component"]], str(body[b]["type"] or ""), b))
+    index = {b: i for i, b in enumerate(ids)}
+    position = np.full((len(ids), 3), np.nan)
+    for i, b in enumerate(ids):
+        soma = _soma(body[b])
+        if soma is not None:
+            position[i] = soma
+    pre = np.array([index[b] for b in pre_ids.tolist()], dtype=np.int64)
+    post = np.array([index[b] for b in post_ids.tolist()], dtype=np.int64)
+    weight = np.asarray(weights, dtype=float)
+    for _ in range(4):
+        missing = np.isnan(position[:, 0])
+        if not missing.any():
+            break
+        known = ~np.isnan(position[:, 0])
+        total = np.zeros((len(ids), 3))
+        mass = np.zeros(len(ids))
+        for a, b in ((pre, post), (post, pre)):
+            use = missing[a] & known[b]
+            np.add.at(total, a[use], position[b[use]] * weight[use, None])
+            np.add.at(mass, a[use], weight[use])
+        fill = missing & (mass > 0)
+        position[fill] = total[fill] / mass[fill, None]
+        rng = np.random.default_rng(11)
+        position[fill] += rng.normal(0, 600, (int(fill.sum()), 3))
+    stored = np.where(np.isnan(position), -1, np.round(position / ATLAS_SCALE)).astype(int)
+
+    background: list[int] = []
+    candidates = [
+        soma
+        for row in annotations
+        if int(row["bodyId"]) not in body
+        and not str(row["superclass"] or "").startswith("vnc")
+        and (soma := _soma(row)) is not None
+    ]
+    step = max(1, len(candidates) // ATLAS_BACKGROUND)
+    for soma in candidates[::step][:ATLAS_BACKGROUND]:
+        background.extend(round(v / ATLAS_SCALE) for v in soma)
+
+    strongest = np.argsort(-weight, kind="stable")[:ATLAS_EDGES]
+    return {
+        "scale": ATLAS_SCALE,
+        "body_id": ids,
+        "cell_type": [type_index[str(body[b]["type"] or "untyped")] for b in ids],
+        "position": stored.reshape(-1).tolist(),
+        "placed_from_partners": int(sum(1 for b in ids if _soma(body[b]) is None)),
+        "background": background,
+        "edges": [[int(pre[k]), int(post[k]), int(weight[k])] for k in strongest],
     }
 
 

@@ -32,12 +32,34 @@
     <p id="dataset-facts"></p>
   </div>
   <p id="activity" class="activity" role="status" aria-live="polite" hidden><span class="spinner" aria-hidden="true"></span><span id="activity-text"></span></p>
+  <div class="pane-toggles" role="group" aria-label="Panels">
+    <button type="button" id="toggle-list" class="wide-only" aria-pressed="true" title="Show or hide the list ([)">List</button>
+    <button type="button" id="toggle-details" class="wide-only" aria-pressed="true" title="Show or hide the details (])">Details</button>
+    <button type="button" id="toggle-timeline" aria-pressed="true" title="Show or hide the clip timeline (t)">Timeline</button>
+    <button type="button" id="toggle-help" aria-expanded="false" aria-controls="shortcuts" title="Keyboard shortcuts (?)">?</button>
+  </div>
   <form id="find" role="search">
     <input id="find-id" placeholder="Go to s000123 or s000123-v04" aria-label="Scene or sample ID" autocomplete="off" spellcheck="false">
     <button>Open</button>
   </form>
 </header>
 <div id="banner" hidden></div>
+<div id="shortcuts" class="popover" hidden role="dialog" aria-label="Keyboard shortcuts">
+  <h2>Keyboard shortcuts</h2>
+  <dl>
+    <dt><kbd>Shift</kbd> <kbd>S</kbd> <kbd>E</kbd> <kbd>B</kbd></dt><dd>Scene, Eye or Brain</dd>
+    <dt><kbd>Space</kbd></dt><dd>Play or pause the clip</dd>
+    <dt><kbd>,</kbd> <kbd>.</kbd></dt><dd>Previous or next frame</dd>
+    <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous or next sample</dd>
+    <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>RGB, mask or overlay (images)</dd>
+    <dt><kbd>o</kbd></dt><dd>Mask overlay on the clip</dd>
+    <dt><kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd></dt><dd>Zoom in, out, fit</dd>
+    <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Hide or show the list or details</dd>
+    <dt><kbd>w</kbd></dt><dd>Clip player wide</dd>
+    <dt><kbd>t</kbd></dt><dd>Hide or show the timeline</dd>
+    <dt><kbd>Esc</kbd></dt><dd>Close a maximised card or this sheet</dd>
+  </dl>
+</div>
 <div class="workspace">
   <aside class="results" aria-label="Samples">
     <details id="filter-panel">
@@ -116,7 +138,7 @@
     </div>
     <section class="timeline" aria-labelledby="timeline-title">
       <canvas id="clip-timeline" title="Click to jump to a frame"></canvas>
-      <h2 id="timeline-title"><span class="lanes">Top to bottom: honey status, bearing, teacher mode</span> <span class="legend" id="timeline-legend"></span></h2>
+      <h2 id="timeline-title"><span class="lanes">Top to bottom: honey status, bearing, teacher mode, teacher turn (up is right)</span> <span class="legend" id="timeline-legend"></span></h2>
     </section>
   </main>
 
@@ -195,6 +217,7 @@
         <label title="False colour: red from R8, green from R1_6, blue from R7"><input type="radio" name="eye-channel" value="fly"><span>Fly colour</span></label>
         <label title="How much of each ommatidium's view is honey"><input type="radio" name="eye-channel" value="honey"><span>Honey</span></label>
       </div>
+      <label class="toggle" title="Drag the line on the decoded image to compare it with the camera frame"><input id="eye-compare" type="checkbox"><span>Compare with camera</span></label>
       <label class="field">Gain <select id="eye-gain"><option value="auto" selected>Each frame's peak</option><option value="fixed">Fixed, 0 to 0.75</option></select></label>
       <span id="eye-status" class="status"></span>
     </div>
@@ -211,10 +234,33 @@
       <div class="segmented" role="radiogroup" aria-label="Brain view">
         <label><input type="radio" name="brain-view" value="playback"><span>Clip playback</span></label>
         <label><input type="radio" name="brain-view" value="circuit"><span>Circuit</span></label>
+        <label><input type="radio" name="brain-view" value="brain3d"><span>3D brain</span></label>
         <label><input type="radio" name="brain-view" value="network"><span>Network</span></label>
         <label><input type="radio" name="brain-view" value="runs" checked><span>Runs</span></label>
       </div>
       <span class="status" id="brain-circuit-run"></span>
+      <button type="button" id="brain-record" title="Play the clip once and save the fly's view, compass, activity and readout as a WebM video">Record video</button>
+    </div>
+    <div id="brain-3d" hidden>
+      <div class="panel-bar">
+        <div class="group" role="group" aria-label="Viewpoint">
+          <button type="button" id="brain3d-front" title="Look at the brain from the front">Front</button>
+          <button type="button" id="brain3d-top" title="Look down from above">Top</button>
+          <button type="button" id="brain3d-side" title="Look from the side">Side</button>
+        </div>
+        <label class="toggle"><input id="brain3d-rotate" type="checkbox" checked><span>Turn slowly</span></label>
+        <label class="toggle"><input id="brain3d-background" type="checkbox" checked><span>Brain outline</span></label>
+        <label class="toggle"><input id="brain3d-edges" type="checkbox" checked><span>Connections</span></label>
+        <span class="status" id="brain3d-status"></span>
+      </div>
+      <div class="viewport3d">
+        <canvas id="brain3d-canvas" title="Drag to turn, scroll to zoom, double-click to reset"></canvas>
+        <div class="stat stat-left" id="brain3d-neurons"></div>
+        <div class="stat stat-right" id="brain3d-connections"></div>
+        <div class="tip" id="brain3d-tip" hidden></div>
+      </div>
+      <p class="legend" id="brain3d-legend"></p>
+      <p class="hint" id="brain3d-note"></p>
     </div>
     <div id="brain-network" hidden>
       <div class="panel-bar">
@@ -226,7 +272,10 @@
         <label class="field">Edges <select id="network-edges"><option value="800">Strongest 800</option><option value="2500" selected>Strongest 2,500</option><option value="8000">Strongest 8,000</option></select></label>
         <span class="status" id="network-status"></span>
       </div>
-      <canvas id="network-canvas" title="Scroll to zoom, drag to pan, point at a node to see its connections"></canvas>
+      <div class="viewport2d">
+        <canvas id="network-canvas" title="Scroll to zoom, drag to pan, point at a node to see its connections"></canvas>
+        <div class="tip" id="network-tip" hidden></div>
+      </div>
       <p class="legend" id="network-legend"></p>
       <p class="hint" id="network-note"></p>
     </div>
@@ -316,6 +365,7 @@
     <section>
       <h2>Model</h2>
       <dl id="eye-model"></dl>
+      <p class="hint">Colour is the light each ommatidium's three receptors imply. Dorsal-rim ommatidia (the top band) have Rh3 in both R7 and R8, so they are colour-blind and shown grey.</p>
       <p class="hint">Frames come from the lossy clip video at half size, so values can differ slightly from fly-vision convert on the original capture.</p>
     </section>
   </aside>
@@ -396,5 +446,6 @@
 <script src="/static/workspaces.js"></script>
 <script src="/static/eye.js"></script>
 <script src="/static/brain.js"></script>
+<script src="/static/brain3d.js"></script>
 </body>
 </html>

@@ -30,7 +30,17 @@ NEURONS = [
     (11, "KCg-d", "KCg-d_L", "cb_intrinsic", "Kenyon_Cell", "L"),
     (12, "KCab", "KCab_L", "cb_intrinsic", "Kenyon_Cell", "L"),
     (13, "DNp01", "DNp01_R", "descending_neuron", None, "R"),
+    (14, "IN01", "IN01_L", "vnc_intrinsic", None, "L"),
+    (15, "SMP001", "SMP001_L", "cb_intrinsic", None, "L"),
 ]
+# Somas in voxels; photoreceptor 1 and lamina 2 have none, as in MaleCNS.
+SOMAS = {
+    3: [5000, 1000, 1000], 4: [6000, 1500, 1000], 5: [7000, 1500, 1000],
+    6: [8000, 1000, 1000], 7: [9000, 1000, 1000], 8: [10000, 1000, 1000],
+    9: [10500, 1200, 1000], 10: [11000, 1000, 1000], 11: [7500, 500, 1000],
+    12: [7600, 500, 1000], 13: [9000, 2000, 1000], 14: [9000, 9000, 9000],
+    15: [8500, 800, 1000],
+}  # fmt: skip
 EDGES = [
     (1, 2, 50), (2, 3, 40), (3, 4, 30), (3, 5, 20), (5, 6, 25), (6, 7, 22), (7, 8, 18),
     (8, 9, 12), (9, 8, 12), (8, 10, 9), (4, 11, 7), (4, 12, 3), (11, 4, 6),
@@ -51,6 +61,8 @@ def connectome_dir(tmp_path: Path) -> Path:
                 "superclass": columns[3],
                 "class": columns[4],
                 "somaSide": columns[5],
+                "somaLocation": pa.array([SOMAS.get(n[0]) for n in NEURONS], pa.list_(pa.int64())),
+                "tosomaLocation": pa.array([None] * len(NEURONS), pa.list_(pa.int64())),
             }
         ),
         tmp_path / connectome.ANNOTATIONS,
@@ -59,7 +71,7 @@ def connectome_dir(tmp_path: Path) -> Path:
         pa.table(
             {
                 "body": pa.array([n[0] for n in NEURONS], pa.int64()),
-                "consensus_nt": ["acetylcholine"] * 6 + ["GABA"] + ["acetylcholine"] * 6,
+                "consensus_nt": ["acetylcholine"] * 6 + ["GABA"] + ["acetylcholine"] * 8,
                 "celltype_predicted_nt": [None] * len(NEURONS),
             }
         ),
@@ -122,6 +134,31 @@ class TestBuild:
         assert len(graph["neuron_edges"]) == 5
         ring = next(t for t in graph["cell_types"] if t["name"] == "ER4d")
         assert ring["transmitter"] == "gaba"
+
+    def test_places_neurons_at_their_somas_for_the_3d_brain(self, connectome_dir: Path) -> None:
+        atlas = connectome.build(connectome_dir)["atlas"]
+        scale = atlas["scale"]
+        index = {body: i for i, body in enumerate(atlas["body_id"])}
+        position = atlas["position"]
+        assert position[3 * index[3] : 3 * index[3] + 3] == [
+            5000 / scale,
+            1000 / scale,
+            1000 / scale,
+        ]
+        # R1-R6 and L1 have no soma, so they are placed among their partners.
+        assert atlas["placed_from_partners"] == 2
+        assert all(position[3 * index[b]] >= 0 for b in (1, 2))
+        assert abs(position[3 * index[2]] * scale - 5000) < 3000
+        # The outline holds other brain neurons only: no model neurons, no nerve cord.
+        background = atlas["background"]
+        # KCab (too little visual input), DNp01 and SMP001; IN01 is in the nerve cord.
+        assert [background[k : k + 3] for k in range(0, len(background), 3)] == [
+            [152, 10, 20],
+            [180, 40, 20],
+            [170, 16, 20],
+        ]
+        assert len(atlas["edges"]) == 12
+        assert atlas["edges"][0][2] == 50
 
     def test_missing_files_are_reported(self, tmp_path: Path) -> None:
         with pytest.raises(connectome.ConnectomeError, match="feather"):
