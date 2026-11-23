@@ -1,0 +1,16 @@
+{
+  "format": "fly-brain-goal-memory-fit-v1",
+  "initial_harmonic_eigenvalue": null,
+  "hold": {
+    "steps": 1500,
+    "learning_rate": 0.01,
+    "frames": 120,
+    "kick_frames": 10,
+    "kick": 0.3,
+    "minimum_strength": 0.4,
+    "transitions_per_frame": 4,
+    "batch_size": 32,
+    "release_sharpness": 20.0,
+    "seed": 0
+  }
+}

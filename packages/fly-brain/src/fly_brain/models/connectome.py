@@ -65,8 +65,12 @@ class ConnectomeModelConfig:
     release_thresholds: dict[str, float] = field(default_factory=dict[str, float])
     release_threshold_sharpness: float = 20.0
     egocentric_input: Literal["none", "pfn_vector"] = "none"
+    goal_operating_point: Literal["none", "fitted"] = "none"
+    goal_gains: dict[str, float] = field(default_factory=dict[str, float])
+    goal_type_bias: dict[str, float] = field(default_factory=dict[str, float])
 
     def __post_init__(self) -> None:
+        self._validate_fitted_goal()
         if self.egocentric_input not in {"none", "pfn_vector"}:
             raise ValueError(f"unsupported egocentric input {self.egocentric_input!r}")
         if self.egocentric_input == "pfn_vector":
@@ -138,6 +142,22 @@ class ConnectomeModelConfig:
         object.__setattr__(self, "components", components)
         object.__setattr__(self, "readout_components", readout_components)
 
+    def _validate_fitted_goal(self) -> None:
+        """A fitted goal memory (ADR 0030) uses effective type-pair gains keyed SOURCE>TARGET."""
+        if self.goal_operating_point not in {"none", "fitted"}:
+            raise ValueError(f"unsupported goal operating point {self.goal_operating_point!r}")
+        if self.goal_operating_point != "fitted":
+            if self.goal_gains or self.goal_type_bias:
+                raise ValueError("goal_gains and goal_type_bias need a fitted goal")
+            return
+        if "goal_memory" not in self.components:
+            raise ValueError("a fitted goal needs the goal_memory component")
+        if not self.goal_gains:
+            raise ValueError("a fitted goal needs goal_gains")
+        _validate_type_pair_gains(
+            self.goal_gains, self.goal_type_bias, self.edge_gain_mode, self.maximum_edge_gain
+        )
+
     def _validate_fitted_compass(self) -> None:
         """Fitted gains are effective cell-type-pair gains keyed ``SOURCE>TARGET``."""
         if self.compass_operating_point != "fitted":
@@ -146,15 +166,26 @@ class ConnectomeModelConfig:
             return
         if not self.compass_gains:
             raise ValueError("a fitted compass needs compass_gains")
-        if self.edge_gain_mode != "cell_type_pair" or self.maximum_edge_gain is None:
-            raise ValueError("a fitted compass needs bounded cell-type-pair gains")
-        for key, value in self.compass_gains.items():
-            if key.count(">") != 1 or not all(key.split(">")):
-                raise ValueError(f"compass gain {key!r} must be keyed SOURCE>TARGET")
-            if not np.isfinite(value) or not 0 < value < self.maximum_edge_gain:
-                raise ValueError("compass gains must lie between 0 and the maximum edge gain")
-        if not all(np.isfinite(value) for value in self.compass_type_bias.values()):
-            raise ValueError("compass type biases must be finite")
+        _validate_type_pair_gains(
+            self.compass_gains, self.compass_type_bias, self.edge_gain_mode, self.maximum_edge_gain
+        )
+
+
+def _validate_type_pair_gains(
+    gains: dict[str, float],
+    type_bias: dict[str, float],
+    edge_gain_mode: str,
+    maximum_edge_gain: float | None,
+) -> None:
+    if edge_gain_mode != "cell_type_pair" or maximum_edge_gain is None:
+        raise ValueError("fitted gains need bounded cell-type-pair gains")
+    for key, value in gains.items():
+        if key.count(">") != 1 or not all(key.split(">")):
+            raise ValueError(f"fitted gain {key!r} must be keyed SOURCE>TARGET")
+        if not np.isfinite(value) or not 0 < value < maximum_edge_gain:
+            raise ValueError("fitted gains must lie between 0 and the maximum edge gain")
+    if not all(np.isfinite(value) for value in type_bias.values()):
+        raise ValueError("fitted type biases must be finite")
 
 
 @dataclass(frozen=True)

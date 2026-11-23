@@ -1,5 +1,5 @@
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false
-# pyright: reportUnknownArgumentType=false
+# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false
 """A slice of a compiled brain that can be simulated alone, for operating-point fits.
 
 Fits such as the compass integrator (ADR 0028) and the fan-shaped-body goal memory run a few
@@ -122,3 +122,30 @@ def run_subcircuit(
     initial = jnp.zeros((external.shape[0], circuit.cell_types.size))
     _, states = jax.lax.scan(frame, initial, jnp.swapaxes(external, 0, 1))
     return jnp.swapaxes(states, 0, 1)
+
+
+Params = dict[str, jax.Array]
+
+
+def adam_step(params: Params, first: Params, second: Params, rate: float, step: int) -> Params:
+    """One bias-corrected Adam update from running first and second moments."""
+    first_scale, second_scale = 1 - 0.9**step, 1 - 0.999**step
+    return jax.tree.map(
+        lambda p, m, v: p - rate * (m / first_scale) / (jnp.sqrt(v / second_scale) + 1e-8),
+        params,
+        first,
+        second,
+    )
+
+
+def clipped_moments(
+    gradients: Params, first: Params, second: Params
+) -> tuple[Params, Params] | None:
+    """Clip gradients to unit global norm and update Adam moments; None if not finite."""
+    norm = float(np.sqrt(sum(float(jnp.sum(x * x)) for x in jax.tree.leaves(gradients))))
+    if not np.isfinite(norm):
+        return None
+    scale = min(1.0, 1.0 / max(norm, 1e-12))
+    first = jax.tree.map(lambda m, g: 0.9 * m + 0.1 * g * scale, first, gradients)
+    second = jax.tree.map(lambda v, g: 0.999 * v + 0.001 * (g * scale) ** 2, second, gradients)
+    return first, second

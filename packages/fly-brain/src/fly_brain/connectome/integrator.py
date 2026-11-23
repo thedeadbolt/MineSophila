@@ -18,7 +18,7 @@ import jax.numpy as jnp
 import numpy as np
 from numpy.typing import NDArray
 
-from fly_brain.connectome.subcircuit import SubCircuit, run_subcircuit
+from fly_brain.connectome.subcircuit import SubCircuit, adam_step, run_subcircuit
 
 PEN_TYPES = ("PEN_a(PEN1)", "PEN_b(PEN2)")
 
@@ -279,7 +279,7 @@ def fit_compass_integrator(
             g = jax.tree.map(lambda x, n=norm: x * min(1.0, 1.0 / max(n, 1e-12)), g)
             first = jax.tree.map(lambda m, x: 0.9 * m + 0.1 * x, first, g)
             second = jax.tree.map(lambda v, x: 0.999 * v + 0.001 * x * x, second, g)
-            params = _adam_step(params, first, second, stage.learning_rate, step)
+            params = adam_step(params, first, second, stage.learning_rate, step)
             step_count += 1
             if step % progress_interval == 0 or step == stage.steps:
                 record = {
@@ -305,16 +305,6 @@ def fit_compass_integrator(
         },
         self_motion_scale=float(np.exp(np.asarray(params["log_scale"]))),
         history=tuple(history),
-    )
-
-
-def _adam_step(params: Params, first: Params, second: Params, rate: float, step: int) -> Params:
-    first_scale, second_scale = 1 - 0.9**step, 1 - 0.999**step
-    return jax.tree.map(
-        lambda p, m, v: p - rate * (m / first_scale) / (jnp.sqrt(v / second_scale) + 1e-8),
-        params,
-        first,
-        second,
     )
 
 

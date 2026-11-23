@@ -60,6 +60,7 @@ from fly_brain.connectome.compass import (
     ring_attractor_gains,
     type_pair_raw_gains,
 )
+from fly_brain.connectome.goal import GoalHoldConfig, fit_goal_hold
 from fly_brain.connectome.integrator import (
     CompassCircuit,
     IntegratorFitConfig,
@@ -249,6 +250,18 @@ def _parser() -> argparse.ArgumentParser:
     trace.add_argument("--checkpoint", required=True, type=Path)
     trace.add_argument("--clip-id", required=True)
     trace.add_argument("--out", required=True, type=Path)
+    goal = commands.add_parser(
+        "fit-goal-memory",
+        help="fit the fan-shaped-body goal memory in stages (ADR 0030)",
+    )
+    goal.add_argument("yaw_cache", type=Path, help="clip cache whose train split gives turns")
+    goal.add_argument("--layout-cache", required=True, type=Path)
+    goal.add_argument("--connectome-root", required=True, type=Path)
+    goal.add_argument("--config", required=True, type=Path, help="connectome clip config")
+    goal.add_argument("--initial-checkpoint", required=True, type=Path)
+    goal.add_argument("--compass-fit", required=True, type=Path)
+    goal.add_argument("--fit-config", required=True, type=Path)
+    goal.add_argument("--out", required=True, type=Path)
     integrator = commands.add_parser(
         "fit-compass-integrator",
         help="fit the compass as an angular integrator on recorded yaw (ADR 0028)",
@@ -694,6 +707,14 @@ def _train_connectome_clips(args: argparse.Namespace) -> int:
             graph,
             model_config,
         )
+    goal_point: dict[str, object] | None = None
+    if model_config.goal_operating_point == "fitted":
+        initial, goal_point = _fitted_goal(
+            initial if initial is not None else model.initialize(training_config.seed),
+            model.brain,
+            graph,
+            model_config,
+        )
     if model_config.compass_operating_point == "ring_attractor":
         initial, operating_point = _compass_operating_point(
             initial if initial is not None else model.initialize(training_config.seed),
@@ -771,6 +792,7 @@ def _train_connectome_clips(args: argparse.Namespace) -> int:
             "readout_statistics": readout_statistics,
             "initial_checkpoint": initial_manifest,
             "compass_operating_point": operating_point,
+            "goal_operating_point": goal_point,
             "self_motion": (
                 None
                 if model_config.self_motion_input == "none"
@@ -2083,6 +2105,81 @@ def _type_pair_names(brain: CompiledBrain, types: NDArray[np.str_]) -> list[str]
     return names
 
 
+GOAL_HOLD_TYPES = (*GOAL_MEMORY_TYPES, *GOAL_TANGENTIAL_TYPES, *FAN_SHAPED_BODY_COLUMN_TYPES)
+
+
+def _load_goal_fit_config(path: Path) -> tuple[GoalHoldConfig, float | None]:
+    raw: Any = json.loads(path.read_text())
+    values = dict(cast(dict[str, Any], raw)) if isinstance(raw, dict) else {}
+    if values.get("format") != "fly-brain-goal-memory-fit-v1" or "hold" not in values:
+        raise ValueError("unsupported goal memory fit config")
+    try:
+        hold = GoalHoldConfig(**cast(dict[str, Any], values["hold"]))
+    except TypeError as error:
+        raise ValueError(f"invalid goal memory setting: {error}") from error
+    harmonic = values.get("initial_harmonic_eigenvalue")
+    return hold, None if harmonic is None else float(harmonic)
+
+
+def _fit_goal_memory(args: argparse.Namespace) -> int:
+    started = time.perf_counter()
+    model_config, _, _ = _load_connectome_clip_config(args.config)
+    if "goal_memory" not in model_config.components:
+        raise ValueError("fit-goal-memory needs a config with the goal_memory component")
+    hold_config, harmonic = _load_goal_fit_config(args.fit_config)
+    layout = _cached_sensor_layout([CachedStillDataset.load(args.layout_cache)])
+    graph, _, _, _, compiler = _build_connectome(layout, args.connectome_root, model_config)
+    brain = compiler.compile()
+    neurons = graph.neurons
+    types = neurons.cell_types[np.searchsorted(neurons.neuron_ids, brain.neuron_ids)]
+    angles = _heading_angles(brain, graph, args.connectome_root)
+    maximum = brain.parameter_policy.maximum_edge_gain
+    if maximum is None:
+        raise ValueError("fit-goal-memory needs bounded edge gains")
+    start = maximum / (1.0 + np.exp(-np.asarray(brain.initialize_parameters(0).edge_gain)))
+    initial = start.astype(np.float64)
+    ring_report: dict[str, object] | None = None
+    if harmonic is not None:
+        ring = ring_attractor_gains(
+            brain.source_indexes,
+            brain.target_indexes,
+            brain.anatomical_weights,
+            brain.edge_group_indexes,
+            initial,
+            np.isin(types, GOAL_HOLD_TYPES),
+            angles,
+            maximum_gain=maximum,
+            point=CompassOperatingPoint(harmonic_eigenvalue=harmonic),
+        )
+        initial = ring.gains
+        ring_report = {
+            "harmonic_eigenvalue": ring.harmonic_eigenvalue,
+            "other_eigenvalue": ring.other_eigenvalue,
+        }
+    circuit = extract_subcircuit(brain, types, GOAL_HOLD_TYPES)
+    circuit_angles = angles[circuit.neuron_index]
+    hold = fit_goal_hold(circuit, circuit_angles, initial[circuit.global_groups], hold_config)
+    print(json.dumps({"hold_error_deg": hold.hold_error_deg}), flush=True)
+    output = {
+        "format": "fly-brain-goal-memory-v1",
+        "git_revision": _git_revision(),
+        "config": str(args.config),
+        "compass_fit": str(args.compass_fit),
+        "fit_config": json.loads(args.fit_config.read_text()),
+        "initial_ring": ring_report,
+        "model_overrides": {
+            "goal_operating_point": "fitted",
+            "goal_gains": hold.gains,
+            "goal_type_bias": hold.type_bias,
+        },
+        "hold": {"hold_error_deg": hold.hold_error_deg, "history": list(hold.history)},
+        "runtime_seconds": time.perf_counter() - started,
+    }
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n")
+    return 0
+
+
 def _load_integrator_fit_config(path: Path) -> tuple[IntegratorFitConfig, float]:
     raw: Any = json.loads(path.read_text())
     if not isinstance(raw, dict):
@@ -2200,25 +2297,9 @@ def _fitted_compass(
     config: ConnectomeModelConfig,
 ) -> tuple[BrainParameters, dict[str, object]]:
     """Apply a fitted compass integrator: named type-pair gains and per-type biases (9i)."""
-    maximum = brain.parameter_policy.maximum_edge_gain
-    if maximum is None or brain.parameter_policy.edge_gain_mode != "cell_type_pair":
-        raise ValueError("a fitted compass needs bounded cell-type-pair gains")
-    neurons = graph.neurons
-    types = neurons.cell_types[np.searchsorted(neurons.neuron_ids, brain.neuron_ids)]
-    gains = type_pair_raw_gains(
-        np.asarray(parameters.edge_gain),
-        brain.edge_group_indexes,
-        types[brain.source_indexes],
-        types[brain.target_indexes],
-        config.compass_gains,
-        maximum,
+    parameters = _apply_type_pair_fit(
+        parameters, brain, graph, config.compass_gains, config.compass_type_bias
     )
-    bias = np.asarray(parameters.neuron_bias, dtype=np.float32).copy()
-    for cell_type, value in config.compass_type_bias.items():
-        selected = types == cell_type
-        if not selected.any():
-            raise ValueError(f"compass type bias names unknown cell type {cell_type!r}")
-        bias[selected] += value
     report: dict[str, object] = {
         "mode": "fitted",
         "biological_status": "learned",
@@ -2226,12 +2307,58 @@ def _fitted_compass(
         "type_bias": dict(config.compass_type_bias),
         "release_thresholds": dict(config.release_thresholds),
     }
-    return (
-        parameters._replace(
-            edge_gain=jnp.asarray(gains, dtype=jnp.float32),  # pyright: ignore[reportUnknownMemberType]
-            neuron_bias=jnp.asarray(bias, dtype=jnp.float32),  # pyright: ignore[reportUnknownMemberType]
-        ),
-        report,
+    return parameters, report
+
+
+def _fitted_goal(
+    parameters: BrainParameters,
+    brain: CompiledBrain,
+    graph: ConnectomeGraph,
+    config: ConnectomeModelConfig,
+) -> tuple[BrainParameters, dict[str, object]]:
+    """Apply a fitted fan-shaped-body goal memory (ADR 0030)."""
+    parameters = _apply_type_pair_fit(
+        parameters, brain, graph, config.goal_gains, config.goal_type_bias
+    )
+    report: dict[str, object] = {
+        "mode": "fitted",
+        "biological_status": "learned",
+        "groups": len(config.goal_gains),
+        "type_bias": dict(config.goal_type_bias),
+    }
+    return parameters, report
+
+
+def _apply_type_pair_fit(
+    parameters: BrainParameters,
+    brain: CompiledBrain,
+    graph: ConnectomeGraph,
+    gains_by_pair: dict[str, float],
+    type_bias: dict[str, float],
+) -> BrainParameters:
+    """Set named SOURCE>TARGET effective gains and add per-type biases."""
+    maximum = brain.parameter_policy.maximum_edge_gain
+    if maximum is None or brain.parameter_policy.edge_gain_mode != "cell_type_pair":
+        raise ValueError("fitted gains need bounded cell-type-pair gains")
+    neurons = graph.neurons
+    types = neurons.cell_types[np.searchsorted(neurons.neuron_ids, brain.neuron_ids)]
+    gains = type_pair_raw_gains(
+        np.asarray(parameters.edge_gain),
+        brain.edge_group_indexes,
+        types[brain.source_indexes],
+        types[brain.target_indexes],
+        gains_by_pair,
+        maximum,
+    )
+    bias = np.asarray(parameters.neuron_bias, dtype=np.float32).copy()
+    for cell_type, value in type_bias.items():
+        selected = types == cell_type
+        if not selected.any():
+            raise ValueError(f"type bias names unknown cell type {cell_type!r}")
+        bias[selected] += value
+    return parameters._replace(
+        edge_gain=jnp.asarray(gains, dtype=jnp.float32),  # pyright: ignore[reportUnknownMemberType]
+        neuron_bias=jnp.asarray(bias, dtype=jnp.float32),  # pyright: ignore[reportUnknownMemberType]
     )
 
 
@@ -2644,6 +2771,8 @@ def main(argv: list[str] | None = None) -> int:
             return _fit_compass_integrator(args)
         if args.command == "trace-clip":
             return _trace_clip(args)
+        if args.command == "fit-goal-memory":
+            return _fit_goal_memory(args)
         if args.command == "train-recurrent":
             return _train_recurrent(args)
         if args.command == "train-recurrent-actions":
