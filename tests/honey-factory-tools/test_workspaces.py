@@ -199,6 +199,18 @@ class TestTraces:
         assert len(trace["compass"]["activity"][0]) == 6
         assert set(trace["series"]) == {"presence", "readout", "bump_phase"}
 
+    def test_decoded_readout_arrays_pass_through(self, tmp_path: Path) -> None:
+        path = tmp_path / "one.npz"
+        write_trace(path, "s000001-c00")
+        with np.load(path) as data:
+            arrays = {name: data[name] for name in data.files}
+        arrays["presence_prob"] = np.full(6, 0.25, dtype=np.float32)
+        arrays["bearing_azimuth_deg"] = np.array([10, 20, np.nan, 30, 40, 50], dtype=np.float32)
+        np.savez(path, **arrays)
+        series = load_trace(path)["series"]
+        assert series["presence_prob"] == [0.25] * 6
+        assert series["bearing_azimuth_deg"][2] is None
+
     def test_bad_frame_lists_fall_back_to_one_frame_per_step(self, tmp_path: Path) -> None:
         write_trace(tmp_path / "one.npz", "s000001-c00", frames=[1, 2])
         assert load_trace(tmp_path / "one.npz")["frames"] == list(range(6))

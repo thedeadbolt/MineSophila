@@ -10,7 +10,9 @@ Traces are ``fly-brain-clip-trace-v1`` ``.npz`` files, one per clip, written by
 ``clip_id``, the checkpoint's digest and ``frames``, the clip frame each trace step was
 taken from. The arrays are ``activity`` (T, N) and per neuron ``cell_type``, ``side``,
 ``stage``, ``pb_angle`` (NaN where none) and ``body_id``; per step, optionally, ``yaw``,
-``presence``, ``visible``, ``direction`` (T, 3), ``readout`` (T, 4),
+``presence``, ``visible``, ``direction`` (T, 3), ``readout`` (T, 4) as
+``[presence_logit, forward, right, up]`` with the decoded ``presence_prob``,
+``bearing_azimuth_deg`` and ``bearing_elevation_deg``,
 ``teacher_actions`` (T, A) with ``teacher_mask`` (T), ``bump_phase`` and
 ``bump_strength``. The page gets the activity summarised by cell type, plus every
 compass neuron with a bridge angle in full.
@@ -48,7 +50,17 @@ STAGE_ORDER = (
     "PFL",
     "other",
 )
-PER_STEP = ("yaw", "presence", "visible", "bump_phase", "bump_strength", "teacher_mask")
+PER_STEP = (
+    "yaw",
+    "presence",
+    "visible",
+    "bump_phase",
+    "bump_strength",
+    "teacher_mask",
+    "presence_prob",
+    "bearing_azimuth_deg",
+    "bearing_elevation_deg",
+)
 PER_STEP_VECTORS = ("direction", "readout", "teacher_actions")
 # Above this many neurons in one cell type, only its mean and spread are sent.
 MAX_TYPE_ROWS = 64

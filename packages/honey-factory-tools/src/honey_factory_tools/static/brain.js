@@ -71,6 +71,17 @@ function setView(view) {
 
 // Playback
 
+/** The model's presence probability and bearing at every step. trace-clip writes them
+    decoded; for older files they come from ``readout`` = [presence logit, forward, right,
+    up] in the panorama frame. */
+function decodedReadout(series) {
+  const sigmoid = (x) => 1 / (1 + Math.exp(-x));
+  const readout = series.readout || [];
+  const presence = series.presence_prob || (readout.length ? readout.map((r) => (r[0] === null ? null : sigmoid(r[0]))) : null);
+  const azimuth = series.bearing_azimuth_deg || (readout.length ? readout.map((r) => (r.length >= 3 && r[1] !== null ? (Math.atan2(r[2], r[1]) * 180) / Math.PI : null)) : null);
+  return { presence, azimuth };
+}
+
 /** One video frame of the model running: the fly's view, the compass, the activity map and
     the readout, side by side, with the clip and step written on it. */
 function composeRecording(canvas) {
@@ -398,14 +409,15 @@ function drawDecisions() {
   const lanes = [];
   const frames = (brain.frame && brain.frame.frames) || [];
   const truthBearing = trace.frames.map((n) => (frames[n] && frames[n].bearing ? frames[n].bearing.azimuth_degrees : null));
-  if (series.readout) {
+  const decoded = decodedReadout(series);
+  if (decoded.presence) {
     lanes.push({ name: "Presence", range: [0, 1], lines: [
       { values: series.presence || [], colour: cssVar("--muted"), label: "honey present", dash: true },
-      { values: series.readout.map((r) => r[0]), colour: cssVar("--honey"), label: "model" },
+      { values: decoded.presence, colour: cssVar("--honey"), label: "model" },
     ] });
     lanes.push({ name: "Bearing", range: [-180, 180], lines: [
       { values: truthBearing, colour: cssVar("--muted"), label: "true", dash: true },
-      { values: series.readout.map((r) => (r.length >= 3 ? (Math.atan2(r[2], r[1]) * 180) / Math.PI : null)), colour: cssVar("--honey"), label: "model" },
+      { values: decoded.azimuth || [], colour: cssVar("--honey"), label: "model" },
     ] });
   }
   if (series.teacher_actions) {
@@ -473,7 +485,7 @@ function describeStep() {
   const trace = brain.trace;
   const s = brain.step;
   const series = trace.series;
-  const readout = series.readout ? series.readout[s] : null;
+  const decoded = decodedReadout(series);
   const phase = series.bump_phase ? series.bump_phase[s] : null;
   const heading = headingAt();
   facts($("brain-step-facts"), [
@@ -482,7 +494,8 @@ function describeStep() {
     ["Bump phase", phase === null || phase === undefined ? "—" : `${number((phase * 180) / Math.PI, 1)}°`],
     ["Bump strength", series.bump_strength ? number(series.bump_strength[s], 4) : "—"],
     ["Bump − heading", phase !== null && phase !== undefined && heading !== null ? `${number(angleDifference((phase * 180) / Math.PI, heading), 1)}°` : "—"],
-    ["Model presence", readout ? number(readout[0], 3) : "—"],
+    ["Model presence", decoded.presence && decoded.presence[s] !== null ? number(decoded.presence[s], 3) : "—"],
+    ["Model bearing", decoded.azimuth && decoded.azimuth[s] !== null ? `${number(decoded.azimuth[s], 1)}° right` : "—"],
     ["Honey present", series.presence ? (series.presence[s] ? "yes" : "no") : "—"],
     ["Honey visible", series.visible ? (series.visible[s] ? "yes" : "no") : "—"],
   ]);
