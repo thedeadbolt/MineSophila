@@ -711,9 +711,28 @@ Then rerun the compass and self-motion clip experiments against the same GRU con
 - **Cause, as understood so far.** Integration needs two things: a self-sustaining bump, and PEN
   neurons gated by bump × turn. Graded signed release (ADR 0027) is linear at rest, so the
   second also needs a threshold. EPG and PEN spike in the fly. Persistence comes first.
-- **Next:** stronger harmonic targets and no tonic bias, judged by persistence. Then the PEN
-  threshold (ADR 0028 if it works), then FC2 (FC2A/B/C, 92 neurons in MaleCNS) as the goal
-  memory read by PFL3.
+- **Persistence.** With a harmonic target of 1.5 (reached 1.22) and no tonic bias, the bump
+  holds at the seeded heading (mean error 7° after 30 frames, strength 0.75). It still does not
+  integrate: drift is about 0.1°/frame at every turn rate, as linear PENs predict.
+- **The anatomy supports rotation.** Weighted by synapse count, PENs in the left PB hemisphere
+  project to EPGs +67° away and right-hemisphere PENs −67° away (concentration 0.85–0.92). Soma
+  side matches PB hemisphere for every PEN. The ring search, though, pushes nearly every compass
+  type pair, PEN→EPG included, to the gain cap of 4, so the loop is deep rather than tuned.
+- **PEN threshold sweeps:**
+  - At θ 0.05 with a velocity drive of 0.2 per °/tick, every PEN on the turning side saturates
+    (release 0.47 of 0.5) with no bump shape (concentration 0.09), so the push is uniform.
+    Bump-only PEN state already reaches 0.31.
+  - In the conjunction regime (θ 0.3, scale 0.04), turning at ±8°/tick rotates the bump at
+    ±0.18°/frame. The sign and symmetry are correct, but it is far too slow: the locked loop
+    resists the push.
+- **Next:** stop hand-searching eigenvalues. Fit the compass operating point by gradient on a
+  synthetic integration task:
+  - seed a bump, apply turn sequences, and require phase rotation proportional to summed yaw,
+    with persistence when there is no turn;
+  - fit the 22 compass type-pair gains, the PEN threshold and the velocity scale;
+  - use a compass-only sub-brain for speed.
+  Then ADR 0028 (per-cell-type activation), then FC2 (FC2A/B/C, 92 neurons in MaleCNS) as the
+  goal memory read by PFL3.
 
 #### Planned for the action head: outcome-weighted imitation (proposed 2026-11-22)
 
