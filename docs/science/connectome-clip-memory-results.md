@@ -2,8 +2,8 @@
 
 Recorded 2026-11-22, updated 2026-11-23. The first test of target-direction memory inside the
 connectome, against the recurrent (GRU) control, on clips where the honey is hidden for long
-stretches. Results are interim: the central-complex rows are single seeds. Extra central-complex
-seeds and level 4 are still running.
+stretches. Results are interim: the central-complex rows are single seeds. Level 4 and a
+weaker self-motion input are still running.
 
 ## Data
 
@@ -40,14 +40,16 @@ the presence threshold.
 | GRU, vision only | 67.2 ± 2.1% | 30.7 ± 3.3° | 54.9 ± 1.7° | 69.6 ± 3.1% |
 | GRU + egocentric motion | 73.9 ± 6.9% | 27.5 ± 5.3° | **42.6 ± 2.6°** | 76.3 ± 2.3% |
 | Central complex, compass readout | **76.5%** | 31.2° | 71.6° | 58.2% |
-| Central complex, projection readout | 64.0% | **25.4°** | 48.9° | 67.6% |
+| Central complex, projection readout (seeds 0–2) | 63.7 ± 1.7% | **25.0 ± 2.5°** | 51.6 ± 2.3° | 68.1 ± 1.8% |
+
+Projection seeds 0, 1 and 2 scored 48.9°, 52.9° and 52.9° occluded bearing.
 
 Adding yaw rate to the PEN neurons (`self_motion_input: "pen_yaw"`, seed 0):
 
 | Model | Test balanced accuracy | Visible bearing | Occluded bearing | Occluded recall |
 |---|---:|---:|---:|---:|
-| Compass readout + self-motion | 71.6% | 33.1° | 81.0° | 42.1% |
-| Projection readout + self-motion | 64.1% | 25.9° | 49.1° | 67.6% |
+| Compass readout + self-motion (seeds 0–1) | 72.2% | 34.2° | 83.0° (81.0, 85.0) | 43.4% |
+| Projection readout + self-motion (seeds 0–1) | 63.0% | 26.5° | 50.9° (49.1, 52.6) | 68.7% |
 
 ## Level 3 (batch B, slice 1), test split
 
@@ -73,8 +75,9 @@ and harder for every model.
 ## Interpretation so far
 
 - **The stateful visual circuit retains direction.** Read at its visual-projection output, the
-  clip-trained connectome beats the vision-only GRU on level-3 bearing, both visible (25.4°
-  against 30.7°) and occluded (48.9° against 54.9°). It does so without any self-motion input.
+  clip-trained connectome beats the vision-only GRU on batch-A level-3 bearing over three seeds.
+  Visible bearing is 25.0° against 30.7°. Occluded bearing is 51.6° against 54.9°, a modest margin
+  that is about one standard deviation of either model. It does so without any self-motion input.
 - **The compass readout is best at presence but has no usable direction memory yet:** 71.6° on
   level 3 and chance on level-2 validation.
 - **On the harder batch-B clips, the projection readout has the best occluded bearing:** 51.1°,
