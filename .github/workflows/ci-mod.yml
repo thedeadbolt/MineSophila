@@ -28,6 +28,8 @@ jobs:
           java-version: "25"
           distribution: temurin
       - uses: gradle/actions/setup-gradle@v6
+      # Clip writer and validator tests encode and probe videos with ffmpeg.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: ./gradlew build
       - uses: actions/upload-artifact@v7
         with:
