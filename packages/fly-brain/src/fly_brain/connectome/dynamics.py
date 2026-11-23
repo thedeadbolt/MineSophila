@@ -19,16 +19,29 @@ class LeakyRateDynamics:
     relaxes toward the drive and may fall below rest. Targets receive release measured relative to
     tonic release at rest, ``0.5 * tanh(2 * state)``: bounded, unit slope at rest and signed, so
     hyperpolarisation reduces downstream drive and small signals pass at the edge gain.
+    ``release_thresholds`` names cell types whose graded release sits behind a smooth threshold
+    (ADR 0028), such as spiking neurons that must combine two inputs before they signal.
     """
 
     time_constant: float = 2.0
     activation: ActivationName = "tanh"
+    release_thresholds: tuple[tuple[str, float], ...] = ()
+    release_sharpness: float = 20.0
 
     def __post_init__(self) -> None:
         if not np.isfinite(self.time_constant) or self.time_constant <= 0:
             raise ValueError("time_constant must be positive")
         if self.activation not in {"relu", "tanh", "graded"}:
             raise ValueError(f"unsupported dynamics activation {self.activation!r}")
+        if not np.isfinite(self.release_sharpness) or self.release_sharpness <= 0:
+            raise ValueError("release_sharpness must be positive")
+        names = [name for name, _ in self.release_thresholds]
+        if len(names) != len(set(names)):
+            raise ValueError("release threshold cell types must be unique")
+        if self.release_thresholds and self.activation != "graded":
+            raise ValueError("release thresholds need graded dynamics")
+        if not all(np.isfinite(value) for _, value in self.release_thresholds):
+            raise ValueError("release thresholds must be finite")
 
     def transition(self, state: jax.Array, drive: jax.Array, dt: float) -> jax.Array:
         if not 0 < dt <= self.time_constant:
@@ -47,3 +60,18 @@ class LeakyRateDynamics:
         if self.activation == "graded":
             return 0.5 * jnp.tanh(2.0 * state)
         return state
+
+    def thresholded_release(self, state: jax.Array, threshold: jax.Array) -> jax.Array:
+        """Graded release behind a smooth threshold (ADR 0028), zero at rest.
+
+        ``0.5 * tanh(2 * softplus_k(state - threshold))`` minus its value at rest, where
+        ``softplus_k(x) = softplus(k x) / k`` and ``k`` is ``release_sharpness``. Below threshold
+        the neuron passes almost nothing; above it, release rises with unit slope to the bound.
+        """
+        sharpness = self.release_sharpness
+
+        def soft(value: jax.Array) -> jax.Array:
+            return jax.nn.softplus(sharpness * (value - threshold)) / sharpness
+
+        rest = soft(jnp.zeros(state.shape, dtype=state.dtype))  # pyright: ignore[reportUnknownMemberType]
+        return 0.5 * jnp.tanh(2.0 * soft(state)) - 0.5 * jnp.tanh(2.0 * rest)

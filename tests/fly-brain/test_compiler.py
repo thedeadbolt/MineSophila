@@ -274,3 +274,76 @@ def test_graded_dynamics_stay_bounded_where_relu_loops_diverge() -> None:
     assert np.isfinite(graded).all()
     assert np.abs(graded[:, 0, 2:]).max() <= 0.5 * 1.59 + 1e-5
     assert relu[-1, 0, 2:].max() > 1e6
+
+
+def _threshold_compiler(thresholds: tuple[tuple[str, float], ...]) -> BrainCompiler:
+    source = graph()
+    excitatory = ConnectomeGraph(
+        source.release,
+        NeuronTable(
+            neuron_ids=source.neurons.neuron_ids,
+            cell_types=source.neurons.cell_types,
+            classes=source.neurons.classes,
+            neuropils=source.neurons.neuropils,
+            neurotransmitters=np.array(["ACh", "ACh", "ACh", "ACh"]),
+            sides=source.neurons.sides,
+        ),
+        source.synapses,
+    )
+    spec = BrainModelSpec(
+        network(excitatory),
+        (
+            InputPort(
+                "receptors",
+                np.array([1, 2]),
+                InjectionRule.CLAMPED,
+                BiologicalStatus.APPROXIMATION,
+            ),
+        ),
+        OutputHead("localisation", np.array([4]), 2),
+        LeakyRateDynamics(time_constant=2.0, activation="graded", release_thresholds=thresholds),
+        SynapseCountPolicy(use_neurotransmitter_signs=True),
+    )
+    return BrainCompiler(spec)
+
+
+def test_thresholded_release_is_zero_at_rest_and_gates_weak_drive() -> None:
+    dynamics = LeakyRateDynamics(activation="graded", release_thresholds=(("relay", 0.3),))
+    state = jnp.array([[-0.5, 0.0, 0.1, 0.3, 0.6, 3.0]])
+
+    graded = np.asarray(dynamics.release(state))
+    gated = np.asarray(dynamics.thresholded_release(state, jnp.full(state.shape, 0.3)))
+
+    assert abs(gated[0, 1]) < 1e-6
+    assert np.all(np.abs(gated[0, :3]) < 0.01)
+    assert gated[0, 4] > gated[0, 3] > gated[0, 2]
+    assert gated.max() <= 0.5
+    assert np.all(np.diff(gated[0]) >= -1e-7)
+    np.testing.assert_allclose(graded, 0.5 * np.tanh(2 * np.asarray(state)), atol=1e-6)
+
+
+def test_compiled_brain_gates_release_of_thresholded_cell_types() -> None:
+    plain = _settled_activity(_threshold_compiler(()), 0.2, 12)[-1, 0]
+    gated = _settled_activity(_threshold_compiler((("relay", 0.5),)), 0.2, 12)[-1, 0]
+    strong = _settled_activity(_threshold_compiler((("relay", 0.5),)), 3.0, 12)[-1, 0]
+
+    model = _threshold_compiler((("relay", 0.5),)).compile()
+    assert model.release_gate is not None
+    assert model.release_gate.tolist() == [False, False, True, False]
+    # The relay is driven below threshold: its target hears it ungated but not gated.
+    assert plain[2] == gated[2] > 0
+    assert plain[3] > 0.01
+    assert abs(gated[3]) < 0.01
+    # Drive above threshold passes.
+    assert strong[3] > 0.01
+
+
+def test_release_thresholds_need_graded_dynamics_and_valid_settings() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="graded"):
+        LeakyRateDynamics(activation="tanh", release_thresholds=(("relay", 0.1),))
+    with pytest.raises(ValueError, match="sharpness"):
+        LeakyRateDynamics(activation="graded", release_sharpness=0.0)
+    with pytest.raises(ValueError, match="unique"):
+        LeakyRateDynamics(activation="graded", release_thresholds=(("a", 0.1), ("a", 0.2)))

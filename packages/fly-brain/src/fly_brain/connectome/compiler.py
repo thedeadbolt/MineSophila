@@ -113,6 +113,18 @@ class CompiledBrain:
     parameter_policy: SynapseCountPolicy
     dt: float
     output_width: int
+    release_gate: NDArray[np.bool_] | None = None
+    release_threshold: NDArray[np.float32] | None = None
+
+    def release(self, activity: jax.Array) -> jax.Array:
+        """Presynaptic release per neuron: graded, or thresholded for gated cell types."""
+        graded = self.dynamics.release(activity)
+        if self.release_gate is None or self.release_threshold is None:
+            return graded
+        gated = self.dynamics.thresholded_release(
+            activity, jnp.asarray(self.release_threshold)[None, :]
+        )
+        return jnp.where(jnp.asarray(self.release_gate)[None, :], gated, graded)
 
     def initialize_parameters(self, seed: int = 0) -> BrainParameters:
         key = jax.random.key(seed)
@@ -153,7 +165,7 @@ class CompiledBrain:
         if self.parameter_policy.maximum_edge_gain is not None:
             edge_gain = self.parameter_policy.maximum_edge_gain * jax.nn.sigmoid(edge_gain)
         recurrent = (
-            self.dynamics.release(state.activity)[:, self.source_indexes]
+            self.release(state.activity)[:, self.source_indexes]
             * jnp.asarray(self.anatomical_weights)[None, :]
             * edge_gain[None, :]
         )
@@ -272,7 +284,20 @@ class BrainCompiler:
             self.spec.parameter_policy,
             self.spec.dt,
             self.spec.output_head.output_width,
+            *self._release_gate(graph.neurons.cell_types),
         )
+
+    def _release_gate(
+        self, cell_types: NDArray[np.str_]
+    ) -> tuple[NDArray[np.bool_] | None, NDArray[np.float32] | None]:
+        thresholds = dict(self.spec.dynamics.release_thresholds)
+        if not thresholds:
+            return None, None
+        gate = np.isin(cell_types, list(thresholds))
+        if not gate.any():
+            raise ValueError("release thresholds name no cell type in the network")
+        values = np.array([thresholds.get(str(name), 0.0) for name in cell_types], np.float32)
+        return readonly(gate), readonly(values)
 
     def _edge_groups(self, cell_types: NDArray[np.str_]) -> NDArray[np.int32]:
         graph = self.spec.network.subgraph()
