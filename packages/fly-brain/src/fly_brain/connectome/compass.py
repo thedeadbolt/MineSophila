@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-_GLOMERULUS = re.compile(r"_[LR](\d)$")
+_GLOMERULUS = re.compile(r"_([LR])(\d)$")
 _HARMONIC_MODE = 0.6
 
 
@@ -54,11 +54,18 @@ class RingSearchResult:
 
 
 def pb_glomerulus_angle(instance: str) -> float:
-    """Heading angle of a protocerebral-bridge glomerulus (45 degrees each) from an instance."""
+    """Heading angle of a protocerebral-bridge glomerulus from an instance name.
+
+    Heading runs along the bridge, L8..L1 then R1..R8, 45 degrees per glomerulus, so Ln and
+    R(9-n) share a heading (MaleCNS Delta7 instances such as ``L4R5`` join them) and the
+    outermost glomeruli L9 and R9 wrap onto L1 and R1.
+    """
     match = _GLOMERULUS.search(instance)
     if match is None:
         raise ValueError(f"instance {instance!r} names no protocerebral-bridge glomerulus")
-    return float(np.radians(int(match.group(1)) * 45.0))
+    side, number = match.group(1), int(match.group(2))
+    step = number - 1 if side == "R" else 8 - number
+    return float(np.radians((step * 45.0) % 360.0))
 
 
 def compass_modes(

@@ -45,8 +45,14 @@ def ring_fixture():
 
 
 def test_pb_glomerulus_angle_reads_instance_names() -> None:
-    assert pb_glomerulus_angle("EPG(PB08)_L3") == pytest.approx(np.radians(135.0))
-    assert pb_glomerulus_angle("EPG(PB08)_R8") == pytest.approx(np.radians(360.0))
+    # Heading runs along the bridge, L8..L1 then R1..R8, so Ln and R(9-n) share a heading
+    # (MaleCNS Delta7 instances such as L4R5 connect them), and L9 wraps onto L1.
+    assert pb_glomerulus_angle("EPG(PB08)_R1") == pytest.approx(0.0)
+    assert pb_glomerulus_angle("EPG(PB08)_R4") == pytest.approx(np.radians(135.0))
+    assert pb_glomerulus_angle("EPG(PB08)_L5") == pytest.approx(np.radians(135.0))
+    assert pb_glomerulus_angle("EPG(PB08)_L8") == pytest.approx(0.0)
+    assert pb_glomerulus_angle("PEN_a(PB06a)_L9") == pytest.approx(pb_glomerulus_angle("x_L1"))
+    assert pb_glomerulus_angle("PEG(PB07)_R9") == pytest.approx(pb_glomerulus_angle("x_R1"))
     with pytest.raises(ValueError, match="glomerulus"):
         pb_glomerulus_angle("EPG(PB08)")
 
