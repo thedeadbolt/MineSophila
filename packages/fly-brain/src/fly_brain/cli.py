@@ -60,7 +60,15 @@ from fly_brain.connectome.compass import (
     ring_attractor_gains,
     type_pair_raw_gains,
 )
-from fly_brain.connectome.goal import GoalHoldConfig, fit_goal_hold
+from fly_brain.connectome.goal import (
+    GoalFit,
+    GoalHoldConfig,
+    GoalWriteConfig,
+    GoalWriteFit,
+    fit_goal_hold,
+    fit_goal_write,
+    probe_goal_heading,
+)
 from fly_brain.connectome.integrator import (
     CompassCircuit,
     IntegratorFitConfig,
@@ -2128,7 +2136,9 @@ def _fit_goal_memory(args: argparse.Namespace) -> int:
         raise ValueError("fit-goal-memory needs a config with the goal_memory component")
     hold_config, harmonic = _load_goal_fit_config(args.fit_config)
     layout = _cached_sensor_layout([CachedStillDataset.load(args.layout_cache)])
-    graph, _, _, _, compiler = _build_connectome(layout, args.connectome_root, model_config)
+    graph, _, components, _, compiler = _build_connectome(
+        layout, args.connectome_root, model_config
+    )
     brain = compiler.compile()
     neurons = graph.neurons
     types = neurons.cell_types[np.searchsorted(neurons.neuron_ids, brain.neuron_ids)]
@@ -2160,6 +2170,13 @@ def _fit_goal_memory(args: argparse.Namespace) -> int:
     circuit_angles = angles[circuit.neuron_index]
     hold = fit_goal_hold(circuit, circuit_angles, initial[circuit.global_groups], hold_config)
     print(json.dumps({"hold_error_deg": hold.hold_error_deg}), flush=True)
+    compass_fit = cast(dict[str, Any], json.loads(args.compass_fit.read_text())["model_overrides"])
+    pfl3 = _probe_pfl3(brain, types, angles, initial, compass_fit, hold, args.fit_config)
+    print(json.dumps({"pfl3": pfl3}), flush=True)
+    write = _fit_goal_write_stage(
+        args, model_config, graph, components, brain, types, angles, initial, compass_fit, hold
+    )
+    print(json.dumps({"write_error_deg": write.write_error_deg}), flush=True)
     output = {
         "format": "fly-brain-goal-memory-v1",
         "git_revision": _git_revision(),
@@ -2169,15 +2186,171 @@ def _fit_goal_memory(args: argparse.Namespace) -> int:
         "initial_ring": ring_report,
         "model_overrides": {
             "goal_operating_point": "fitted",
-            "goal_gains": hold.gains,
-            "goal_type_bias": hold.type_bias,
+            "goal_gains": {
+                pair: value
+                for pair, value in write.gains.items()
+                if pair not in compass_fit["compass_gains"]
+            },
+            "goal_type_bias": {
+                name: value
+                for name, value in write.type_bias.items()
+                if name not in compass_fit["compass_type_bias"]
+            },
+            "release_thresholds": {
+                **compass_fit["release_thresholds"],
+                **dict.fromkeys(VECTOR_INPUT_TYPES, write.vector_threshold),
+            },
+        },
+        "write": {
+            "write_error_deg": write.write_error_deg,
+            "egocentric_scale": write.egocentric_scale,
+            "vector_threshold": write.vector_threshold,
+            "history": list(write.history),
         },
         "hold": {"hold_error_deg": hold.hold_error_deg, "history": list(hold.history)},
+        "pfl3": pfl3,
         "runtime_seconds": time.perf_counter() - started,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n")
     return 0
+
+
+def _bump_gain(compass_fit_path: Path) -> float:
+    """Degrees of bump rotation per degree of yaw: slope of the constant-turn response."""
+    response = cast(dict[str, Any], json.loads(compass_fit_path.read_text())["constant_turn"])
+    velocity = cast(dict[str, float], response["velocity_deg_per_frame"])
+    rates = np.array([float(rate) for rate in velocity if abs(float(rate)) <= 4.0])
+    speeds = np.array([velocity[str(rate)] for rate in rates])
+    return float(np.dot(rates, speeds) / np.dot(rates, rates))
+
+
+def _fit_goal_write_stage(
+    args: argparse.Namespace,
+    model_config: ConnectomeModelConfig,
+    graph: ConnectomeGraph,
+    components: dict[str, NetworkComponent],
+    brain: CompiledBrain,
+    types: NDArray[np.str_],
+    angles: NDArray[np.float64],
+    start_gains: NDArray[np.float64],
+    compass_fit: dict[str, Any],
+    hold: GoalFit,
+) -> GoalWriteFit:
+    """Stage 3 (ADR 0030): fit the PFN -> hDelta -> FC2 write path on recorded clips."""
+    settings = cast(dict[str, Any] | None, json.loads(args.fit_config.read_text()).get("write"))
+    if settings is None:
+        raise ValueError("the goal memory fit config needs a write stage")
+    config = GoalWriteConfig(bump_gain=_bump_gain(args.compass_fit), **settings)
+    projection = _egocentric_projection(
+        graph,
+        components,
+        args.connectome_root,
+        replace(model_config, egocentric_input="pfn_vector"),
+    )
+    if projection is None:
+        raise ValueError("the write stage needs PFN offsets")
+    member_types = (*COMPASS_TYPES, *GOAL_HOLD_TYPES, *VECTOR_INPUT_TYPES)
+    circuit = extract_subcircuit(brain, types, member_types, (*PEN_TYPES, *VECTOR_INPUT_TYPES))
+    ids = brain.neuron_ids[circuit.neuron_index]
+    offset_by_id = dict(
+        zip(projection.target_ids.tolist(), projection.target_offsets.tolist(), strict=True)
+    )
+    offsets = np.array([offset_by_id.get(int(i), 0.0) for i in ids])
+    vector_targets = np.isin(ids, projection.target_ids)
+    sides = graph.neurons.sides[np.searchsorted(graph.neurons.neuron_ids, ids)]
+    pen = np.isin(circuit.cell_types, PEN_TYPES)
+    yaw_drive = np.where(pen, np.where(sides == "L", 1.0, -1.0), 0.0) * float(
+        compass_fit["self_motion_scale"]
+    )
+    named = {**cast(dict[str, float], compass_fit["compass_gains"]), **hold.gains}
+    initial = np.array(
+        [
+            named.get(pair, float(start_gains[group]))
+            for pair, group in zip(circuit.group_pairs, circuit.global_groups, strict=True)
+        ]
+    )
+    frozen = np.array([pair in compass_fit["compass_gains"] for pair in circuit.group_pairs])
+    biases = {**cast(dict[str, float], compass_fit["compass_type_bias"]), **hold.type_bias}
+    base_bias = np.array([biases.get(str(name), 0.0) for name in circuit.cell_types])
+    thresholds = cast(dict[str, float], compass_fit["release_thresholds"])
+    base_threshold = np.array([thresholds.get(str(name), 0.0) for name in circuit.cell_types])
+    dataset = CachedClipDataset.load(args.yaw_cache)
+    context = dataset.batch("train", include_context=True)
+    width = context.features.shape[2] - dataset.motion_context.shape[1]
+    direction = context.direction
+    present = context.presence > 0.5
+    clips: dict[str, NDArray[Any]] = {
+        "yaw": context.features[:, :, width + YAW_CONTEXT_INDEX],
+        "bearing": np.where(present, np.arctan2(direction[..., 1], direction[..., 0]), 0.0),
+        "visible": dataset.interval_mask("train", "visible") & present & context.time_mask,
+        "mask": context.time_mask,
+    }
+    fit = fit_goal_write(
+        circuit,
+        angles[circuit.neuron_index],
+        offsets=offsets,
+        vector_targets=vector_targets,
+        heading=circuit.cell_types == "EPG",
+        goal=np.isin(circuit.cell_types, GOAL_MEMORY_TYPES),
+        yaw_drive=yaw_drive,
+        initial_gains=initial,
+        frozen=frozen,
+        base_bias=base_bias,
+        base_threshold=base_threshold,
+        clips=clips,
+        config=config,
+    )
+    learned = {
+        name: base + fit.type_bias.get(name, 0.0)
+        for name, base in {**hold.type_bias, **dict.fromkeys(VECTOR_INPUT_TYPES, 0.0)}.items()
+    }
+    return replace(fit, type_bias={**fit.type_bias, **learned})
+
+
+def _probe_pfl3(
+    brain: CompiledBrain,
+    types: NDArray[np.str_],
+    angles: NDArray[np.float64],
+    start_gains: NDArray[np.float64],
+    compass_fit: dict[str, Any],
+    hold: GoalFit,
+    fit_config_path: Path,
+) -> dict[str, float]:
+    """Stage 2 (ADR 0030): decode goal - heading from PFL3 with fitted compass and goal."""
+    settings = cast(dict[str, Any], json.loads(fit_config_path.read_text()).get("pfl3", {}))
+    pfl3_threshold = float(settings.get("threshold", 0.2))
+    member_types = (*COMPASS_TYPES, *GOAL_HOLD_TYPES, "PFL3")
+    circuit = extract_subcircuit(brain, types, member_types, (*PEN_TYPES, "PFL3"))
+    named = {**cast(dict[str, float], compass_fit["compass_gains"]), **hold.gains}
+    maximum = circuit.maximum_gain
+    effective = np.array(
+        [
+            named.get(pair, float(start_gains[group]))
+            for pair, group in zip(circuit.group_pairs, circuit.global_groups, strict=True)
+        ]
+    )
+    raw = np.log(effective / (maximum - effective))
+    biases = {**cast(dict[str, float], compass_fit["compass_type_bias"]), **hold.type_bias}
+    bias = np.array([biases.get(str(name), 0.0) for name in circuit.cell_types])
+    thresholds = {
+        **cast(dict[str, float], compass_fit["release_thresholds"]),
+        "PFL3": pfl3_threshold,
+    }
+    threshold = np.array([thresholds.get(str(name), 0.0) for name in circuit.cell_types])
+    result = probe_goal_heading(
+        circuit,
+        angles[circuit.neuron_index],
+        raw,
+        bias,
+        threshold,
+        heading=circuit.cell_types == "EPG",
+        goal=np.isin(circuit.cell_types, GOAL_MEMORY_TYPES),
+        readout=circuit.cell_types == "PFL3",
+        transitions=int(compass_fit["transitions_per_frame"]),
+        trials=int(settings.get("trials", 128)),
+    )
+    return {**result, "pfl3_threshold": pfl3_threshold}
 
 
 def _load_integrator_fit_config(path: Path) -> tuple[IntegratorFitConfig, float]:
