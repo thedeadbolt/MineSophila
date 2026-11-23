@@ -61,6 +61,12 @@ from fly_brain.connectome.integrator import (
     constant_turn_response,
     fit_compass_integrator,
 )
+from fly_brain.connectome.trace import (
+    bump_phase_strength,
+    component_flow,
+    primary_components,
+    readout_decoding,
+)
 from fly_brain.connectome.visual import (
     LAMINA_RELAY_TYPES,
     MEDULLA_RELAY_TYPES,
@@ -223,6 +229,17 @@ def _parser() -> argparse.ArgumentParser:
     compass_probe.add_argument("--checkpoint", required=True, type=Path)
     compass_probe.add_argument("--split", default="test")
     compass_probe.add_argument("--report", required=True, type=Path)
+    trace = commands.add_parser(
+        "trace-clip",
+        help="write per-frame activity, decoded outputs and circuit flow for one clip",
+    )
+    trace.add_argument("cache", type=Path, help="port-value clip cache")
+    trace.add_argument("--layout-cache", required=True, type=Path)
+    trace.add_argument("--connectome-root", required=True, type=Path)
+    trace.add_argument("--config", required=True, type=Path)
+    trace.add_argument("--checkpoint", required=True, type=Path)
+    trace.add_argument("--clip-id", required=True)
+    trace.add_argument("--out", required=True, type=Path)
     integrator = commands.add_parser(
         "fit-compass-integrator",
         help="fit the compass as an angular integrator on recorded yaw (ADR 0028)",
@@ -1839,6 +1856,139 @@ def _compass_operating_point(
     )
 
 
+def _trace_clip(args: argparse.Namespace) -> int:
+    """Write a fly-brain-clip-trace-v1 npz for one clip (see the plan's trace-clip section)."""
+    model_config, transitions, _ = _load_connectome_clip_config(args.config)
+    layout = _cached_sensor_layout([CachedStillDataset.load(args.layout_cache)])
+    graph, _, components, _, compiler = _build_connectome(
+        layout, args.connectome_root, model_config
+    )
+    brain = compiler.compile()
+    model = ConnectomeClipModel(brain, transitions)
+    values, _ = load_checkpoint(args.checkpoint)
+    parameters = BrainParameters(**cast(Any, values))
+    dataset = CachedClipDataset.load(args.cache)
+    if args.clip_id not in dataset.clip_ids:
+        raise ValueError(f"clip {args.clip_id!r} is not in the cache")
+    clip_index = dataset.clip_ids.index(args.clip_id)
+    split = dataset.splits[clip_index]
+    row = [i for i, name in enumerate(dataset.splits) if name == split].index(clip_index)
+    batch = _connectome_clip_batch(dataset, split, model_config, graph)
+    context = dataset.batch(split, include_context=True)
+    length = int(batch.time_mask[row].sum())
+    port_values = batch.features[row : row + 1, :length]
+    mask = batch.time_mask[row : row + 1, :length]
+    every = np.arange(brain.neuron_ids.size)
+    activity = model.activity(parameters, port_values, mask, every)[0]
+    release = np.asarray(brain.release(jnp.asarray(activity)))  # pyright: ignore[reportUnknownMemberType]
+    readout = activity[:, brain.readout_indexes] @ np.asarray(parameters.readout_weights)
+    readout = readout + np.asarray(parameters.readout_bias)
+    presence_prob, azimuth, elevation = readout_decoding(readout)
+    neurons = graph.neurons
+    order = np.searchsorted(neurons.neuron_ids, brain.neuron_ids)
+    types = neurons.cell_types[order]
+    names, component_index = primary_components(
+        brain.neuron_ids,
+        {name: component.neuron_ids for name, component in components.items()},
+        tuple(model_config.components),
+    )
+    maximum = brain.parameter_policy.maximum_edge_gain
+    raw = np.asarray(parameters.edge_gain, dtype=np.float64)
+    gains = maximum / (1.0 + np.exp(-raw)) if maximum is not None else raw
+    effective = brain.anatomical_weights * gains[brain.edge_group_indexes]
+    flow = component_flow(
+        release,
+        brain.source_indexes,
+        brain.target_indexes,
+        effective,
+        component_index,
+        len(names),
+    )
+    component_activity = np.zeros((length, len(names)), dtype=np.float32)
+    component_release = np.zeros((length, len(names)), dtype=np.float32)
+    for position in range(len(names)):
+        selected = component_index == position
+        if selected.any():
+            component_activity[:, position] = activity[:, selected].mean(axis=1)
+            component_release[:, position] = release[:, selected].mean(axis=1)
+    angles = np.full(types.size, np.nan)
+    bump_phase = np.full(length, np.nan)
+    bump_strength = np.full(length, np.nan)
+    if "compass" in model_config.components:
+        _, epg_angles = _compass_layout(brain, graph, args.connectome_root)
+        angles = epg_angles
+        epg = np.flatnonzero(types == "EPG")
+        bump_phase, bump_strength = bump_phase_strength(activity[:, epg], angles[epg])
+    start = int(dataset.offsets[clip_index])
+    stop = start + length
+    width = context.features.shape[2] - dataset.motion_context.shape[1]
+    header = {
+        "format": "fly-brain-clip-trace-v1",
+        "git_revision": _git_revision(),
+        "checkpoint": str(args.checkpoint),
+        "checkpoint_sha256": _file_sha256(args.checkpoint),
+        "config": str(args.config),
+        "model": {
+            "transitions_per_frame": transitions,
+            "compass_operating_point": model_config.compass_operating_point,
+            "self_motion_scale": model_config.self_motion_scale,
+        },
+        "dataset": {"path": str(args.cache), "sha256": _file_sha256(args.cache)},
+        "clip": {
+            "clip_id": args.clip_id,
+            "scene_id": dataset.scene_ids[clip_index],
+            "clip_type": dataset.clip_types[clip_index],
+            "split": split,
+            "cache_frame_offset": start,
+            "frame_count": length,
+        },
+        "components": list(names),
+        "readout_columns": ["presence_logit", "forward", "right", "up"],
+    }
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        args.out,
+        header=np.array(json.dumps(header)),
+        frames=np.arange(length, dtype=np.int64),
+        activity=activity.astype(np.float16),
+        body_id=brain.neuron_ids,
+        cell_type=types.astype(str),
+        side=neurons.sides[order].astype(str),
+        pb_angle=angles.astype(np.float32),
+        stage=np.array([names[i] if i >= 0 else "" for i in component_index]),
+        yaw=context.features[row, :length, width + YAW_CONTEXT_INDEX],
+        presence=dataset.presence[start:stop],
+        direction=dataset.direction[start:stop],
+        visible=dataset.visible[start:stop],
+        teacher_actions=dataset.teacher_actions[start:stop],
+        teacher_action_mask=dataset.teacher_action_mask[start:stop],
+        readout=readout.astype(np.float32),
+        presence_prob=presence_prob.astype(np.float32),
+        bearing_azimuth_deg=azimuth.astype(np.float32),
+        bearing_elevation_deg=elevation.astype(np.float32),
+        bump_phase=bump_phase.astype(np.float32),
+        bump_strength=bump_strength.astype(np.float32),
+        component_activity=component_activity,
+        component_release=component_release,
+        component_flow=flow,
+        edge_gain_pairs=np.array(_type_pair_names(brain, types)),
+        edge_gain=gains.astype(np.float32),
+    )
+    print(json.dumps({"out": str(args.out), "frames": length, "neurons": int(types.size)}))
+    return 0
+
+
+def _type_pair_names(brain: CompiledBrain, types: NDArray[np.str_]) -> list[str]:
+    """``SOURCE>TARGET`` per edge group, for cell-type-pair gains (one name per gain)."""
+    names = [""] * brain.edge_gain_count
+    for group, source, target in zip(
+        brain.edge_group_indexes, brain.source_indexes, brain.target_indexes, strict=True
+    ):
+        if not names[group]:
+            names[group] = f"{types[source]}>{types[target]}"
+    return names
+
+
 def _load_integrator_fit_config(path: Path) -> tuple[IntegratorFitConfig, float]:
     raw: Any = json.loads(path.read_text())
     if not isinstance(raw, dict):
@@ -2410,6 +2560,8 @@ def main(argv: list[str] | None = None) -> int:
             return _probe_compass(args)
         if args.command == "fit-compass-integrator":
             return _fit_compass_integrator(args)
+        if args.command == "trace-clip":
+            return _trace_clip(args)
         if args.command == "train-recurrent":
             return _train_recurrent(args)
         if args.command == "train-recurrent-actions":
