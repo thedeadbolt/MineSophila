@@ -329,3 +329,95 @@ body.clips.wide #clip-view { grid-column: 1; grid-row: 1; }
 .lanes { color: var(--faint); }
 .legend { display: inline-flex; flex-wrap: wrap; gap: 0.15rem 0.7rem; font-weight: 400; }
 .legend .key::before { content: ""; display: inline-block; width: 0.65em; height: 0.65em; margin-right: 0.3em; border-radius: 2px; background: var(--key); vertical-align: -0.02em; }
+
+/* Workspaces (ADR 0029). Scene controls step aside in Eye and Brain; the clip's transport,
+   scrub bar and timeline stay, so every workspace follows the same frame. */
+body[data-workspace="eye"] .scene-only, body[data-workspace="brain"] .scene-only,
+body[data-workspace="eye"] .viewer > .stage, body[data-workspace="brain"] .viewer > .stage,
+body[data-workspace="eye"] #details, body[data-workspace="brain"] #details,
+body[data-workspace="eye"] #clip-details, body[data-workspace="brain"] #clip-details { display: none !important; }
+body.clips .side-panel { grid-column: 3; grid-row: 1; }
+body.clips.wide .side-panel { display: none; }
+@media (max-width: 1180px) {
+  .side-panel { grid-column: 2; grid-row: 2; border-left: 0; border-top: 1px solid var(--rule); }
+  body.clips .side-panel { grid-column: 2; grid-row: 2; max-height: 30vh; }
+}
+.workspace-panel { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 0.6rem; }
+.panel-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem 0.8rem; }
+.status { color: var(--muted); font-size: var(--step--1); font-family: var(--mono); }
+.status.bad { color: var(--fail); }
+.segmented.small span { padding: 0.12rem 0.55rem; font-size: 0.74rem; }
+.section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6rem; margin-bottom: 0.5rem; }
+.section-head h2 { margin: 0; }
+
+.card { margin: 0; display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+.card figcaption { font-size: var(--step--1); font-weight: 600; display: flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; align-items: baseline; }
+.card figcaption span { font-weight: 400; color: var(--muted); font-size: 0.74rem; }
+.card canvas { width: 100%; display: block; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius-stage); }
+
+.eye-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem 1rem; }
+.eye-grid canvas { aspect-ratio: 310 / 160; }
+#eye-camera, #eye-decoded { background: var(--stage); cursor: crosshair; }
+#eye-hex { cursor: crosshair; }
+#eye-globe { cursor: grab; touch-action: none; }
+@media (max-width: 900px) { .eye-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.bars { display: grid; gap: 0.35rem; }
+.bar-row { display: grid; grid-template-columns: 3.4rem minmax(0, 1fr) 4.2rem; gap: 0.5rem; align-items: center; font-size: var(--step--1); }
+.bar-label { font-family: var(--mono); color: var(--muted); }
+.bar-label.wide { font-family: var(--sans); }
+.bar-row:has(.wide) { grid-template-columns: 9rem minmax(0, 1fr) 4.2rem; }
+.bar { height: 0.55rem; border-radius: 999px; background: var(--raised); position: relative; overflow: hidden; display: block; }
+.bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: calc(min(1, var(--value, 0)) * 100%); background: var(--fill, var(--honey)); border-radius: inherit; }
+canvas.chart { width: 100%; height: 9rem; display: block; }
+canvas.chart.short { height: 4.5rem; }
+canvas.map { width: 100%; aspect-ratio: 4 / 3; display: block; border: 1px solid var(--rule); border-radius: var(--radius-stage); }
+#clip-map + .hint { margin-top: 0.35rem; }
+
+.brain-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 0.8rem 1rem; }
+.brain-grid .heat { grid-column: 1 / -1; }
+#brain-heatmap { height: max(14rem, 34vh); }
+#brain-compass { aspect-ratio: 1; max-height: 22rem; }
+#brain-decisions { height: 100%; min-height: 14rem; }
+.decisions { min-height: 0; }
+.empty { border: 1px dashed var(--rule); border-radius: var(--radius); padding: 1rem 1.2rem; color: var(--muted); }
+.empty p { margin: 0 0 0.6rem; max-width: 60ch; }
+.clip-links { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.clip-links button { font: var(--step--1) var(--mono); padding: 0.15rem 0.45rem; }
+
+#brain-runs { display: flex; flex-direction: column; gap: 0.5rem; min-height: 0; }
+#brain-run-filter { width: 22rem; max-width: 100%; }
+.table-scroll { overflow: auto; border: 1px solid var(--rule); border-radius: var(--radius); }
+table.data { border-collapse: collapse; width: 100%; font-size: var(--step--1); }
+table.data th { position: sticky; top: 0; background: var(--surface); text-align: left; font-weight: 600; padding: 0; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+table.data th button { width: 100%; text-align: left; padding: 0.4rem 0.6rem; border-radius: 0; color: var(--muted); }
+table.data td { padding: 0.32rem 0.6rem; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+table.data tbody tr { cursor: pointer; }
+table.data tbody tr:hover { background: var(--raised); }
+table.data tbody tr.current { background: var(--honey-wash); box-shadow: inset 2px 0 0 var(--honey); }
+table.data td.id { max-width: 28rem; overflow-wrap: anywhere; }
+table.data td.metric { min-width: 9rem; }
+.metric-cell { display: grid; grid-template-columns: minmax(3rem, 1fr) 3.4rem; gap: 0.4rem; align-items: center; }
+table.data .num { text-align: right; }
+table.data.compact th { position: static; padding: 0.25rem 0.4rem; color: var(--muted); font-weight: 500; }
+table.data.compact td { padding: 0.22rem 0.4rem; cursor: default; white-space: pre; }
+table.data.compact tbody tr { cursor: default; }
+table.data.compact tbody tr:hover { background: none; }
+
+/* Circuit diagram */
+#brain-circuit { display: flex; flex-direction: column; gap: 0.5rem; }
+#brain-circuit-svg { width: 100%; height: auto; max-height: 62vh; display: block; }
+#brain-circuit-svg .node { cursor: pointer; }
+#brain-circuit-svg .node .box { fill: var(--surface); stroke: var(--rule); stroke-width: 1; }
+#brain-circuit-svg .node:hover .box, #brain-circuit-svg .node:focus-visible .box { stroke: var(--muted); }
+#brain-circuit-svg .node:focus { outline: none; }
+#brain-circuit-svg .node.read .box { stroke: var(--honey); stroke-width: 1.6; }
+#brain-circuit-svg .node .activity { fill: var(--honey); pointer-events: none; transition: opacity 0.08s linear; }
+#brain-circuit-svg .node.absent { opacity: 0.38; }
+#brain-circuit-svg .node.absent .box { stroke-dasharray: 3 3; fill: none; }
+#brain-circuit-svg text { fill: var(--ink); pointer-events: none; }
+#brain-circuit-svg .label { font: 600 13px var(--sans); }
+#brain-circuit-svg .count { font: 11px var(--mono); fill: var(--muted); }
+#brain-circuit-svg .cells { font: 10.5px var(--sans); fill: var(--faint); }
+#brain-circuit-svg .size { fill: var(--faint); }
+#brain-circuit-svg .meter { fill: var(--honey); transition: width 0.08s linear; }

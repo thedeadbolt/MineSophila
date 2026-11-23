@@ -58,7 +58,10 @@ async function startClips(dataset) {
     ...Object.entries(MODE_COLOURS).map(([name, colour]) => legend(name, colour)),
     ...Object.entries(DRIVER_COLOURS).map(([name, colour]) => legend(`driven by ${DRIVER_NAMES[name]}`, colour)),
   );
-  await listClips(true);
+  // ?clip=s000123-c02 opens that clip first, so a link can point at one.
+  const wanted = new URLSearchParams(location.search).get("clip");
+  await listClips(!wanted);
+  if (wanted) await openClip(wanted).catch(() => listClips(true));
 }
 
 function legend(name, colour) {
@@ -94,6 +97,7 @@ async function openClip(id) {
   if (load !== clip.load) return;
   clip.id = id;
   clip.record = body.clip;
+  clip.scene = body.scene;
   clip.frames = body.frames;
   clip.rgb = [];
   clip.masks = [];
@@ -246,6 +250,92 @@ function show(index) {
   drawFrame();
   drawTimeline();
   describe(clip.frames[clip.index]);
+  drawMap();
+  document.dispatchEvent(new CustomEvent("viewer:frame", { detail: {
+    clipId: clip.id, index: clip.index, frame: clip.frames[clip.index], frames: clip.frames,
+    record: clip.record, scene: clip.scene, image: clip.rgb[clip.index] || null, playing: clip.playing,
+  } }));
+}
+
+/** The clip seen from above, north up: the whole path, the path so far, the fly's 310°
+    view (the blind 50° behind it left open) and the honey block. */
+function drawMap() {
+  const canvas = $("clip-map");
+  if (!canvas || canvas.offsetParent === null) return;
+  const ratio = devicePixelRatio;
+  const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
+  const height = Math.max(1, Math.round(canvas.clientHeight * ratio));
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  const styles = getComputedStyle(document.documentElement);
+  const colour = (name) => styles.getPropertyValue(name).trim();
+  const points = clip.frames.map((frame) => [frame.pose.position[0], frame.pose.position[2]]);
+  const target = clip.scene && clip.scene.target && clip.scene.target.present ? clip.scene.target.position : null;
+  const honey = target ? [target[0] + 0.5, target[2] + 0.5] : null;
+  const all = honey ? [...points, honey] : points;
+  if (!all.length) return;
+  const xs = all.map((p) => p[0]);
+  const zs = all.map((p) => p[1]);
+  const pad = 3;
+  const [x0, x1, z0, z1] = [Math.min(...xs) - pad, Math.max(...xs) + pad, Math.min(...zs) - pad, Math.max(...zs) + pad];
+  const scale = Math.min(width / (x1 - x0), height / (z1 - z0));
+  const ox = (width - (x1 - x0) * scale) / 2;
+  const oy = (height - (z1 - z0) * scale) / 2;
+  const at = (p) => [ox + (p[0] - x0) * scale, oy + (p[1] - z0) * scale];
+  context.fillStyle = colour("--bg");
+  context.fillRect(0, 0, width, height);
+  // One-block grid where it stays readable.
+  if (scale >= 8 * ratio) {
+    context.globalAlpha = 0.6;
+    context.strokeStyle = colour("--rule");
+    context.lineWidth = 1;
+    context.beginPath();
+    for (let x = Math.ceil(x0); x <= x1; x++) { const px = Math.round(at([x, 0])[0]) + 0.5; context.moveTo(px, 0); context.lineTo(px, height); }
+    for (let z = Math.ceil(z0); z <= z1; z++) { const py = Math.round(at([0, z])[1]) + 0.5; context.moveTo(0, py); context.lineTo(width, py); }
+    context.stroke();
+    context.globalAlpha = 1;
+  }
+  const path = (list, style, lineWidth) => {
+    context.strokeStyle = style;
+    context.lineWidth = lineWidth * ratio;
+    context.beginPath();
+    list.forEach((p, k) => { const [px, py] = at(p); if (k) context.lineTo(px, py); else context.moveTo(px, py); });
+    context.stroke();
+  };
+  path(points, colour("--faint"), 1);
+  path(points.slice(0, clip.index + 1), colour("--ink"), 2);
+  const frame = clip.frames[clip.index];
+  const [fx, fy] = at(points[clip.index]);
+  // Minecraft yaw: 0 faces south (+z), 90 faces west (-x).
+  const yaw = (frame.pose.yaw_degrees * Math.PI) / 180;
+  const heading = Math.atan2(Math.cos(yaw), -Math.sin(yaw));
+  const reach = Math.min(width, height) * 0.22;
+  const blind = ((50 / 2) * Math.PI) / 180;
+  context.fillStyle = colour("--honey-wash");
+  context.beginPath();
+  context.moveTo(fx, fy);
+  context.arc(fx, fy, reach, heading + Math.PI + blind, heading + Math.PI - blind + 2 * Math.PI);
+  context.closePath();
+  context.fill();
+  if (honey) {
+    const [hx, hy] = at([honey[0] - 0.5, honey[1] - 0.5]);
+    context.fillStyle = colour("--honey");
+    context.fillRect(hx, hy, Math.max(4 * ratio, scale), Math.max(4 * ratio, scale));
+  }
+  context.save();
+  context.translate(fx, fy);
+  context.rotate(heading);
+  context.fillStyle = colour("--ink");
+  context.beginPath();
+  context.moveTo(8 * ratio, 0);
+  context.lineTo(-5 * ratio, 4.5 * ratio);
+  context.lineTo(-5 * ratio, -4.5 * ratio);
+  context.closePath();
+  context.fill();
+  context.restore();
+  const span = Math.max(x1 - x0, z1 - z0);
+  $("clip-map-note").textContent = `North is up. About ${Math.round(span)} blocks across${honey ? "; amber is the honey block." : "; no honey in this scene."}`;
 }
 
 /** Draws the frame where the view puts it, at the canvas's device resolution. */
@@ -404,6 +494,7 @@ function play() {
 function pause() {
   clip.playing = false;
   $("clip-play").textContent = "Play";
+  if (clip.recording) finishRecording();
 }
 
 function advance(now) {
@@ -413,9 +504,46 @@ function advance(now) {
   if (clip.carry >= 1) {
     const steps = Math.floor(clip.carry);
     clip.carry -= steps;
+    if (clip.recording && clip.index + steps >= clip.record.frame_count - 1) {
+      show(clip.record.frame_count - 1);
+      finishRecording();
+      return;
+    }
     show(clip.index + steps);
   }
   requestAnimationFrame(advance);
+}
+
+/** Plays the clip once from the start while the player canvas is recorded as WebM. */
+function startRecording() {
+  const canvas = $("clip-canvas");
+  if (!canvas.captureStream || typeof MediaRecorder === "undefined" || clip.rgb.length === 0) return;
+  pause();
+  show(0);
+  const type = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm";
+  const recorder = new MediaRecorder(canvas.captureStream(FPS), { mimeType: type, videoBitsPerSecond: 12_000_000 });
+  const chunks = [];
+  recorder.addEventListener("dataavailable", (event) => event.data.size && chunks.push(event.data));
+  recorder.addEventListener("stop", () => {
+    const link = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob(chunks, { type: "video/webm" })), download: `${clip.id}.webm` });
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+  });
+  clip.recording = recorder;
+  $("clip-record").textContent = "Recording…";
+  $("clip-record").disabled = true;
+  recorder.start();
+  play();
+}
+
+function finishRecording() {
+  const recorder = clip.recording;
+  clip.recording = null;
+  pause();
+  $("clip-record").textContent = "Record video";
+  $("clip-record").disabled = false;
+  // Hold the last frame briefly so it lands in the video.
+  setTimeout(() => recorder.state !== "inactive" && recorder.stop(), 200);
 }
 
 $("clip-play").addEventListener("click", () => (clip.playing ? pause() : play()));
@@ -423,6 +551,8 @@ $("clip-back").addEventListener("click", () => { pause(); show(clip.index - 1); 
 $("clip-forward").addEventListener("click", () => { pause(); show(clip.index + 1); });
 $("clip-scrub").addEventListener("input", (event) => { pause(); show(Number(event.target.value)); });
 $("clip-overlay").addEventListener("input", drawFrame);
+$("clip-record").addEventListener("click", startRecording);
+new ResizeObserver(() => clip.record && drawMap()).observe($("clip-map"));
 $("clip-box").addEventListener("input", drawFrame);
 $("clip-detail").addEventListener("input", refineDetail);
 function toggleWide() {

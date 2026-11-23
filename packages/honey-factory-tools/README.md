@@ -71,6 +71,37 @@ order, are absent, fully occluded, not visible, edge or panorama seam, low pixel
 mirror the page's: `--split`, `--status`, `--present`, `--scene-id`, `--sample-id`,
 `--viewpoint`, and `--min-`/`--max-` with `ratio`, `pixels` or `distance`.
 
+### Workspaces
+
+The rail on the left of the page switches between three workspaces ([ADR 0029](../../docs/adr/0029-viewer-workspaces.md)).
+All three follow the same sample, or the same clip and frame, so the clip's transport, scrub
+bar and timeline drive every view. `#eye`, `#brain`, `#brain-circuit` or `#brain-runs` in
+the URL opens a workspace, and for a clip dataset `?clip=s000123-c02` opens that clip.
+
+- **Scene**: the images and clips described above. A clip also shows a top-down map of the
+  fly's path, its 310° view and the honey, and **Record video** saves one play-through of
+  the player as WebM.
+- **Eye**: the frame sampled through fly-vision's default eye (310° panoramas only). It
+  shows the camera frame; the image decoded from the receptors, where each pixel takes its
+  nearest ommatidium; both eyes' ommatidia by viewing direction; and a globe you can turn.
+  Each view can show R1_6, R7, R8, a false-colour mix or honey coverage. Point at an
+  ommatidium to read its receptors and rhodopsins. The side panel plots the rhodopsin
+  curves on both pigment axes. `--no-eye` turns the workspace off.
+- **Brain**: fly-brain output, read from files. `--runs DIR` lists the `*.report.json`
+  files in a sortable table, and opening one shows its loss curve, scores by split and clip
+  type, and connectome components. **Circuit** draws the selected run, or the most complete
+  one, from the eye through the optic lobe and the compass pathway to the readout. It uses
+  the report's components, neuron counts, input and readout components, and its
+  component-to-component synapse counts once fly-brain writes them. `--traces DIR` adds
+  **Clip playback** for clips with a `fly-brain-clip-trace-v1` file: activity by cell type,
+  the compass ring with its bump against the fly's heading, and the readout against the
+  truth. During playback the circuit's boxes also fill with each stage's activity.
+
+```sh
+uv run honey-factory-tools inspect <clip dataset> \
+    --runs /mnt/fastvault/minesophila/derived/brain-localization-v3 --traces <trace directory>
+```
+
 Reviews are appended to `<review root>/<dataset id>/<manifest hash prefix>.jsonl`, one
 JSON object per line in the format `honey-factory-review-v1`:
 

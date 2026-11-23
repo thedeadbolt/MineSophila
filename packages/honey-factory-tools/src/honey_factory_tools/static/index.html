@@ -11,18 +11,18 @@
 <div class="app">
 <nav class="rail" aria-label="Workspaces">
   <span class="mark" title="MineSophila viewer" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 2.5 27.7 9.25v13.5L16 29.5 4.3 22.75V9.25z"/><path d="M16 9.5 21.6 12.75v6.5L16 22.5l-5.6-3.25v-6.5z"/></svg></span>
-  <a class="workspace-link" href="#" aria-current="page" title="Scene: honey-factory images and clips">
+  <a class="workspace-link" href="#" data-workspace="scene" aria-current="page" title="Scene: honey-factory images and clips">
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/><path d="m3.5 15 5-4.5 4 3.5 3-2.5 5 4"/></svg>
     <span>Scene</span>
   </a>
-  <span class="workspace-link" aria-disabled="true" title="Eye: fly-vision receptor maps. Not built yet.">
+  <a class="workspace-link" href="#eye" data-workspace="eye" aria-disabled="true" title="Eye: the frame through fly-vision's compound eye">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 3.5 2v4L12 12 8.5 10V6zM8.5 10 12 12v4l-3.5 2L5 16v-4zM15.5 10 19 12v4l-3.5 2-3.5-2v-4z"/></svg>
     <span>Eye</span>
-  </span>
-  <span class="workspace-link" aria-disabled="true" title="Brain: fly-brain runs and activity. Not built yet.">
+  </a>
+  <a class="workspace-link" href="#brain" data-workspace="brain" aria-disabled="true" title="Brain: fly-brain runs and clip traces">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.5"/><path d="M12 4.5v2M12 17.5v2M4.5 12h2M17.5 12h2"/></svg>
     <span>Brain</span>
-  </span>
+  </a>
 </nav>
 
 <div class="shell">
@@ -92,18 +92,19 @@
           <button id="next-clip" title="Next clip" aria-label="Next clip">⇥</button>
         </div>
         <label class="field">Speed <select id="clip-speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
-        <span class="sep" aria-hidden="true"></span>
-        <div class="group zoom" role="group" aria-label="Zoom">
+        <span class="sep scene-only" aria-hidden="true"></span>
+        <div class="group zoom scene-only" role="group" aria-label="Zoom">
           <button type="button" id="clip-zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
           <output id="clip-zoom-level" aria-live="polite">100%</output>
           <button type="button" id="clip-zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
           <button type="button" id="clip-zoom-fit" title="Fit the frame to the player (0)">Fit</button>
           <button type="button" id="clip-zoom-actual" title="One frame pixel per screen pixel">1:1</button>
         </div>
-        <label class="field" title="Resolution frames are decoded at; Auto follows the zoom">Detail <select id="clip-detail"><option value="auto" selected>Auto</option><option value="0.25">¼</option><option value="0.5">½</option><option value="1">Full</option></select></label>
-        <span class="sep" aria-hidden="true"></span>
-        <label class="toggle" title="Mask overlay (o)"><input id="clip-overlay" type="checkbox" checked><span>Mask</span></label>
-        <label class="toggle"><input id="clip-box" type="checkbox" checked><span>Box</span></label>
+        <label class="field scene-only" title="Resolution frames are decoded at; Auto follows the zoom">Detail <select id="clip-detail"><option value="auto" selected>Auto</option><option value="0.25">¼</option><option value="0.5">½</option><option value="1">Full</option></select></label>
+        <span class="sep scene-only" aria-hidden="true"></span>
+        <label class="toggle scene-only" title="Mask overlay (o)"><input id="clip-overlay" type="checkbox" checked><span>Mask</span></label>
+        <label class="toggle scene-only"><input id="clip-box" type="checkbox" checked><span>Box</span></label>
+        <button type="button" id="clip-record" class="scene-only" title="Play the clip once from the start and save the player as a WebM video">Record video</button>
       </div>
     </nav>
     <div id="clip-errors" hidden></div>
@@ -119,6 +120,11 @@
   </main>
 
   <aside class="inspector" id="clip-details" hidden aria-label="Frame details">
+    <section>
+      <h2>Where the fly is</h2>
+      <canvas id="clip-map" class="map" title="Seen from above: the path so far, the fly's 310° view and the honey"></canvas>
+      <p class="hint" id="clip-map-note"></p>
+    </section>
     <section>
       <h2>This frame</h2>
       <dl id="frame-facts"></dl>
@@ -151,31 +157,83 @@
         </div>
       </div>
       <div class="toolbar">
-        <div class="segmented" role="radiogroup" aria-label="Layer">
+        <div class="segmented scene-only" role="radiogroup" aria-label="Layer">
           <label title="1"><input type="radio" name="layer" value="rgb" checked><span>RGB</span></label>
           <label title="2"><input type="radio" name="layer" value="mask"><span>Mask</span></label>
           <label title="3"><input type="radio" name="layer" value="overlay"><span>Overlay</span></label>
         </div>
-        <label class="field slider">Opacity <input id="opacity" type="range" min="0" max="100" value="55"></label>
-        <span class="sep" aria-hidden="true"></span>
-        <div class="group zoom" role="group" aria-label="Zoom">
+        <label class="field slider scene-only">Opacity <input id="opacity" type="range" min="0" max="100" value="55"></label>
+        <span class="sep scene-only" aria-hidden="true"></span>
+        <div class="group zoom scene-only" role="group" aria-label="Zoom">
           <button type="button" id="zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
           <output id="zoom-level" aria-live="polite">Fit</output>
           <button type="button" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
           <button type="button" id="zoom-fit" title="Fit the image to the window (0)">Fit</button>
           <button type="button" id="zoom-actual" title="One image pixel per screen pixel">1:1</button>
         </div>
-        <span class="sep" aria-hidden="true"></span>
-        <label class="toggle"><input id="show-box" type="checkbox"><span>Box and centroid</span></label>
+        <span class="sep scene-only" aria-hidden="true"></span>
+        <label class="toggle scene-only"><input id="show-box" type="checkbox"><span>Box and centroid</span></label>
       </div>
     </nav>
     <div id="errors" hidden></div>
     <div class="stage" id="canvas-frame" title="Scroll to zoom, drag to pan, double-click to switch between fit and 1:1"><canvas id="canvas"></canvas></div>
-    <section class="strip" aria-labelledby="strip-title">
+    <section class="strip scene-only" aria-labelledby="strip-title">
       <h2 id="strip-title">Viewpoints in this scene</h2>
       <ol id="scene-grid"></ol>
     </section>
   </main>
+
+
+  <section id="eye-panel" class="workspace-panel" hidden aria-label="Eye">
+    <div class="panel-bar">
+      <div class="segmented" role="radiogroup" aria-label="Signal">
+        <label title="R1-6: brightness and motion, Rh1"><input type="radio" name="eye-channel" value="R1_6" checked><span>R1_6</span></label>
+        <label title="R7: Rh3 or Rh4"><input type="radio" name="eye-channel" value="R7"><span>R7</span></label>
+        <label title="R8: Rh5 or Rh6"><input type="radio" name="eye-channel" value="R8"><span>R8</span></label>
+        <label title="False colour: red from R8, green from R1_6, blue from R7"><input type="radio" name="eye-channel" value="fly"><span>Fly colour</span></label>
+        <label title="How much of each ommatidium's view is honey"><input type="radio" name="eye-channel" value="honey"><span>Honey</span></label>
+      </div>
+      <label class="field">Gain <select id="eye-gain"><option value="auto" selected>Each frame's peak</option><option value="fixed">Fixed, 0 to 0.75</option></select></label>
+      <span id="eye-status" class="status"></span>
+    </div>
+    <div class="eye-grid">
+      <figure class="card"><figcaption>Camera frame</figcaption><canvas id="eye-camera"></canvas></figure>
+      <figure class="card"><figcaption>Decoded from the receptors <span>each pixel shows its nearest ommatidium</span></figcaption><canvas id="eye-decoded"></canvas></figure>
+      <figure class="card"><figcaption>Ommatidia by viewing direction</figcaption><canvas id="eye-hex"></canvas></figure>
+      <figure class="card"><figcaption>Compound eye <span>drag to turn; amber marks straight ahead</span></figcaption><canvas id="eye-globe"></canvas></figure>
+    </div>
+  </section>
+
+  <section id="brain-panel" class="workspace-panel" hidden aria-label="Brain">
+    <div class="panel-bar">
+      <div class="segmented" role="radiogroup" aria-label="Brain view">
+        <label><input type="radio" name="brain-view" value="playback"><span>Clip playback</span></label>
+        <label><input type="radio" name="brain-view" value="circuit"><span>Circuit</span></label>
+        <label><input type="radio" name="brain-view" value="runs" checked><span>Runs</span></label>
+      </div>
+      <span class="status" id="brain-circuit-run"></span>
+    </div>
+    <div id="brain-circuit" hidden>
+      <svg id="brain-circuit-svg" role="img" aria-label="The model's circuit, from the eye to the readout"></svg>
+      <p class="hint" id="brain-circuit-note"></p>
+    </div>
+    <div id="brain-playback" hidden>
+      <div id="brain-empty" class="empty"></div>
+      <div id="brain-trace" class="brain-grid" hidden>
+        <figure class="card heat"><figcaption>Activity by cell type <span class="legend" id="brain-stage-legend"></span></figcaption><canvas id="brain-heatmap"></canvas><p class="hint" id="brain-heat-scale"></p></figure>
+        <figure class="card"><figcaption>Compass ring <span>dots: compass neurons at their bridge angle; amber: bump; dashed: heading</span></figcaption><canvas id="brain-compass"></canvas></figure>
+        <figure class="card decisions"><figcaption>Readout and teacher</figcaption><canvas id="brain-decisions"></canvas></figure>
+      </div>
+    </div>
+    <div id="brain-runs">
+      <div class="panel-bar">
+        <input id="brain-run-filter" type="search" placeholder="Filter runs: compass, level3, occ-b…" aria-label="Filter runs" spellcheck="false">
+        <span class="status" id="brain-runs-directory"></span>
+      </div>
+      <p class="hint" id="brain-run-count"></p>
+      <div class="table-scroll"><table id="brain-run-table" class="data"></table></div>
+    </div>
+  </section>
 
   <aside class="inspector" id="details" hidden aria-label="Sample details">
     <section class="verdict">
@@ -214,10 +272,93 @@
       <pre id="raw-record"></pre>
     </details>
   </aside>
+
+  <aside class="inspector side-panel" id="eye-details" hidden aria-label="Eye details">
+    <section>
+      <h2>Receptors in this frame</h2>
+      <div id="eye-means" class="bars"></div>
+    </section>
+    <section>
+      <h2>Ommatidium</h2>
+      <p class="hint" id="eye-hover-hint">Point at an ommatidium in any view to read it here.</p>
+      <dl id="eye-ommatidium"></dl>
+    </section>
+    <section>
+      <div class="section-head">
+        <h2>Rhodopsins</h2>
+        <div class="segmented small" role="radiogroup" aria-label="Pigment axis">
+          <label title="ADR 0021: curves warped onto 420 to 650 nm"><input type="radio" name="eye-pigments" value="remapped" checked><span>Remapped</span></label>
+          <label title="ADR 0019: measured peaks"><input type="radio" name="eye-pigments" value="physical"><span>Physical</span></label>
+        </div>
+      </div>
+      <canvas id="eye-spectra" class="chart"></canvas>
+      <p class="legend" id="eye-spectra-legend"></p>
+      <p class="hint" id="eye-spectra-note"></p>
+    </section>
+    <section>
+      <h2>Model</h2>
+      <dl id="eye-model"></dl>
+      <p class="hint">Frames come from the lossy clip video at half size, so values can differ slightly from fly-vision convert on the original capture.</p>
+    </section>
+  </aside>
+
+  <aside class="inspector side-panel" id="brain-details" hidden aria-label="Brain details">
+    <div id="brain-trace-details">
+      <section>
+        <h2>This step</h2>
+        <dl id="brain-step-facts"></dl>
+      </section>
+      <section>
+        <h2>Cell type</h2>
+        <p class="hint">Point at a row of the activity map.</p>
+        <dl id="brain-cell-facts"></dl>
+      </section>
+      <section>
+        <h2>Trace</h2>
+        <dl id="brain-trace-facts"></dl>
+      </section>
+    </div>
+    <div id="brain-circuit-details" hidden>
+      <section>
+        <h2 id="brain-node-title">Pick a stage</h2>
+        <p class="hint" id="brain-node-role">Click a box in the circuit to read what it holds.</p>
+        <dl id="brain-node-facts"></dl>
+      </section>
+      <section>
+        <h2>Reading the diagram</h2>
+        <p class="hint">Boxes are the model's connectome components, in the order signals flow through the fly brain. Faded boxes are not in this model. Amber outlines are read out to the presence and bearing heads. During clip playback with a trace, each box fills with its stage's activity at the current frame.</p>
+      </section>
+    </div>
+    <div id="brain-run-details" hidden>
+      <section>
+        <h2 id="brain-run-title">Pick a run</h2>
+        <dl id="brain-run-facts"></dl>
+      </section>
+      <section id="brain-loss-section" hidden>
+        <div class="section-head"><h2>Training loss</h2><span class="num" id="brain-loss-range"></span></div>
+        <canvas id="brain-loss" class="chart short"></canvas>
+      </section>
+      <section>
+        <h2>Scores</h2>
+        <table id="brain-split-table" class="data compact"></table>
+      </section>
+      <section id="brain-components-section" hidden>
+        <h2>Connectome components</h2>
+        <div id="brain-components" class="bars"></div>
+      </section>
+      <details class="raw">
+        <summary>Full report</summary>
+        <pre id="brain-raw"></pre>
+      </details>
+    </div>
+  </aside>
 </div>
 </div>
 </div>
 <script src="/static/app.js"></script>
 <script src="/static/clips.js"></script>
+<script src="/static/workspaces.js"></script>
+<script src="/static/eye.js"></script>
+<script src="/static/brain.js"></script>
 </body>
 </html>

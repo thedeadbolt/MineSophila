@@ -105,6 +105,7 @@ async function loadDataset() {
   showBanner(lines, validation.error_count > 0 || dataset.index_errors.length > 0 ? "error" : "info");
   document.querySelectorAll("#review button").forEach((button) => (button.disabled = !dataset.reviews));
   if (validation.state !== "done" && dataset.kind !== "clips") setTimeout(() => loadDataset().then(() => applyFilters(false)), 2000);
+  document.dispatchEvent(new CustomEvent("viewer:dataset", { detail: { dataset } }));
 }
 
 function query() {
@@ -230,6 +231,7 @@ async function openSample(sampleId) {
     state.images = { rgb, mask };
   }
   draw();
+  document.dispatchEvent(new CustomEvent("viewer:sample", { detail: { sample, scene: detail.scene, image: state.images.rgb || null } }));
 }
 
 function history(reviews) {

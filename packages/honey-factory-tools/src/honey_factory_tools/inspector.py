@@ -19,6 +19,16 @@ API (JSON unless noted):
     GET  /api/clips/<id>            one clip's record, every frame record and its neighbours
     GET  /api/clips/<id>/frames/<n>.png?scale=   frame n, decoded and scaled (0.25, 0.5, 1)
     GET  /api/clips/<id>/masks/<n>.png?scale=    frame n's visible mask, scaled nearest
+
+Workspaces (ADR 0029):
+
+    GET  /api/eye/layout            fly-vision's lattice, receptors and rhodopsin curves
+    GET  /api/eye/decode-map?width=&height=   nearest ommatidium per display pixel (uint16)
+    GET  /api/eye/samples/<id>      a sample's image seen through the eye
+    GET  /api/eye/clips/<id>/<n>    clip frame n seen through the eye
+    GET  /api/brain/runs            every fly-brain run report, summarised
+    GET  /api/brain/runs/<name>     one run report
+    GET  /api/brain/traces/<clip id>   a clip's fly-brain trace, summarised for playback
 """
 
 import json
@@ -32,7 +42,9 @@ from typing import Any, cast
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from honey_factory_tools import __version__, clips, records, selection
+from honey_factory_tools.brain import BrainError, Runs, Traces
 from honey_factory_tools.catalog import Catalog, IntegrityError
+from honey_factory_tools.eye import EyeError, EyeModel, check_capture, open_png
 from honey_factory_tools.reviews import OUTCOMES, REASONS, ReviewError, ReviewStore
 
 type Record = dict[str, Any]
@@ -52,6 +64,9 @@ _STATIC = {
     "/static/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/static/app.css": ("app.css", "text/css; charset=utf-8"),
     "/static/clips.js": ("clips.js", "text/javascript; charset=utf-8"),
+    "/static/workspaces.js": ("workspaces.js", "text/javascript; charset=utf-8"),
+    "/static/eye.js": ("eye.js", "text/javascript; charset=utf-8"),
+    "/static/brain.js": ("brain.js", "text/javascript; charset=utf-8"),
 }
 _INT_FILTERS = ("viewpoint", "min_pixels", "max_pixels")
 _FLOAT_FILTERS = ("min_ratio", "max_ratio", "min_distance", "max_distance")
@@ -61,9 +76,19 @@ _TEXT_FILTERS = ("split", "status", "scene_id", "sample_id")
 class Inspector:
     """The inspector's state: one catalog, optional reviews and the session token."""
 
-    def __init__(self, catalog: Catalog, reviews: ReviewStore | None) -> None:
+    def __init__(
+        self,
+        catalog: Catalog,
+        reviews: ReviewStore | None,
+        eye: EyeModel | None = None,
+        runs: Runs | None = None,
+        traces: Traces | None = None,
+    ) -> None:
         self.catalog = catalog
         self.reviews = reviews
+        self.eye = eye
+        self.runs = runs
+        self.traces = traces
         self.token = secrets.token_urlsafe(24)
 
     def dataset(self) -> Record:
@@ -98,6 +123,7 @@ class Inspector:
             "reviews": None
             if self.reviews is None
             else {"path": str(self.reviews.path), "reviewer": self.reviews.reviewer},
+            "workspaces": self.workspaces(),
             "options": {
                 "statuses": STATUSES,
                 "splits": SPLITS,
@@ -107,6 +133,60 @@ class Inspector:
                 "reasons": REASONS,
             },
         }
+
+    def workspaces(self) -> Record:
+        eye_reason = None
+        if self.eye is None:
+            eye_reason = "The eye view is off. Start the inspector without --no-eye."
+        else:
+            try:
+                check_capture(self.catalog.manifest["capture"])
+            except EyeError as error:
+                eye_reason = str(error)
+        return {
+            "eye": {"available": eye_reason is None, "reason": eye_reason},
+            "brain": {
+                "runs": self.runs is not None,
+                "runs_directory": None if self.runs is None else str(self.runs.root),
+                "traces": self.traces is not None,
+                "traced_clips": []
+                if self.traces is None
+                else self.traces.clip_ids(self.catalog.dataset_id),
+            },
+        }
+
+    def require_eye(self) -> EyeModel:
+        if self.eye is None:
+            raise EyeError("the eye view is off")
+        check_capture(self.catalog.manifest["capture"])
+        return self.eye
+
+    def _capture_size(self) -> tuple[int, int]:
+        capture = self.catalog.manifest["capture"]
+        return int(capture["width"]), int(capture["height"])
+
+    def eye_sample(self, sample_id: str) -> Record | None:
+        if sample_id not in self.catalog.by_sample:
+            return None
+        eye = self.require_eye()
+        rgb = open_png(self.catalog.image(sample_id, "rgb"))
+        mask = open_png(self.catalog.image(sample_id, "mask"))
+        return eye.sample(rgb, mask, self._capture_size())
+
+    def eye_clip_frame(self, clip_id: str, frame: int) -> Record | None:
+        clip = self.catalog.clips.get(clip_id)
+        if clip is None or not 0 <= frame < clip["frame_count"]:
+            return None
+        eye = self.require_eye()
+        decoded = self.catalog.clip_frames(clip_id)
+        rgb = open_png(decoded.frame_png(frame, 0.5))
+        mask = open_png(decoded.mask_png(frame, 0.5))
+        return eye.sample(rgb, mask, self._capture_size())
+
+    def brain_trace(self, clip_id: str) -> Record | None:
+        if self.traces is None:
+            return None
+        return self.traces.trace(self.catalog.dataset_id, clip_id)
 
     def samples(self, query: dict[str, list[str]]) -> Record:
         chosen = parse_selection(query)
@@ -391,6 +471,8 @@ def make_server(inspector: Inspector, port: int = 0) -> ThreadingHTTPServer:
                     )
                 else:
                     self._send(HTTPStatus.OK, png, "image/png")
+            elif parts[:2] == ["api", "eye"] or parts[:2] == ["api", "brain"]:
+                self._workspace(parts, query)
             elif len(parts) == 3 and parts[0] == "image" and parts[2] in ("rgb", "mask"):
                 if parts[1] not in inspector.catalog.by_sample:
                     self._json(HTTPStatus.NOT_FOUND, {"error": f"no sample {parts[1]}"})
@@ -403,6 +485,49 @@ def make_server(inspector: Inspector, port: int = 0) -> ThreadingHTTPServer:
                 self._send(HTTPStatus.OK, data, "image/png")
             else:
                 self._json(HTTPStatus.NOT_FOUND, {"error": f"no such resource {path}"})
+
+        def _workspace(self, parts: list[str], query: dict[str, list[str]]) -> None:
+            try:
+                if parts == ["api", "eye", "layout"]:
+                    self._json(HTTPStatus.OK, inspector.require_eye().layout())
+                elif parts == ["api", "eye", "decode-map"]:
+                    data = inspector.require_eye().decode_map(
+                        _int(query, "width") or 620, _int(query, "height") or 320
+                    )
+                    self._send(HTTPStatus.OK, data, "application/octet-stream")
+                elif len(parts) == 4 and parts[2] == "samples":
+                    self._found(inspector.eye_sample(parts[3]), f"no sample {parts[3]}")
+                elif len(parts) == 5 and parts[2] == "clips" and parts[4].isdigit():
+                    self._found(
+                        inspector.eye_clip_frame(parts[3], int(parts[4])),
+                        f"no frame {parts[4]} of clip {parts[3]}",
+                    )
+                elif parts == ["api", "brain", "runs"]:
+                    runs = inspector.runs
+                    self._json(
+                        HTTPStatus.OK,
+                        {
+                            "directory": None if runs is None else str(runs.root),
+                            "runs": [] if runs is None else runs.summaries(),
+                        },
+                    )
+                elif len(parts) == 4 and parts[2] == "runs":
+                    if inspector.runs is None:
+                        self._json(HTTPStatus.NOT_FOUND, {"error": "no --runs directory"})
+                    else:
+                        self._json(HTTPStatus.OK, inspector.runs.report(parts[3]))
+                elif len(parts) == 4 and parts[2] == "traces":
+                    self._found(inspector.brain_trace(parts[3]), f"no trace for clip {parts[3]}")
+                else:
+                    self._json(
+                        HTTPStatus.NOT_FOUND, {"error": f"no such resource {'/'.join(parts)}"}
+                    )
+            except IntegrityError as error:
+                self._json(HTTPStatus.CONFLICT, {"errors": error.errors})
+            except EyeError as error:
+                self._json(HTTPStatus.CONFLICT, {"error": str(error)})
+            except BrainError as error:
+                self._json(HTTPStatus.NOT_FOUND, {"error": str(error)})
 
         def do_POST(self) -> None:
             if not self._host_allowed() or not self._token_valid():

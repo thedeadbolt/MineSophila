@@ -22,8 +22,10 @@ from honey_factory_tools import (
     report,
     selection,
 )
+from honey_factory_tools.brain import Runs, Traces
 from honey_factory_tools.canonical import Json, loads
 from honey_factory_tools.catalog import Catalog
+from honey_factory_tools.eye import EyeModel
 from honey_factory_tools.reviews import ReviewError, ReviewStore
 from honey_factory_tools.schemas import KINDS, Kind, Schemas, find_schema_directory
 
@@ -62,6 +64,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--reviews", type=Path, help="sidecar review root (reviews are off without it)"
     )
     inspect.add_argument("--reviewer", help="name recorded with each review")
+    inspect.add_argument(
+        "--runs", type=Path, help="directory of fly-brain *.report.json files (Brain workspace)"
+    )
+    inspect.add_argument(
+        "--traces", type=Path, help="directory of fly-brain clip traces (Brain workspace)"
+    )
+    inspect.add_argument(
+        "--no-eye", action="store_true", help="turn off the Eye workspace (fly-vision)"
+    )
     inspect.add_argument("--port", type=int, default=0, help="port on 127.0.0.1 (0: any free one)")
     inspect.add_argument("--no-browser", action="store_true", help="do not open a browser")
     inspect.add_argument("directory", type=Path, help="the dataset directory holding dataset.json")
@@ -248,7 +259,15 @@ def _validate_dataset(
 def _inspect(catalog: Catalog, args: argparse.Namespace) -> int:
     root = cast(Path | None, args.reviews)
     reviews = None if root is None else ReviewStore(root, catalog, cast(str | None, args.reviewer))
-    app = inspector.Inspector(catalog, reviews)
+    runs_root = cast(Path | None, args.runs)
+    traces_root = cast(Path | None, args.traces)
+    app = inspector.Inspector(
+        catalog,
+        reviews,
+        eye=None if args.no_eye else EyeModel(),
+        runs=None if runs_root is None else Runs(runs_root),
+        traces=None if traces_root is None else Traces(traces_root),
+    )
     catalog.start_validation()
     server = inspector.make_server(app, cast(int, args.port))
     address = inspector.url(server)

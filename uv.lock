@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.13"
 
 [manifest]
@@ -274,7 +274,9 @@ name = "honey-factory-tools"
 version = "0.0.0"
 source = { editable = "packages/honey-factory-tools" }
 dependencies = [
+    { name = "fly-vision" },
     { name = "jsonschema" },
+    { name = "numpy" },
     { name = "pillow" },
 ]
 
@@ -286,8 +288,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fly-vision", editable = "packages/fly-vision" },
     { name = "jsonschema", specifier = ">=4.23" },
-    { name = "pillow", specifier = ">=11.3" },
+    { name = "numpy", specifier = ">=2.5.4" },
+    { name = "pillow", specifier = ">=13.0.0" },
 ]
 
 [package.metadata.requires-dev]
