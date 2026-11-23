@@ -2023,7 +2023,7 @@ def _trace_clip(args: argparse.Namespace) -> int:
         bearing_elevation_deg=elevation.astype(np.float32),
         bump_phase=bump_phase.astype(np.float32),
         bump_strength=bump_strength.astype(np.float32),
-        **goal,
+        **goal,  # pyright: ignore[reportArgumentType]
         component_activity=component_activity,
         component_release=component_release,
         component_flow=flow,
