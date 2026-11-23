@@ -139,6 +139,30 @@ bearing is FC2's job (9i step 2).
 - Fitted PEN thresholds sit slightly below rest (θ ≈ −0.1). Seeded headings drift by 11–18°
   over 30 frames with no turning.
 
+## Fan-shaped-body goal memory, stage 1 (9i step 2): no persistent goal mode
+
+`fit-goal-memory` stage 1 kicks an FC2 bump and fits the FC2 + FB5A + hΔ type-pair gains so the
+bump holds. From effective gain 1.0, 1,500 steps leave the hold error at 94° (chance): the bump
+fades, and the phase loss stays near 1 throughout. The loaded circuit explains why:
+
+| Pathway (MaleCNS, incoming-normalised weights summed) | Weight | Note |
+|---|---:|---|
+| hΔ → hΔ | +118.9 | strong excitation, but preserves a ring pattern with fidelity only 0.20 |
+| hΔ → FC2 | +62.9 | passes the pattern on shifted 169° (hΔ arbors sit about 180° apart) |
+| FB5A → FC2 | −24.3 | FB5A is GABAergic: inhibitory feedback, like Delta7 for the compass |
+| FC2 → hΔ | +3.9 | almost none, so there is no FC2 → hΔ → FC2 loop |
+| FC2 → FC2 | +1.1 | |
+
+- At gain 1 the leading loop eigenvalue is 0.83 (decaying), and no leading mode is first
+  harmonic (≤ 0.3 even when scored on FC2 alone).
+- FC2 reads the fan-shaped body but has no excitatory loop of its own inside this circuit.
+- At type-pair resolution, the modelled anatomy provides no ring attractor that could hold a goal.
+- In the fly, goal maintenance may rely on parts we leave out: the other 61% of FC2 input
+  (mostly tangentials), vΔ and FC1/FC3, or synaptic plasticity (#29).
+
+The stage-2 (PFL3 comparison) and stage-3 (PFN write) fits are implemented but not yet run on
+MaleCNS.
+
 ## Level 4 (batch B), test split
 
 600 clips from 150 scenes; the test split has 6,340 occluded frames with honey present. Occluded
