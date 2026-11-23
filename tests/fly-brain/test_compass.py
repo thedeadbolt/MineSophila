@@ -228,3 +228,39 @@ def test_connectivity_angles_follow_weighted_angled_inputs() -> None:
     assert result[6] == pytest.approx(np.pi / 4)
     assert np.isnan(result[7])
     assert result[0] == 0.0
+
+
+def test_pfn_vector_input_requires_its_components() -> None:
+    fb = ("vector_inputs", "fan_shaped_body_columns", "goal_memory")
+    with pytest.raises(ValueError, match="pfn_vector egocentric input reads visual_projection"):
+        ConnectomeModelConfig(
+            components=("photoreceptors", "lamina_relays", *fb),
+            readout_components=("photoreceptors",),
+            egocentric_input="pfn_vector",
+        )
+    with pytest.raises(ValueError, match="vector_inputs"):
+        ConnectomeModelConfig(egocentric_input="pfn_vector")
+    ok = ConnectomeModelConfig(
+        components=("photoreceptors", "visual_projection", *fb), egocentric_input="pfn_vector"
+    )
+    assert ok.egocentric_input == "pfn_vector"
+
+
+def test_projection_offsets_average_target_minus_source_angle() -> None:
+    from fly_brain.connectome.compass import projection_offsets
+
+    # Source 0 at 0 rad projects to targets at +45 deg (w 3) and +45 deg (w 1): offset +45.
+    # Source 1 at 90 deg projects to a target at 45 deg: offset -45. Source 2 has no target.
+    angles = np.radians(np.array([0.0, 90.0, 0.0, 45.0, 45.0]))
+    source = np.array([0, 0, 1])
+    target = np.array([3, 4, 3])
+    weight = np.array([3.0, 1.0, 2.0])
+    sources = np.array([True, True, True, False, False])
+    targets = np.array([False, False, False, True, True])
+
+    offsets = projection_offsets(source, target, weight, angles, sources, targets)
+
+    assert offsets[0] == pytest.approx(np.radians(45.0))
+    assert offsets[1] == pytest.approx(np.radians(-45.0))
+    assert np.isnan(offsets[2])
+    assert np.isnan(offsets[3])

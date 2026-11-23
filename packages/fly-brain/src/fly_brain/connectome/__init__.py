@@ -38,6 +38,7 @@ from fly_brain.connectome.network import (
     NetworkDescription,
 )
 from fly_brain.connectome.ports import (
+    EgocentricProjection,
     InjectionRule,
     InputPort,
     OutputHead,
@@ -88,6 +89,7 @@ __all__ = [
     "ConnectomeRelease",
     "ConnectomeSummary",
     "EdgePolicy",
+    "EgocentricProjection",
     "Exclude",
     "ExplicitIds",
     "InjectionRule",

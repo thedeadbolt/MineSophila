@@ -64,8 +64,16 @@ class ConnectomeModelConfig:
     compass_type_bias: dict[str, float] = field(default_factory=dict[str, float])
     release_thresholds: dict[str, float] = field(default_factory=dict[str, float])
     release_threshold_sharpness: float = 20.0
+    egocentric_input: Literal["none", "pfn_vector"] = "none"
 
     def __post_init__(self) -> None:
+        if self.egocentric_input not in {"none", "pfn_vector"}:
+            raise ValueError(f"unsupported egocentric input {self.egocentric_input!r}")
+        if self.egocentric_input == "pfn_vector":
+            if "vector_inputs" not in self.components:
+                raise ValueError("pfn_vector egocentric input needs the vector_inputs component")
+            if "visual_projection" not in self.components:
+                raise ValueError("pfn_vector egocentric input reads visual_projection")
         if self.compass_operating_point not in {"none", "ring_attractor", "fitted"}:
             raise ValueError(
                 f"unsupported compass operating point {self.compass_operating_point!r}"

@@ -243,3 +243,32 @@ def connectivity_angles(
         result[reached] = np.angle(vector[reached])
         concentration[reached] = np.abs(vector[reached]) / total[reached]
     return result, concentration
+
+
+def projection_offsets(
+    source: NDArray[np.integer],
+    target: NDArray[np.integer],
+    weight: NDArray[np.floating],
+    angles: NDArray[np.floating],
+    from_mask: NDArray[np.bool_],
+    to_mask: NDArray[np.bool_],
+) -> NDArray[np.float64]:
+    """Per neuron in ``from_mask``: weighted circular mean of (target angle - own angle).
+
+    Only edges onto angled neurons in ``to_mask`` count. NaN for neurons without such edges or
+    without an angle, and for neurons outside ``from_mask``. For PFN neurons projecting into
+    the fan-shaped body this is the heading shift of their copy of the bump.
+    """
+    angles = np.asarray(angles, dtype=np.float64)
+    finite = np.isfinite(angles)
+    use = from_mask[source] & to_mask[target] & finite[source] & finite[target]
+    vector = np.zeros(angles.size, dtype=np.complex128)
+    total = np.zeros(angles.size)
+    shift = np.exp(1j * (angles[target[use]] - angles[source[use]]))
+    magnitude = np.abs(np.asarray(weight, dtype=np.float64)[use])
+    np.add.at(vector, source[use], magnitude * shift)
+    np.add.at(total, source[use], magnitude)
+    result = np.full(angles.size, np.nan)
+    reached = total > 0
+    result[reached] = np.angle(vector[reached])
+    return result

@@ -37,6 +37,36 @@ class InputPort:
 
 
 @dataclass(frozen=True)
+class EgocentricProjection:
+    """A learned two-component egocentric vector read from ``source_ids`` and added to targets.
+
+    Each target receives ``x cos(offset) + y sin(offset)`` where ``(x, y)`` is a learned linear
+    readout of source release. For PFN neurons the offsets are their heading shifts in the
+    fan-shaped body, so the vector modulates each heading copy as in vector addition (ADR 0030).
+    It stands in for the unmodelled noduli route: status approximation.
+    """
+
+    source_ids: NDArray[np.int64]
+    target_ids: NDArray[np.int64]
+    target_offsets: NDArray[np.float64]
+    biological_status: BiologicalStatus = BiologicalStatus.APPROXIMATION
+
+    def __post_init__(self) -> None:
+        source = np.asarray(self.source_ids, dtype=np.int64)
+        target = np.asarray(self.target_ids, dtype=np.int64)
+        offsets = np.asarray(self.target_offsets, dtype=np.float64)
+        if source.ndim != 1 or source.size == 0 or np.unique(source).size != source.size:
+            raise ValueError("egocentric sources must be non-empty and unique")
+        if target.ndim != 1 or target.size == 0 or np.unique(target).size != target.size:
+            raise ValueError("egocentric targets must be non-empty and unique")
+        if offsets.shape != target.shape or not np.isfinite(offsets).all():
+            raise ValueError("egocentric offsets must be finite, one per target")
+        object.__setattr__(self, "source_ids", readonly(source))
+        object.__setattr__(self, "target_ids", readonly(target))
+        object.__setattr__(self, "target_offsets", readonly(offsets))
+
+
+@dataclass(frozen=True)
 class OutputHead:
     name: str
     neuron_ids: NDArray[np.int64]

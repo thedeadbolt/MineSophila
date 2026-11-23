@@ -11,6 +11,7 @@ from fly_brain.connectome import (
     BrainModelSpec,
     BrainNetwork,
     BrainParameters,
+    BrainState,
     ComponentResolver,
     ComponentRole,
     ComponentSpec,
@@ -347,3 +348,56 @@ def test_release_thresholds_need_graded_dynamics_and_valid_settings() -> None:
         LeakyRateDynamics(activation="graded", release_sharpness=0.0)
     with pytest.raises(ValueError, match="unique"):
         LeakyRateDynamics(activation="graded", release_thresholds=(("a", 0.1), ("a", 0.2)))
+
+
+def _egocentric_compiler(projection) -> BrainCompiler:
+    from fly_brain.connectome import BrainModelSpec as Spec
+
+    source = graph()
+    spec = Spec(
+        network(source),
+        (
+            InputPort(
+                "receptors", np.array([1, 2]), InjectionRule.CLAMPED, BiologicalStatus.APPROXIMATION
+            ),
+        ),
+        OutputHead("localisation", np.array([4]), 2),
+        LeakyRateDynamics(time_constant=2.0, activation="graded"),
+        SynapseCountPolicy(),
+        egocentric=projection,
+    )
+    return BrainCompiler(spec)
+
+
+def test_egocentric_projection_adds_offset_weighted_drive() -> None:
+    from fly_brain.connectome.ports import EgocentricProjection
+
+    projection = EgocentricProjection(
+        source_ids=np.array([3]),
+        target_ids=np.array([3, 4]),
+        target_offsets=np.array([0.0, np.pi / 2]),
+    )
+    model = _egocentric_compiler(projection).compile()
+    parameters = model.initialize_parameters(seed=0)
+    state = BrainState(jnp.array([[0.0, 0.0, 0.4, 0.0]]))
+    inputs = jnp.zeros((1, 2))
+    release = float(0.5 * np.tanh(2 * 0.4))
+
+    def drive_on_targets(weights: list[list[float]]) -> np.ndarray:
+        with_weights = parameters._replace(egocentric_weights=jnp.asarray(weights))
+        without = parameters._replace(egocentric_weights=jnp.zeros((1, 2)))
+        a = np.asarray(model.step(with_weights, state, inputs).activity)[0]
+        b = np.asarray(model.step(without, state, inputs).activity)[0]
+        return (a - b)[[2, 3]] / model.dt * model.dynamics.time_constant
+
+    assert parameters.egocentric_weights.shape == (1, 2)
+    np.testing.assert_allclose(drive_on_targets([[1.0, 0.0]]), [release, 0.0], atol=1e-6)
+    np.testing.assert_allclose(drive_on_targets([[0.0, 1.0]]), [0.0, release], atol=1e-6)
+
+
+def test_brains_without_egocentric_projection_ignore_the_parameter() -> None:
+    model = compiled_brain().compile()
+    parameters = model.initialize_parameters(seed=0)
+
+    assert parameters.egocentric_weights.shape == (0, 2)
+    assert model.egocentric_source_indexes is None

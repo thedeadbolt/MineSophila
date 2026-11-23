@@ -56,6 +56,7 @@ from fly_brain.connectome.compass import (
     compass_modes,
     connectivity_angles,
     pb_glomerulus_angle,
+    projection_offsets,
     ring_attractor_gains,
     type_pair_raw_gains,
 )
@@ -66,6 +67,7 @@ from fly_brain.connectome.integrator import (
     constant_turn_response,
     fit_compass_integrator,
 )
+from fly_brain.connectome.ports import EgocentricProjection
 from fly_brain.connectome.subcircuit import extract_subcircuit
 from fly_brain.connectome.trace import (
     bump_phase_strength,
@@ -1688,6 +1690,41 @@ def _heading_angles(
     return angles
 
 
+def _egocentric_projection(
+    graph: ConnectomeGraph,
+    components: dict[str, NetworkComponent],
+    connectome_root: Path,
+    config: ConnectomeModelConfig,
+) -> EgocentricProjection | None:
+    """PFN vector input (ADR 0030): visual-projection sources, PFN targets at their FB shifts."""
+    if config.egocentric_input == "none":
+        return None
+    neurons = graph.neurons
+    ids = neurons.neuron_ids.astype(np.int64)
+    counts = graph.synapses.counts.astype(np.float64)
+    source = np.searchsorted(ids, graph.synapses.source_ids)
+    target = np.searchsorted(ids, graph.synapses.target_ids)
+    pfn = np.isin(ids, components["vector_inputs"].neuron_ids)
+    angles = np.full(ids.size, np.nan)
+    instances = MaleCNSLoader(connectome_root, verify_checksums=False).instances(ids[pfn])
+    for index in np.flatnonzero(pfn):
+        try:
+            angles[index] = pb_glomerulus_angle(instances[int(ids[index])])
+        except ValueError:
+            continue
+    columnar = np.isin(neurons.cell_types, (*GOAL_MEMORY_TYPES, *FAN_SHAPED_BODY_COLUMN_TYPES))
+    angles, _ = connectivity_angles(source, target, counts, angles, columnar, passes=2)
+    offsets = projection_offsets(source, target, counts, angles, pfn, columnar)
+    usable = pfn & np.isfinite(offsets)
+    if not usable.any():
+        raise ValueError("no PFN neuron has a measurable fan-shaped-body offset")
+    return EgocentricProjection(
+        source_ids=components["visual_projection"].neuron_ids,
+        target_ids=ids[usable],
+        target_offsets=offsets[usable],
+    )
+
+
 def _build_connectome(
     layout: SensorLayout,
     connectome_root: Path,
@@ -1763,6 +1800,7 @@ def _build_connectome(
             config.use_neurotransmitter_signs,
         ),
         config.dt,
+        _egocentric_projection(graph, components, connectome_root, config),
     )
     return graph, network, components, input_map, BrainCompiler(spec)
 

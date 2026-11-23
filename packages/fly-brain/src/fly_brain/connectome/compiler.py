@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 
 from fly_brain.connectome.dynamics import LeakyRateDynamics
 from fly_brain.connectome.network import BrainNetwork
-from fly_brain.connectome.ports import InjectionRule, InputPort, OutputHead
+from fly_brain.connectome.ports import EgocentricProjection, InjectionRule, InputPort, OutputHead
 from fly_brain.contracts._arrays import readonly
 
 EdgeGainMode = Literal["global", "cell_type_pair", "per_edge"]
@@ -48,6 +48,7 @@ class BrainModelSpec:
     dynamics: LeakyRateDynamics = field(default_factory=LeakyRateDynamics)
     parameter_policy: SynapseCountPolicy = field(default_factory=SynapseCountPolicy)
     dt: float = 1.0
+    egocentric: EgocentricProjection | None = None
 
     def __post_init__(self) -> None:
         if not self.input_ports:
@@ -79,6 +80,9 @@ class BrainParameters(NamedTuple):
     neuron_bias: jax.Array
     readout_weights: jax.Array
     readout_bias: jax.Array
+    # (egocentric sources, 2); empty for brains without an egocentric projection and for
+    # checkpoints written before it existed.
+    egocentric_weights: jax.Array = jnp.zeros((0, 2), dtype=jnp.float32)
 
 
 class BrainState(NamedTuple):
@@ -115,6 +119,9 @@ class CompiledBrain:
     output_width: int
     release_gate: NDArray[np.bool_] | None = None
     release_threshold: NDArray[np.float32] | None = None
+    egocentric_source_indexes: NDArray[np.int32] | None = None
+    egocentric_target_indexes: NDArray[np.int32] | None = None
+    egocentric_target_offsets: NDArray[np.float32] | None = None
 
     def release(self, activity: jax.Array) -> jax.Array:
         """Presynaptic release per neuron: graded, or thresholded for gated cell types."""
@@ -136,12 +143,18 @@ class CompiledBrain:
         if self.parameter_policy.maximum_edge_gain is not None:
             ratio = initial_gain / self.parameter_policy.maximum_edge_gain
             initial_gain = float(np.log(ratio / (1.0 - ratio)))
+        egocentric = jnp.zeros((0, 2), dtype=jnp.float32)
+        if self.egocentric_source_indexes is not None:
+            egocentric = 1e-3 * jax.random.normal(
+                jax.random.fold_in(key, 1), (self.egocentric_source_indexes.size, 2)
+            )
         return BrainParameters(
             edge_gain=jnp.full(self.edge_gain_count, initial_gain, dtype=jnp.float32),
             neuron_bias=neuron_bias,
             readout_weights=jax.random.normal(key, (self.readout_indexes.size, self.output_width))
             * scale,
             readout_bias=jnp.zeros(self.output_width),
+            egocentric_weights=egocentric,
         )
 
     def initialize_state(self, batch_size: int) -> BrainState:
@@ -164,13 +177,24 @@ class CompiledBrain:
         edge_gain = parameters.edge_gain[self.edge_group_indexes]
         if self.parameter_policy.maximum_edge_gain is not None:
             edge_gain = self.parameter_policy.maximum_edge_gain * jax.nn.sigmoid(edge_gain)
+        release = self.release(state.activity)
         recurrent = (
-            self.release(state.activity)[:, self.source_indexes]
+            release[:, self.source_indexes]
             * jnp.asarray(self.anatomical_weights)[None, :]
             * edge_gain[None, :]
         )
         drive = jnp.zeros_like(state.activity)
         drive = drive.at[:, self.target_indexes].add(recurrent)
+        if (
+            self.egocentric_source_indexes is not None
+            and self.egocentric_target_indexes is not None
+            and self.egocentric_target_offsets is not None
+        ):
+            vector = release[:, self.egocentric_source_indexes] @ parameters.egocentric_weights
+            offsets = jnp.asarray(self.egocentric_target_offsets)[None, :]
+            drive = drive.at[:, self.egocentric_target_indexes].add(
+                vector[:, :1] * jnp.cos(offsets) + vector[:, 1:] * jnp.sin(offsets)
+            )
         clamped: list[tuple[jax.Array, jax.Array]] = []
         for index, targets in enumerate(self.port_target_indexes):
             start, stop = self.port_offsets[index], self.port_offsets[index + 1]
@@ -285,6 +309,22 @@ class BrainCompiler:
             self.spec.dt,
             self.spec.output_head.output_width,
             *self._release_gate(graph.neurons.cell_types),
+            *self._egocentric(neuron_ids),
+        )
+
+    def _egocentric(
+        self, neuron_ids: NDArray[np.integer]
+    ) -> tuple[NDArray[np.int32] | None, NDArray[np.int32] | None, NDArray[np.float32] | None]:
+        projection = self.spec.egocentric
+        if projection is None:
+            return None, None, None
+        for name, ids in (("sources", projection.source_ids), ("targets", projection.target_ids)):
+            if not np.isin(ids, neuron_ids).all():
+                raise ValueError(f"egocentric {name} contain neurons outside the network")
+        return (
+            readonly(np.searchsorted(neuron_ids, projection.source_ids).astype(np.int32)),
+            readonly(np.searchsorted(neuron_ids, projection.target_ids).astype(np.int32)),
+            readonly(projection.target_offsets.astype(np.float32)),
         )
 
     def _release_gate(
