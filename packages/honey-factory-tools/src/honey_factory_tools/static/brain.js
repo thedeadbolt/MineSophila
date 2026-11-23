@@ -697,7 +697,7 @@ const REGIONS = [
   ["anterior_visual_inputs", "Medulla → AOTU", 0, 1],
   ["tubercle_bulb", "AOTU → bulb", 1, 1],
   ["ring_neurons", "Bulb → ellipsoid body", 2, 1],
-  ["compass", "Ellipsoid body, bridge", 3, 1],
+  ["compass", "Ellipsoid body, PB", 3, 1],
   ["steering", "Bridge → LAL", 4, 1],
 ];
 const TRANSMITTERS = {
@@ -707,7 +707,10 @@ const TRANSMITTERS = {
   histamine: { colour: "#c9ccd1", name: "histamine", sign: "inhibitory" },
 };
 const OTHER_TRANSMITTER = { colour: "#6b717a", name: "unclear", sign: "unknown" };
-const CIRCUIT = { columnWidth: 178, row: 25, top: 36, left: 150, maxTypes: 8, rowGap: 64 };
+// Each column is a box: nodes on its left, labels to their right, and its edges leave from
+// the box's right side and arrive at the target box's left side, level with their node, so
+// no edge ever crosses a label.
+const CIRCUIT = { columnWidth: 196, row: 27, top: 36, left: 150, maxTypes: 8, rowGap: 70, boxLeft: 30, boxWidth: 150, header: 50 };
 const circuit = { svg: null, view: null, full: null, nodes: new Map(), focus: null };
 
 function svg(tag, attributes, text) {
@@ -790,20 +793,20 @@ async function drawCircuit() {
   }
 
   // Place regions: columns left to right, the two rows one under the other.
-  const rowHeight = [0, 1].map((row) => Math.max(0, ...regions.filter((r) => r.row === row).map((r) => 44 + r.members.length * CIRCUIT.row)));
+  const rowHeight = [0, 1].map((row) => Math.max(0, ...regions.filter((r) => r.row === row).map((r) => CIRCUIT.header + r.members.length * CIRCUIT.row)));
   const rowTop = [CIRCUIT.top, CIRCUIT.top + rowHeight[0] + CIRCUIT.rowGap];
   let height = 0;
   for (const region of regions) {
     region.x = CIRCUIT.left + region.column * CIRCUIT.columnWidth;
     region.y = rowTop[region.row];
-    region.h = 44 + region.members.length * CIRCUIT.row;
+    region.h = CIRCUIT.header + region.members.length * CIRCUIT.row;
     height = Math.max(height, region.y + region.h);
     const peak = Math.max(...region.members.map((m) => nodes[m].count));
     region.members.forEach((m, k) => {
       const node = nodes[m];
       node.x = region.x;
-      node.y = region.y + 40 + k * CIRCUIT.row;
-      node.r = 3.5 + 7.5 * Math.sqrt(node.count / Math.max(peak, 1));
+      node.y = region.y + CIRCUIT.header - 6 + k * CIRCUIT.row;
+      node.r = 3 + 6 * Math.sqrt(node.count / Math.max(peak, 1));
       node.region = region;
     });
   }
@@ -842,13 +845,16 @@ async function drawCircuit() {
 
   // Region bands with their neuropil, component and neuron count.
   const bandLayer = svg("g");
+  const headLayer = svg("g", { class: "heads" });
   for (const region of regions) {
     const present = inModel(region.component);
     const band = svg("g", { class: `band${present ? "" : " absent"}${readouts.has(region.component) ? " read" : ""}` });
-    band.append(svg("rect", { x: region.x - 30, y: region.y, width: 160, height: region.h, rx: 8, class: "band-box" }));
-    band.append(svg("text", { x: region.x - 24, y: region.y + 16, class: "band-title" }, region.heading));
-    band.append(svg("text", { x: region.x - 24, y: region.y + 29, class: "band-sub" }, `${humane(region.component)} · ${number(region.neurons)}${present ? "" : " · not in this model"}`));
+    band.append(svg("rect", { x: region.x - CIRCUIT.boxLeft, y: region.y, width: CIRCUIT.boxWidth, height: region.h, rx: 8, class: "band-box" }));
     bandLayer.append(band);
+    const head = svg("g", { class: `band-head${present ? "" : " absent"}` });
+    head.append(svg("text", { x: region.x - 22, y: region.y + 17, class: "band-title" }, region.heading));
+    head.append(svg("text", { x: region.x - 22, y: region.y + 31, class: "band-sub" }, `${humane(region.component)} · ${number(region.neurons)}${present ? "" : " · not in model"}`));
+    headLayer.append(head);
   }
   root.append(bandLayer);
 
@@ -857,51 +863,55 @@ async function drawCircuit() {
   const retina = regions.find((r) => r.component === "photoreceptors");
   if (retina) {
     const y = retina.y + retina.h / 2;
-    terminals.append(svg("rect", { x: 14, y: y - 30, width: 92, height: 60, rx: 8, class: "terminal" }));
-    terminals.append(svg("text", { x: 24, y: y - 9, class: "band-title" }, "Compound eye"));
-    terminals.append(svg("text", { x: 24, y: y + 6, class: "band-sub" }, "fly-vision"));
-    terminals.append(svg("text", { x: 24, y: y + 19, class: "band-sub" }, compilation.input_width ? `${number(compilation.input_width)} ports` : "R1_6, R7, R8"));
-    terminals.append(svg("path", { d: `M106 ${y} L${retina.x - 36} ${y}`, class: "terminal-edge", "marker-end": "url(#end-excitatory)" }));
+    terminals.append(svg("rect", { x: 8, y: y - 30, width: 108, height: 60, rx: 8, class: "terminal" }));
+    terminals.append(svg("text", { x: 16, y: y - 9, class: "band-title" }, "Compound eye"));
+    terminals.append(svg("text", { x: 16, y: y + 6, class: "band-sub" }, "fly-vision"));
+    terminals.append(svg("text", { x: 16, y: y + 19, class: "band-sub" }, compilation.input_width ? `${number(compilation.input_width)} ports` : "R1_6, R7, R8"));
+    terminals.append(svg("path", { d: `M116 ${y} L${retina.x - CIRCUIT.boxLeft - 2} ${y}`, class: "terminal-edge", "marker-end": "url(#end-excitatory)" }));
   }
   if (readouts.size) {
     const x = CIRCUIT.left + (columns - 1) * CIRCUIT.columnWidth + 150;
     const y = rowTop[1] + 20;
-    terminals.append(svg("rect", { x, y, width: 92, height: 60, rx: 8, class: "terminal read" }));
+    terminals.append(svg("rect", { x, y, width: 112, height: 60, rx: 8, class: "terminal read" }));
     terminals.append(svg("text", { x: x + 10, y: y + 21, class: "band-title" }, "Readout"));
     terminals.append(svg("text", { x: x + 10, y: y + 36, class: "band-sub" }, "presence, bearing"));
     terminals.append(svg("text", { x: x + 10, y: y + 49, class: "band-sub" }, compilation.readout_neuron_count ? `${number(compilation.readout_neuron_count)} neurons` : ""));
     for (const region of regions) {
       if (!readouts.has(region.component)) continue;
-      const sx = region.x + 130;
+      const sx = region.x - CIRCUIT.boxLeft + CIRCUIT.boxWidth;
       const sy = region.y + 20;
       terminals.append(svg("path", { d: `M${sx} ${sy} C${sx + 60} ${sy}, ${x - 60} ${y + 30}, ${x} ${y + 30}`, class: "readout-edge", "marker-end": "url(#end-excitatory)" }));
     }
   }
   root.append(terminals);
 
-  // Edges.
+  // Edges, weakest first so the strongest draw on top. Each leaves its column box on the
+  // right and enters the target box on the left, level with its nodes.
   const edgeLayer = svg("g", { class: "edges" });
-  for (const edge of edges) {
+  const outX = (node) => node.region.x - CIRCUIT.boxLeft + CIRCUIT.boxWidth;
+  const inX = (node) => node.region.x - CIRCUIT.boxLeft;
+  for (const edge of [...edges].reverse()) {
     const a = nodes[edge.a];
     const b = nodes[edge.b];
     const sign = transmitterOf(a.transmitter).sign;
-    const width = 0.5 + 4.5 * (Math.log1p(edge.w) / Math.log1p(peakWeight));
+    const width = 0.6 + 2.6 * (Math.log1p(edge.w) / Math.log1p(peakWeight));
+    const sx = outX(a);
+    const tx = inX(b);
     let d;
-    if (edge.a === edge.b) {
-      d = `M${a.x + a.r * 0.7} ${a.y - a.r * 0.7} C${a.x + 26} ${a.y - 22}, ${a.x + 26} ${a.y + 22}, ${a.x + a.r} ${a.y + 2}`;
-    } else if (a.region === b.region) {
-      // Recurrent inside a region: an arc out to the right of the column.
-      const bulge = 30 + Math.min(60, Math.abs(b.y - a.y) * 0.35);
-      d = `M${a.x + a.r} ${a.y} C${a.x + bulge} ${a.y}, ${b.x + bulge} ${b.y}, ${b.x + b.r + 3} ${b.y}`;
+    if (a.region === b.region) {
+      // Recurrent inside a neuropil: an arc out of the box's right side and back in.
+      const bulge = 18 + Math.min(46, Math.abs(b.y - a.y) * 0.3);
+      d = edge.a === edge.b
+        ? `M${sx} ${a.y - 4} C${sx + 16} ${a.y - 12}, ${sx + 16} ${a.y + 12}, ${sx + 2} ${a.y + 4}`
+        : `M${sx} ${a.y} C${sx + bulge} ${a.y}, ${sx + bulge} ${b.y}, ${sx + 3} ${b.y}`;
     } else if (b.region.column > a.region.column || a.region.row !== b.region.row) {
-      // Forward, or down from the visual system into the central pathway.
-      const dx = Math.max(50, Math.abs(b.x - a.x) * 0.45);
-      d = `M${a.x + a.r} ${a.y} C${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x - b.r - 3} ${b.y}`;
+      const dx = Math.max(40, (tx - sx) * 0.5);
+      d = `M${sx} ${a.y} C${sx + dx} ${a.y}, ${tx - dx} ${b.y}, ${tx} ${b.y} L${b.x - b.r - 3} ${b.y}`;
     } else {
-      // Feedback to an earlier column of the same row: above the top row, below the bottom one.
+      // Feedback to an earlier column of the same row: over the top row, under the bottom one.
       const top = a.region.row === 0;
-      const edge = top ? Math.min(a.region.y, b.region.y) - 14 : Math.max(a.region.y + a.region.h, b.region.y + b.region.h) + 14;
-      d = `M${a.x} ${top ? a.y - a.r : a.y + a.r} C${a.x} ${edge}, ${b.x} ${edge}, ${b.x} ${top ? b.y - b.r - 3 : b.y + b.r + 3}`;
+      const lane = top ? Math.min(a.region.y, b.region.y) - 16 : Math.max(a.region.y + a.region.h, b.region.y + b.region.h) + 16;
+      d = `M${sx} ${a.y} C${sx + 40} ${a.y}, ${sx + 40} ${lane}, ${sx} ${lane} L${tx} ${lane} C${tx - 40} ${lane}, ${tx - 40} ${b.y}, ${tx} ${b.y} L${b.x - b.r - 3} ${b.y}`;
     }
     const path = svg("path", {
       d, class: `edge ${sign}`, "stroke-width": width.toFixed(2), "marker-end": `url(#end-${sign})`,
@@ -919,9 +929,9 @@ async function drawCircuit() {
     const t = transmitterOf(node.transmitter);
     const present = inModel(node.component);
     const group = svg("g", { class: `cnode${node.folded ? " folded" : ""}${present ? "" : " absent"}`, transform: `translate(${node.x} ${node.y})`, tabindex: 0, "data-index": index });
-    const glow = svg("circle", { r: node.r + 7, class: "glow", opacity: 0 });
+    const glow = svg("circle", { r: node.r + 2, class: "glow", opacity: 0 });
     const dot = svg("circle", { r: node.r, fill: node.folded ? "none" : t.colour, stroke: t.colour, class: "dot" });
-    group.append(glow, dot, svg("text", { x: 14, y: 4, class: "clabel" }, node.label.length > 14 ? `${node.label.slice(0, 13)}…` : node.label));
+    group.append(glow, dot, svg("text", { x: 13, y: 4, class: "clabel" }, node.label.length > 14 ? `${node.label.slice(0, 13)}…` : node.label));
     group.append(svg("title", {}, `${node.label} · ${number(node.count)} neurons · ${t.name}`));
     const focus = () => focusNode(index, nodes, edges);
     group.addEventListener("pointerenter", focus);
@@ -931,7 +941,7 @@ async function drawCircuit() {
     nodeLayer.append(group);
     circuit.nodes.set(index, { node, glow, dot });
   });
-  root.append(nodeLayer);
+  root.append(nodeLayer, headLayer);
 
   for (const attribute of root.attributes) target.setAttribute(attribute.name, attribute.value);
   target.replaceChildren(...root.childNodes);
@@ -1013,8 +1023,8 @@ function paintCircuitActivity() {
       }
     }
     const t = value === null ? 0 : (value - low) / span;
-    glow.setAttribute("opacity", String(value === null ? 0 : 0.15 + 0.75 * t));
-    glow.setAttribute("r", String(node.r + 4 + 10 * t));
+    glow.setAttribute("opacity", String(value === null ? 0 : 0.12 + 0.6 * t));
+    glow.setAttribute("r", String(node.r + 2 + 5 * t));
   }
 }
 

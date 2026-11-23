@@ -615,26 +615,29 @@ body:not(.clips) #toggle-timeline { display: none; }
 #brain-circuit-svg .band.read .band-box { stroke: var(--honey); stroke-width: 1.5; }
 #brain-circuit-svg .band.absent { opacity: 0.35; }
 #brain-circuit-svg .band.absent .band-box { stroke-dasharray: 4 4; }
-#brain-circuit-svg .band-title { font: 600 13px var(--sans); fill: var(--ink); }
-#brain-circuit-svg .band-sub { font: 10px var(--sans); fill: var(--muted); }
+#brain-circuit-svg .band-title { font: 600 14.5px var(--sans); fill: var(--ink); }
+#brain-circuit-svg .band-sub { font: 11px var(--sans); fill: var(--muted); }
 #brain-circuit-svg .terminal { fill: var(--raised); stroke: var(--rule); }
 #brain-circuit-svg .terminal.read { stroke: var(--honey); }
 #brain-circuit-svg .terminal-edge, #brain-circuit-svg .readout-edge { fill: none; stroke: #c9a24a; stroke-width: 1.4; }
 #brain-circuit-svg .readout-edge { stroke-dasharray: 5 4; opacity: 0.8; }
-#brain-circuit-svg .edge { fill: none; opacity: 0.55; transition: opacity 0.12s ease; }
+#brain-circuit-svg .edge { fill: none; opacity: 0.42; transition: opacity 0.12s ease; }
 #brain-circuit-svg .edge.excitatory { stroke: #c9a24a; }
 #brain-circuit-svg .edge.inhibitory { stroke: #5d8fd8; }
 #brain-circuit-svg .edge.unknown { stroke: #7a8089; }
-#brain-circuit-svg.focus .edge { opacity: 0.05; }
+#brain-circuit-svg.focus .edge { opacity: 0.04; }
 #brain-circuit-svg.focus .edge.on { opacity: 1; stroke: #fff; }
 #brain-circuit-svg .cnode { cursor: pointer; }
 #brain-circuit-svg .cnode .dot { stroke-width: 1.5; }
 #brain-circuit-svg .cnode.folded .dot { stroke-dasharray: 2 2; }
 #brain-circuit-svg .cnode .glow { fill: #f0b429; pointer-events: none; }
-#brain-circuit-svg .clabel { font: 11.5px var(--mono); fill: var(--ink); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; pointer-events: none; }
+#brain-circuit-svg .clabel { font: 12.5px var(--mono); fill: var(--ink); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; pointer-events: none; }
 #brain-circuit-svg .cnode.folded .clabel { fill: var(--muted); font-family: var(--sans); font-style: italic; }
 #brain-circuit-svg .cnode.absent { opacity: 0.4; }
 #brain-circuit-svg.focus .cnode:not(.linked) { opacity: 0.25; }
 #brain-circuit-svg:focus, #brain-circuit-svg .cnode:focus { outline: none; }
 #brain-circuit-svg .cnode:focus-visible .dot { stroke: var(--focus); stroke-width: 3; }
 .legend .key.plain::before { display: none; }
+#brain-circuit-svg .band-title, #brain-circuit-svg .band-sub { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; }
+#brain-circuit-svg .band-head.absent { opacity: 0.45; }
+#brain-circuit-svg .clabel { stroke: var(--surface); }
