@@ -734,6 +734,37 @@ Then rerun the compass and self-motion clip experiments against the same GRU con
   Then ADR 0028 (per-cell-type activation), then FC2 (FC2A/B/C, 92 neurons in MaleCNS) as the
   goal memory read by PFL3.
 
+**9i step 2 plan: the fan-shaped-body goal input to PFL3 (agreed 2026-11-23).**
+PFL3 (24 neurons) is in the model, but it gets only its bridge-side heading input. In full
+MaleCNS, the 60,811 synapses onto PFL3 come from:
+
+| Source | Share | Carries |
+|---|---:|---|
+| FB tangential neurons | 37.9% | context and state |
+| hΔ | 19.7% | fan-shaped-body columnar vector machinery |
+| FC2 | 12.6% | goal direction |
+| Delta7 | 9.2% | heading, relayed in the bridge |
+| PFN | 6.4% | self-motion and heading |
+| EPG | 1.9% | heading, direct |
+
+The model has Delta7, EPG and PFL3 itself, about 11.5% of PFL3's real input.
+
+1. Add an FC2 component (FC2A/B/C, 92 neurons) as the goal memory. While honey is visible,
+   vision writes its direction, in compass coordinates, as an FC2 bump. Through occlusion the
+   bump holds by recurrence.
+2. Add the hΔ component (hΔA–M, about 190 neurons) between FC2 and PFL3.
+3. Give FC2 and hΔ columns heading angles. Derive the fan-shaped-body column-to-heading mapping
+   from connectivity, as the Delta7 instances confirmed the bridge mapping. Unit-test it.
+4. Leave the FB tangential neurons for later: they mainly signal state, not goal position.
+5. Score the bearing read from PFL3 against the dead-reckoning ceiling (16.8° on batch B) and
+   the GRUs.
+
+**End of 9i: viewer deliverables.** Before 9i closes:
+- land `trace-clip` (below);
+- include FC2 and hΔ per-neuron angles, FC2 `goal_phase` and `goal_strength`, PFL3 activity,
+  and the fitted bump gain;
+- so that the viewer can draw the dual EPG/FC2 compass (#32) and the circuit (#30).
+
 #### Planned after 9i: `fly-brain trace-clip` for the honey-factory-tools viewer
 
 Agreed with the visualizer work (branch `feat/honey-factory-tools-visualizer`):
