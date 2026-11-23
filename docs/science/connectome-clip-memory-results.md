@@ -2,7 +2,7 @@
 
 Recorded 2026-11-22, updated 2026-11-23. The first test of target-direction memory inside the
 connectome, against the recurrent (GRU) control, on clips where the honey is hidden for long
-stretches. Results are interim: the central-complex rows are single seeds. Level 4 and a
+stretches. Results are interim: several central-complex rows are still single seeds. Level 4 and a
 weaker self-motion input are still running.
 
 ## Data
@@ -89,7 +89,7 @@ and harder for every model.
   the PEN drive (about 0.37) is roughly 50 times the mean visual port value (about 0.008). The
   likely failure is that self-motion swamps the compass instead of rotating its bump. The
   per-type gains are bounded at 4, so training cannot scale it down far enough.
-- **Next:** a much smaller self-motion scale (about 0.002, comparable with visual drive), seeds
+- **Next:** a much smaller self-motion scale (about 0.002, comparable with visual drive), batch-B seeds
   for the projection readout, and level 4.
 
 ## Artifacts
