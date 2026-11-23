@@ -61,6 +61,7 @@ from fly_brain.connectome.integrator import (
     constant_turn_response,
     fit_compass_integrator,
 )
+from fly_brain.connectome.subcircuit import extract_subcircuit
 from fly_brain.connectome.trace import (
     bump_phase_strength,
     component_flow,
@@ -2011,34 +2012,22 @@ def _compass_circuit(
     """The compass sub-circuit of a compiled brain, its global group ids, members and types."""
     types, angles = _compass_layout(brain, graph, connectome_root)
     members = np.isin(types, COMPASS_TYPES)
-    index = np.flatnonzero(members)
-    position = np.full(types.size, -1)
-    position[index] = np.arange(index.size)
-    inside = members[brain.source_indexes] & members[brain.target_indexes]
-    global_groups, local = np.unique(brain.edge_group_indexes[inside], return_inverse=True)
-    sources, targets = brain.source_indexes[inside], brain.target_indexes[inside]
-    pairs = tuple(
-        f"{types[sources[first]]}>{types[targets[first]]}"
-        for first in (np.flatnonzero(local == group)[0] for group in range(global_groups.size))
-    )
+    part = extract_subcircuit(brain, types, COMPASS_TYPES, PEN_TYPES)
     sides = graph.neurons.sides[np.searchsorted(graph.neurons.neuron_ids, brain.neuron_ids)]
-    maximum = brain.parameter_policy.maximum_edge_gain
-    if maximum is None:
-        raise ValueError("the compass integrator needs bounded edge gains")
     circuit = CompassCircuit(
-        cell_types=types[index],
-        angles=angles[index],
-        sides=sides[index],
-        source=position[sources].astype(np.int32),
-        target=position[targets].astype(np.int32),
-        weight=brain.anatomical_weights[inside].astype(np.float32),
-        group=local.astype(np.int32),
-        group_pairs=pairs,
+        cell_types=part.cell_types,
+        angles=angles[part.neuron_index],
+        sides=sides[part.neuron_index],
+        source=part.source,
+        target=part.target,
+        weight=part.weight,
+        group=part.group,
+        group_pairs=part.group_pairs,
         compass_types=COMPASS_TYPES,
-        leak=brain.dt / brain.dynamics.time_constant,
-        maximum_gain=maximum,
+        leak=part.leak,
+        maximum_gain=part.maximum_gain,
     )
-    return circuit, global_groups.astype(np.int64), members, types
+    return circuit, part.global_groups, members, types
 
 
 def _fit_compass_integrator(args: argparse.Namespace) -> int:

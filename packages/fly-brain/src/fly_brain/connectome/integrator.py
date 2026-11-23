@@ -18,6 +18,8 @@ import jax.numpy as jnp
 import numpy as np
 from numpy.typing import NDArray
 
+from fly_brain.connectome.subcircuit import SubCircuit, run_subcircuit
+
 PEN_TYPES = ("PEN_a(PEN1)", "PEN_b(PEN2)")
 
 
@@ -114,7 +116,6 @@ def _arrays(circuit: CompassCircuit) -> dict[str, jax.Array]:
         "dst": jnp.asarray(circuit.target),
         "w": jnp.asarray(circuit.weight),
         "grp": jnp.asarray(circuit.group),
-        "is_pen": jnp.asarray(pen),
         "pen_type": jnp.asarray(np.where(types == PEN_TYPES[1], 1, 0)),
         "side": jnp.asarray(np.where(circuit.sides == "L", 1.0, -1.0) * pen, dtype=jnp.float32),
         "type_index": jnp.asarray(
@@ -124,6 +125,23 @@ def _arrays(circuit: CompassCircuit) -> dict[str, jax.Array]:
         "cos": jnp.asarray(np.cos(angle) * is_epg, dtype=jnp.float32),
         "sin": jnp.asarray(np.sin(angle) * is_epg, dtype=jnp.float32),
     }
+
+
+def as_subcircuit(circuit: CompassCircuit) -> SubCircuit:
+    """The compass as a generic sub-circuit, with PEN release gated."""
+    return SubCircuit(
+        cell_types=circuit.cell_types,
+        neuron_index=np.arange(circuit.cell_types.size, dtype=np.int64),
+        source=circuit.source,
+        target=circuit.target,
+        group=circuit.group,
+        weight=circuit.weight,
+        group_pairs=circuit.group_pairs,
+        global_groups=np.arange(len(circuit.group_pairs), dtype=np.int64),
+        gate=np.isin(circuit.cell_types, PEN_TYPES),
+        leak=circuit.leak,
+        maximum_gain=circuit.maximum_gain,
+    )
 
 
 def simulate(
@@ -137,38 +155,21 @@ def simulate(
 ) -> jax.Array:
     """Run the compass on yaw (B, T) and EPG kicks (B, T, N); return EPG (cos, sin, total)."""
     a = _arrays(circuit)
-    gain = circuit.maximum_gain * jax.nn.sigmoid(params["raw"])[a["grp"]] * a["w"]
-    bias = params["bias"][a["type_index"]]
     scale = jnp.exp(params["log_scale"])
-    threshold = params["theta"][a["pen_type"]]
-
-    def release(state: jax.Array) -> jax.Array:
-        def soft(value: jax.Array) -> jax.Array:
-            return jax.nn.softplus(sharpness * (value - threshold)) / sharpness
-
-        gated = 0.5 * jnp.tanh(2.0 * soft(state)) - 0.5 * jnp.tanh(
-            2.0 * soft(jnp.zeros_like(state))
-        )
-        return jnp.where(a["is_pen"], gated, 0.5 * jnp.tanh(2.0 * state))
-
-    def frame(state: jax.Array, item: tuple[jax.Array, jax.Array]) -> tuple[jax.Array, jax.Array]:
-        turn, push = item
-        external = push + turn[:, None] * scale * a["side"][None, :]
-
-        def step(_: int, inner: jax.Array) -> jax.Array:
-            signal = release(inner)
-            drive = jnp.zeros_like(inner).at[:, a["dst"]].add(signal[:, a["src"]] * gain)
-            return inner + circuit.leak * (drive + bias + external - inner)
-
-        state = jax.lax.fori_loop(0, transitions, step, state)
-        epg = jnp.clip(0.5 * jnp.tanh(2.0 * state), 0.0, None) * a["is_epg"]
-        floor = jnp.min(jnp.where(a["is_epg"] > 0, epg, jnp.inf), axis=1, keepdims=True)
-        epg = (epg - floor) * a["is_epg"]
-        return state, jnp.stack([epg @ a["cos"], epg @ a["sin"], epg.sum(1)], -1)
-
-    initial = jnp.zeros((yaw.shape[0], circuit.cell_types.size))
-    _, out = jax.lax.scan(frame, initial, (yaw.T, jnp.swapaxes(kick, 0, 1)))
-    return jnp.swapaxes(out, 0, 1)
+    external = kick + yaw[:, :, None] * scale * a["side"][None, None, :]
+    states = run_subcircuit(
+        as_subcircuit(circuit),
+        params["raw"],
+        params["bias"][a["type_index"]],
+        params["theta"][a["pen_type"]],
+        external,
+        transitions=transitions,
+        sharpness=sharpness,
+    )
+    epg = jnp.clip(0.5 * jnp.tanh(2.0 * states), 0.0, None) * a["is_epg"]
+    floor = jnp.min(jnp.where(a["is_epg"] > 0, epg, jnp.inf), axis=2, keepdims=True)
+    epg = (epg - floor) * a["is_epg"]
+    return jnp.stack([epg @ a["cos"], epg @ a["sin"], epg.sum(2)], -1)
 
 
 def _batch(
