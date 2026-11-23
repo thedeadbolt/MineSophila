@@ -104,8 +104,21 @@ level 3's. The central-complex runs are still training.
   The drive's strength is therefore not the problem. Either the compass carries no usable heading
   bump under these trained gains, or the readout cannot decode one. That should be checked
   directly from EPG activity before any further self-motion runs.
-- **Next:** level-4 central-complex results, a direct check for an EPG bump, and batch-B seeds for
-  the projection readout.
+- **The compass is silent, which explains both results above.** Probing the trained compass
+  checkpoint on level-3 test clips (mean |activity| per stage):
+
+  | MeTu | TuBu | ER | EPG | PEN | Delta7 | PFL |
+  |---:|---:|---:|---:|---:|---:|---:|
+  | 0.0037 | 0.0040 | 0.00013 | 0.00008 | 0.00003 | 0.00002 | 0.00001 |
+
+  EPG phase (angle of its top two principal components) does not follow yaw: corr −0.02, and
+  −0.06 with self-motion at 0.1. With self-motion at 0.1, PEN saturates at ±0.5 while EPG still
+  reaches only 0.003.
+  - TuBu supplies about 6% of each ring neuron's input weight.
+  - Ring-neuron input to the compass is inhibitory, with no tonic activity to shape.
+  - The linearised compass loop has spectral radius 0.54, so it cannot sustain activity.
+- **Next:** set the compass operating point (plan, 9h): loop gain near 1, tonic drive, and a bump
+  test before localisation. Then level-4 central-complex results and batch-B seeds.
 
 ## Artifacts
 

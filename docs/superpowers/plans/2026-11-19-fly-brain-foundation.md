@@ -622,6 +622,37 @@ Revised order: normalised readouts → central-complex components (named, review
 → 9f occlusion-rich clips → 9g clip-trained graded central-complex memory against the GRU
 control.
 
+**Progress, 2026-11-23 (9f and 9g first pass):**
+
+- 9f is done. Two daytime pilots produced occlusion-rich clips: batch A (levels 2–3) and batch B
+  (levels 3–4).
+- 9g first pass: the clip-trained graded central complex, read at its visual-projection neurons,
+  holds occluded bearing at 51.6 ± 2.3° (batch A, three seeds) and 51.1° (batch B). The GRUs get
+  54.9° and about 65°. Results are in `docs/science/connectome-clip-memory-results.md`.
+- The compass readout does not hold direction. Yaw into PEN does not help at scale 0.1 or 0.002.
+- **Diagnosis: the compass is silent.** Mean |activity| falls from about 0.004 at MeTu and TuBu
+  to 0.0001 at ER and about 0.00005 at EPG, PEN and Delta7. EPG shows no bump, and its phase
+  does not rotate with yaw (corr −0.02).
+  - TuBu supplies only 6% of each ring neuron's input weight; recurrent ER inhibition dominates.
+  - ER input to the compass is inhibitory (correct for the fly), but there is no tonic activity
+    for it to sculpt, because bias and rest are frozen.
+  - The linearised compass loop has spectral radius 0.54, so activity halves each transition.
+    Trained gains stayed between 0.58 and 1.69, well under the cap of 4.
+
+**9h: compass operating point (next).** Bring the compass into a regime where a bump can exist
+before asking it to remember:
+
+1. Initialise compass-to-compass gains so the linearised loop's spectral radius is about 0.95 (a
+   factor of about 1.8, inside the gain cap).
+2. Give compass neurons a tonic drive, either as a trained bias with its own step size or as a
+   fixed resting input, so ring-neuron inhibition can carve a bump.
+3. Re-scale self-motion relative to that operating level.
+4. Acceptance before any localisation run: on test clips, EPG activity concentrates in two
+   principal components, and its phase rotates with measured yaw (corr above 0.5). The probe
+   lives in the scratchpad (`epg_bump.py`, `loop_gain.py`) and should become a CLI diagnostic.
+
+Then rerun the compass and self-motion clip experiments against the same GRU controls.
+
 #### Planned for the action head: outcome-weighted imitation (proposed 2026-11-22)
 
 The teacher is imperfect on purpose. Drift and recovery give state coverage beyond perfect paths,
