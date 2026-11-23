@@ -26,6 +26,7 @@ from fly_vision.spectral import (
     RHODOPSIN_PEAKS_NM,
     SPECTRAL_MODES,
     PrimaryConfig,
+    build_spectral_model,
     govardovskii_a1,
 )
 
@@ -83,6 +84,7 @@ class EyeModel:
             "elevation": np.round(directions[:, 1], 3).tolist(),
             "opsins": OPSINS,
             "spectra": spectra(),
+            "receptor_matrices": receptor_matrices(),
             "scale": SCALE,
         }
 
@@ -113,6 +115,7 @@ class EyeModel:
             "means": means,
             "maxima": [float(activations[:, c].max()) for c in range(len(CHANNELS))],
             "spectral": frame.meta["spectral"],
+            "adaptation": frame.meta["adaptation"],
             "low_bit_depth": frame.meta["low_bit_depth"],
         }
 
@@ -162,6 +165,27 @@ def spectra() -> Record:
         "bands": bands,
         "peaks": RHODOPSIN_PEAKS_NM,
     }
+
+
+def receptor_matrices() -> Record:
+    """For each pigment axis and ommatidium subtype, the 3x3 matrix taking linear R, G, B
+    light to the R1_6, R7 and R8 catches, as fly-vision's spectral model computes them.
+    With adaptation off, the eye is linear in light, so the page can invert these to find
+    the colour that would give an ommatidium's receptor values."""
+    out: Record = {}
+    for name, pigments in SPECTRAL_MODES.items():
+        catch = build_spectral_model(pigments=pigments).catch_matrix  # rows Rh1, Rh3-Rh6
+        rh1, rh3, rh4, rh5, rh6 = (catch[row] for row in range(5))
+        rows = {
+            "pale": (rh1, rh3, rh5),
+            "yellow": (rh1, rh4, rh6),
+            "dorsal_yellow": (rh1, (rh3 + rh4) / 2, rh6),
+            "dra": (rh1, rh3, rh3),
+        }
+        out[name] = {
+            subtype: np.round(np.stack(matrix), 6).tolist() for subtype, matrix in rows.items()
+        }
+    return out
 
 
 def check_capture(capture: Record) -> None:

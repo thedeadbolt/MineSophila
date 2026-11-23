@@ -13,7 +13,68 @@ const view = { scale: 1, x: 0, y: 0, fit: true };
 const MIN_SCALE = 0.05;
 const MAX_SCALE = 64;
 
+/** What the page is waiting for, grouped by kind, with when each group started. The
+    masthead shows the oldest group and its elapsed time while anything is loading. */
+const loading = { groups: new Map(), timer: null };
+
+function loadingLabel(path) {
+  if (/^\/api\/clips\/[^/]+\/(frames|masks)\//.test(path)) return "Decoding clip frames";
+  if (path.startsWith("/api/eye/clips/")) return "Eye: sampling the frame (a clip's first frame decodes the whole clip)";
+  if (path.startsWith("/api/eye/samples/")) return "Eye: sampling the image";
+  if (path.startsWith("/api/eye/")) return "Eye: loading the lattice";
+  if (path.startsWith("/api/brain/traces/")) return "Brain: loading the trace";
+  if (path.startsWith("/api/brain/runs")) return "Brain: reading run reports";
+  if (path.startsWith("/api/brain/network")) return "Brain: loading the connectome";
+  if (path.startsWith("/api/clips/")) return "Opening the clip";
+  if (path.startsWith("/api/clips")) return "Listing clips";
+  if (path.startsWith("/api/samples")) return "Selecting samples";
+  if (path.startsWith("/image/")) return "Loading the image";
+  return "Loading";
+}
+
+async function track(path, run) {
+  const label = loadingLabel(path);
+  let group = loading.groups.get(label);
+  if (!group) {
+    group = { started: performance.now(), pending: 0, done: 0 };
+    loading.groups.set(label, group);
+  }
+  group.pending += 1;
+  if (!loading.timer) loading.timer = setInterval(drawLoading, 100);
+  try {
+    return await run();
+  } finally {
+    group.pending -= 1;
+    group.done += 1;
+    if (group.pending === 0) loading.groups.delete(label);
+    if (loading.groups.size === 0) {
+      clearInterval(loading.timer);
+      loading.timer = null;
+    }
+    drawLoading();
+  }
+}
+
+function drawLoading() {
+  const chip = $("activity");
+  const entries = [...loading.groups.entries()];
+  const now = performance.now();
+  // Quick requests never flash the chip.
+  const shown = entries.filter(([, g]) => now - g.started > 250);
+  chip.hidden = shown.length === 0;
+  if (!shown.length) return;
+  const [label, group] = shown[0];
+  const total = group.pending + group.done;
+  const count = total > 1 ? ` ${group.done}/${total}` : "";
+  const more = shown.length > 1 ? ` (+${shown.length - 1} more)` : "";
+  $("activity-text").textContent = `${label}${count} · ${((now - group.started) / 1000).toFixed(1)} s${more}`;
+}
+
 async function api(path, options = {}) {
+  return track(path, () => request(path, options));
+}
+
+async function request(path, options) {
   const response = await fetch(path, { ...options, headers: { "X-Inspector-Token": token, ...(options.headers || {}) } });
   const body = response.headers.get("Content-Type") === "image/png" ? await response.blob() : await response.json();
   if (!response.ok) {

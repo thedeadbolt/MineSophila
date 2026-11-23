@@ -43,6 +43,9 @@ const clip = {
   load: 0,
 };
 
+// Other workspaces open clips through this, without going through the search box.
+window.viewerOpenClip = (id) => openClip(id).catch(report);
+
 async function startClips(dataset) {
   document.body.classList.add("clips");
   $("filter-panel").hidden = true;

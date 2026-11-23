@@ -43,7 +43,8 @@ async function ready() {
     ]);
   }
   if (!eye.decodeMap) {
-    const response = await fetch(`/api/eye/decode-map?width=${DECODE_SIZE[0]}&height=${DECODE_SIZE[1]}`, { headers: { "X-Inspector-Token": token } });
+    const path = `/api/eye/decode-map?width=${DECODE_SIZE[0]}&height=${DECODE_SIZE[1]}`;
+    const response = await track(path, () => fetch(path, { headers: { "X-Inspector-Token": token } }));
     if (!response.ok) throw new Error(`decode map: ${response.status}`);
     eye.decodeMap = new Uint16Array(await response.arrayBuffer());
   }
@@ -77,6 +78,8 @@ async function load(sel) {
     return;
   }
   eye.loading = wanted.key;
+  const started = performance.now();
+  const ticker = setInterval(() => status(`Sampling ${wanted.label}… ${((performance.now() - started) / 1000).toFixed(1)} s`), 100);
   status(`Sampling ${wanted.label}…`);
   try {
     await ready();
@@ -86,10 +89,11 @@ async function load(sel) {
     eye.data = data;
     eye.key = wanted.key;
     drawAll();
-    status(wanted.label + (data.low_bit_depth ? " · few input levels" : ""));
+    status(`${wanted.label} · sampled in ${((performance.now() - started) / 1000).toFixed(1)} s` + (data.low_bit_depth ? " · few input levels" : ""));
   } catch (error) {
     status(error.message, true);
   } finally {
+    clearInterval(ticker);
     eye.loading = null;
     const next = eye.pending;
     eye.pending = null;
@@ -113,10 +117,64 @@ function peaks() {
   return eye.data.maxima.map((m) => Math.max(m, 1e-6));
 }
 
+/** Inverse of a 3x3 matrix, regularised so a near-singular subtype (DRA: R7 = R8)
+    still gives a stable least-squares answer: (MᵀM + λI)⁻¹ Mᵀ. */
+function pseudoInverse(m) {
+  const t = (i, j) => m[0][i] * m[0][j] + m[1][i] * m[1][j] + m[2][i] * m[2][j];
+  const g = [[t(0, 0), t(0, 1), t(0, 2)], [t(1, 0), t(1, 1), t(1, 2)], [t(2, 0), t(2, 1), t(2, 2)]];
+  const lambda = 1e-4 * (g[0][0] + g[1][1] + g[2][2]);
+  for (let i = 0; i < 3; i++) g[i][i] += lambda;
+  const [a, b, c] = g[0];
+  const [d, e, f] = g[1];
+  const [h, i2, k] = g[2];
+  const det = a * (e * k - f * i2) - b * (d * k - f * h) + c * (d * i2 - e * h);
+  const inv = [
+    [(e * k - f * i2) / det, (c * i2 - b * k) / det, (b * f - c * e) / det],
+    [(f * h - d * k) / det, (a * k - c * h) / det, (c * d - a * f) / det],
+    [(d * i2 - e * h) / det, (b * h - a * i2) / det, (a * e - b * d) / det],
+  ];
+  // (MᵀM + λI)⁻¹ Mᵀ
+  return [0, 1, 2].map((r) => [0, 1, 2].map((col) => inv[r][0] * m[col][0] + inv[r][1] * m[col][1] + inv[r][2] * m[col][2]));
+}
+
+function srgb(linear) {
+  const v = Math.max(0, Math.min(1, linear));
+  return 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055);
+}
+
+/** The colour each ommatidium's receptors imply: the linear R, G, B that would produce its
+    R1_6, R7 and R8 catches under its subtype's rhodopsins, shown in sRGB. */
+function recoveredColours() {
+  const data = eye.data;
+  const kind = data.spectral && data.spectral.pigment_map ? data.spectral.pigment_map.kind : "affine";
+  const matrices = eye.layout.receptor_matrices[kind === "physical" ? "physical" : "remapped"];
+  const inverses = Object.fromEntries(Object.entries(matrices).map(([subtype, m]) => [subtype, pseudoInverse(m)]));
+  const [r16, r7, r8] = data.activations;
+  const linear = eye.layout.subtype.map((subtype, i) => {
+    if (!data.valid[i]) return null;
+    const inv = inverses[subtype];
+    const a = [r16[i], r7[i], r8[i]];
+    return inv.map((row) => Math.max(0, row[0] * a[0] + row[1] * a[1] + row[2] * a[2]));
+  });
+  // The eye is linear and unadapted, so exposure 1 shows the colours the camera recorded.
+  // Auto gain only brightens dark scenes (night, caves) so their colours stay readable.
+  let exposure = 1;
+  if ($("eye-gain").value !== "fixed") {
+    const peaks = linear.filter(Boolean).map((c) => Math.max(c[0], c[1], c[2])).sort((x, y) => x - y);
+    const p99 = peaks.length ? peaks[Math.floor(peaks.length * 0.99)] : 1;
+    exposure = p99 > 1e-6 ? Math.min(8, Math.max(1, 0.85 / p99)) : 1;
+  }
+  return linear.map((c) => (c ? [srgb(c[0] * exposure), srgb(c[1] * exposure), srgb(c[2] * exposure)] : null));
+}
+
 /** RGB colour of ommatidium i under the chosen signal, or null when it sees nothing. */
 function colourer() {
   const data = eye.data;
   const which = signal();
+  if (which === "colour") {
+    const colours = recoveredColours();
+    return (i) => colours[i];
+  }
   const peak = peaks();
   const [r16, r7, r8] = data.activations;
   const fixed = $("eye-gain").value === "fixed";

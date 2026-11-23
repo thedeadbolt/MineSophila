@@ -33,10 +33,16 @@ own branch, changes quickly and uses JAX, so the inspector should not import it.
   `fly-brain-clip-trace-v1` files, written by the planned `fly-brain trace-clip`
   command, to play back activity, the compass bump and the readout against the clip. The
   inspector never imports fly-brain.
+- **Connectome graph.** `honey-factory-tools connectome-graph` reads the MaleCNS feather
+  files with pyarrow and selects fly-brain's components using the same cell-type and
+  class rules. It writes a compact cell-type and central-complex neuron graph for the
+  network view. The rules are copied, not imported, so they must be kept in step with
+  fly-brain.
 
 ## Consequences
 
-- honey-factory-tools gains numpy, scipy and matplotlib through fly-vision. Validation
+- honey-factory-tools gains numpy, scipy and matplotlib through fly-vision, and pyarrow
+  for the connectome graph. Validation
   is unchanged, but the package's environment is heavier.
 - Eye values are approximate: they come from frames decoded from the lossy clip video at
   half resolution, so they can differ slightly from a `fly-vision convert` of the

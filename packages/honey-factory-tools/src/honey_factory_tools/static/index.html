@@ -31,6 +31,7 @@
     <h1 id="dataset-id">Dataset inspector</h1>
     <p id="dataset-facts"></p>
   </div>
+  <p id="activity" class="activity" role="status" aria-live="polite" hidden><span class="spinner" aria-hidden="true"></span><span id="activity-text"></span></p>
   <form id="find" role="search">
     <input id="find-id" placeholder="Go to s000123 or s000123-v04" aria-label="Scene or sample ID" autocomplete="off" spellcheck="false">
     <button>Open</button>
@@ -187,7 +188,8 @@
   <section id="eye-panel" class="workspace-panel" hidden aria-label="Eye">
     <div class="panel-bar">
       <div class="segmented" role="radiogroup" aria-label="Signal">
-        <label title="R1-6: brightness and motion, Rh1"><input type="radio" name="eye-channel" value="R1_6" checked><span>R1_6</span></label>
+        <label title="The colour these receptor responses imply: the R, G, B light that would give each ommatidium's R1_6, R7 and R8 catches under its rhodopsins"><input type="radio" name="eye-channel" value="colour" checked><span>Colour</span></label>
+        <label title="R1-6: brightness and motion, Rh1"><input type="radio" name="eye-channel" value="R1_6"><span>R1_6</span></label>
         <label title="R7: Rh3 or Rh4"><input type="radio" name="eye-channel" value="R7"><span>R7</span></label>
         <label title="R8: Rh5 or Rh6"><input type="radio" name="eye-channel" value="R8"><span>R8</span></label>
         <label title="False colour: red from R8, green from R1_6, blue from R7"><input type="radio" name="eye-channel" value="fly"><span>Fly colour</span></label>
@@ -209,9 +211,24 @@
       <div class="segmented" role="radiogroup" aria-label="Brain view">
         <label><input type="radio" name="brain-view" value="playback"><span>Clip playback</span></label>
         <label><input type="radio" name="brain-view" value="circuit"><span>Circuit</span></label>
+        <label><input type="radio" name="brain-view" value="network"><span>Network</span></label>
         <label><input type="radio" name="brain-view" value="runs" checked><span>Runs</span></label>
       </div>
       <span class="status" id="brain-circuit-run"></span>
+    </div>
+    <div id="brain-network" hidden>
+      <div class="panel-bar">
+        <div class="segmented small" role="radiogroup" aria-label="Network level">
+          <label title="One node per cell type across the whole model"><input type="radio" name="network-level" value="types" checked><span>Cell types</span></label>
+          <label title="Every neuron of the central complex: tubercle-bulb, ring neurons, compass and steering"><input type="radio" name="network-level" value="neurons"><span>Central complex neurons</span></label>
+        </div>
+        <input id="network-search" type="search" placeholder="Find a cell type: EPG, Tm3, MeTu1…" aria-label="Find a cell type" spellcheck="false">
+        <label class="field">Edges <select id="network-edges"><option value="800">Strongest 800</option><option value="2500" selected>Strongest 2,500</option><option value="8000">Strongest 8,000</option></select></label>
+        <span class="status" id="network-status"></span>
+      </div>
+      <canvas id="network-canvas" title="Scroll to zoom, drag to pan, point at a node to see its connections"></canvas>
+      <p class="legend" id="network-legend"></p>
+      <p class="hint" id="network-note"></p>
     </div>
     <div id="brain-circuit" hidden>
       <svg id="brain-circuit-svg" role="img" aria-label="The model's circuit, from the eye to the readout"></svg>
@@ -220,8 +237,9 @@
     <div id="brain-playback" hidden>
       <div id="brain-empty" class="empty"></div>
       <div id="brain-trace" class="brain-grid" hidden>
+        <figure class="card view"><figcaption>What the fly sees <span>the clip frame this step was taken from</span></figcaption><canvas id="brain-view"></canvas></figure>
+        <figure class="card compass"><figcaption>Compass ring <span>dots: compass neurons at their bridge angle; amber: bump; dashed: heading</span></figcaption><canvas id="brain-compass"></canvas></figure>
         <figure class="card heat"><figcaption>Activity by cell type <span class="legend" id="brain-stage-legend"></span></figcaption><canvas id="brain-heatmap"></canvas><p class="hint" id="brain-heat-scale"></p></figure>
-        <figure class="card"><figcaption>Compass ring <span>dots: compass neurons at their bridge angle; amber: bump; dashed: heading</span></figcaption><canvas id="brain-compass"></canvas></figure>
         <figure class="card decisions"><figcaption>Readout and teacher</figcaption><canvas id="brain-decisions"></canvas></figure>
       </div>
     </div>
@@ -316,6 +334,24 @@
       <section>
         <h2>Trace</h2>
         <dl id="brain-trace-facts"></dl>
+      </section>
+    </div>
+    <div id="brain-network-details" hidden>
+      <section>
+        <h2 id="network-node-title">Point at a node</h2>
+        <dl id="network-node-facts"></dl>
+      </section>
+      <section>
+        <h2>Strongest inputs</h2>
+        <div id="network-inputs" class="bars"></div>
+      </section>
+      <section>
+        <h2>Strongest outputs</h2>
+        <div id="network-outputs" class="bars"></div>
+      </section>
+      <section>
+        <h2>Graph</h2>
+        <dl id="network-facts"></dl>
       </section>
     </div>
     <div id="brain-circuit-details" hidden>

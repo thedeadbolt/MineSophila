@@ -29,6 +29,7 @@ Workspaces (ADR 0029):
     GET  /api/brain/runs            every fly-brain run report, summarised
     GET  /api/brain/runs/<name>     one run report
     GET  /api/brain/traces/<clip id>   a clip's fly-brain trace, summarised for playback
+    GET  /api/brain/network         the connectome graph from --connectome
 """
 
 import json
@@ -83,12 +84,14 @@ class Inspector:
         eye: EyeModel | None = None,
         runs: Runs | None = None,
         traces: Traces | None = None,
+        network: Record | None = None,
     ) -> None:
         self.catalog = catalog
         self.reviews = reviews
         self.eye = eye
         self.runs = runs
         self.traces = traces
+        self.network = network
         self.token = secrets.token_urlsafe(24)
 
     def dataset(self) -> Record:
@@ -149,6 +152,7 @@ class Inspector:
                 "runs": self.runs is not None,
                 "runs_directory": None if self.runs is None else str(self.runs.root),
                 "traces": self.traces is not None,
+                "network": self.network is not None,
                 "traced_clips": []
                 if self.traces is None
                 else self.traces.clip_ids(self.catalog.dataset_id),
@@ -502,6 +506,11 @@ def make_server(inspector: Inspector, port: int = 0) -> ThreadingHTTPServer:
                         inspector.eye_clip_frame(parts[3], int(parts[4])),
                         f"no frame {parts[4]} of clip {parts[3]}",
                     )
+                elif parts == ["api", "brain", "network"]:
+                    if inspector.network is None:
+                        self._json(HTTPStatus.NOT_FOUND, {"error": "no --connectome graph"})
+                    else:
+                        self._json(HTTPStatus.OK, inspector.network)
                 elif parts == ["api", "brain", "runs"]:
                     runs = inspector.runs
                     self._json(

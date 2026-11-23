@@ -14,6 +14,7 @@ from typing import cast
 from honey_factory_tools import (
     __version__,
     clip_report,
+    connectome,
     control,
     dataset,
     inspector,
@@ -73,6 +74,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     inspect.add_argument(
         "--no-eye", action="store_true", help="turn off the Eye workspace (fly-vision)"
     )
+    inspect.add_argument(
+        "--connectome",
+        type=Path,
+        help="connectome graph JSON from connectome-graph (Brain network view)",
+    )
+    graph = commands.add_parser(
+        "connectome-graph", help="summarise the MaleCNS connectome for the Brain network view"
+    )
+    graph.add_argument("directory", type=Path, help="the male-cns-v1.0 feather directory")
+    graph.add_argument("--out", type=Path, required=True, help="the graph JSON to write")
+    graph.add_argument("--minimum-synapses", type=int, default=5, help="per neuron pair")
     inspect.add_argument("--port", type=int, default=0, help="port on 127.0.0.1 (0: any free one)")
     inspect.add_argument("--no-browser", action="store_true", help="do not open a browser")
     inspect.add_argument("directory", type=Path, help="the dataset directory holding dataset.json")
@@ -157,6 +169,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "control-demo":
         return _control_demo(args)
+    if args.command == "connectome-graph":
+        try:
+            built = connectome.build(cast(Path, args.directory), cast(int, args.minimum_synapses))
+        except connectome.ConnectomeError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        connectome.write(built, cast(Path, args.out))
+        print(
+            f"{built['neuron_count']} neurons, {len(built['cell_types'])} cell types, "
+            f"{built['edge_count']} edges written to {args.out}"
+        )
+        return 0
 
     try:
         schemas = Schemas(find_schema_directory(cast(Path | None, args.schemas)))
@@ -267,6 +291,7 @@ def _inspect(catalog: Catalog, args: argparse.Namespace) -> int:
         eye=None if args.no_eye else EyeModel(),
         runs=None if runs_root is None else Runs(runs_root),
         traces=None if traces_root is None else Traces(traces_root),
+        network=None if args.connectome is None else connectome.load(cast(Path, args.connectome)),
     )
     catalog.start_validation()
     server = inspector.make_server(app, cast(int, args.port))

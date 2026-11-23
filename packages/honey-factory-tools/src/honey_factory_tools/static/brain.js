@@ -30,13 +30,18 @@ function selectionClip(sel) {
 
 async function show(sel) {
   brain.active = true;
+  filterClipList(true);
   const dataset = sel.dataset || {};
   const traced = ((dataset.workspaces || {}).brain || {}).traced_clips || [];
-  const asked = location.hash.match(/^#brain-(playback|circuit|runs)$/);
+  const asked = location.hash.match(/^#brain-(playback|circuit|network|runs)$/);
   if (!brain.view) brain.view = asked ? asked[1] : dataset.kind === "clips" && traced.length ? "playback" : "runs";
   setView(brain.view);
+  if (brain.view !== "runs" && brain.view !== "network") openFirstTraced(sel);
   if (brain.view === "runs") await loadRuns();
-  else if (brain.view === "circuit") {
+  else if (brain.view === "network") {
+    await loadNetwork();
+    await loadTrace(sel);
+  } else if (brain.view === "circuit") {
     await loadRuns();
     await drawCircuit();
     await loadTrace(sel);
@@ -48,6 +53,8 @@ function setView(view) {
   for (const input of document.querySelectorAll('input[name="brain-view"]')) input.checked = input.value === view;
   $("brain-playback").hidden = view !== "playback";
   $("brain-circuit").hidden = view !== "circuit";
+  $("brain-network").hidden = view !== "network";
+  $("brain-network-details").hidden = view !== "network";
   $("brain-runs").hidden = view !== "runs";
   $("brain-trace-details").hidden = view !== "playback";
   $("brain-circuit-details").hidden = view !== "circuit";
@@ -105,11 +112,7 @@ function emptyPlayback(text, clips) {
   const list = element("div", null, "clip-links");
   for (const id of clips.slice(0, 60)) {
     const button = element("button", id, "ghost");
-    button.addEventListener("click", () => {
-      const field = $("find-id");
-      field.value = id;
-      $("find").requestSubmit();
-    });
+    button.addEventListener("click", () => window.viewerOpenClip && window.viewerOpenClip(id));
     list.append(button);
   }
   box.replaceChildren(element("p", text), list);
@@ -132,10 +135,76 @@ function follow(frame) {
     paintCircuitActivity();
     return;
   }
+  if (brain.view === "network") {
+    paintNetworkActivity();
+    return;
+  }
+  drawView();
   drawHeatmap();
   drawCompass();
   drawDecisions();
   describeStep();
+}
+
+/** The fly's view at this frame, with the honey's box when it is visible. */
+function drawView() {
+  const canvas = $("brain-view");
+  const context = fitCanvas(canvas);
+  const frame = brain.frame;
+  const image = frame && frame.image;
+  const record = frame && frame.record;
+  if (!image || !record) return;
+  const width = record.files.rgb.width;
+  const height = record.files.rgb.height;
+  let w = canvas.width;
+  let h = (w * height) / width;
+  if (h > canvas.height) {
+    h = canvas.height;
+    w = (h * width) / height;
+  }
+  const x = (canvas.width - w) / 2;
+  const y = (canvas.height - h) / 2;
+  context.drawImage(image, x, y, w, h);
+  const box = frame.frame && frame.frame.target ? frame.frame.target.visible_bbox_xywh : null;
+  if (box) {
+    context.strokeStyle = cssVar("--mask");
+    context.lineWidth = 2 * devicePixelRatio;
+    const s = w / width;
+    context.strokeRect(x + box[0] * s - 3, y + box[1] * s - 3, box[2] * s + 6, box[3] * s + 6);
+  }
+}
+
+/** In Brain, the clip list shows only clips the model has a trace for: the clips where
+    the fly brain actually ran. Leaving Brain shows every clip again. */
+function filterClipList(on) {
+  const traced = new Set((((selection.dataset || {}).workspaces || {}).brain || {}).traced_clips || []);
+  const items = document.querySelectorAll("#results li");
+  let shown = 0;
+  for (const item of items) {
+    const button = item.querySelector(".result");
+    if (!button) continue;
+    const keep = !on || traced.has(button.dataset.clip);
+    item.hidden = !keep;
+    if (keep) shown += 1;
+  }
+  if (!items.length || !document.body.classList.contains("clips")) return;
+  if (on) {
+    brain.savedCount = brain.savedCount ?? $("result-count").textContent;
+    $("result-count").textContent = traced.size ? `${shown} clips with a fly-brain trace` : "No clip has a fly-brain trace yet.";
+  } else if (brain.savedCount) {
+    $("result-count").textContent = brain.savedCount;
+    brain.savedCount = null;
+  }
+}
+
+/** Moves to the first traced clip when the open clip has no trace. Waits until a clip
+    is open, so a ?clip= link still wins. */
+function openFirstTraced(sel) {
+  const traced = (((sel.dataset || {}).workspaces || {}).brain || {}).traced_clips || [];
+  const current = selectionClip(sel);
+  if (!traced.length || !current || traced.includes(current) || !window.viewerOpenClip) return false;
+  window.viewerOpenClip(traced[0]);
+  return true;
 }
 
 function describeTrace() {
@@ -612,6 +681,7 @@ async function drawCircuit() {
     $("brain-circuit-note").textContent = "No run to draw. Start the inspector with --runs DIR.";
     return;
   }
+  await ensureGraph();
   if (!brain.circuitRun || brain.circuitRun.name !== name) {
     brain.circuitRun = { name, report: await api(`/api/brain/runs/${encodeURIComponent(name)}`) };
   }
@@ -634,9 +704,16 @@ async function drawCircuit() {
     nodes.input.detail = `${model.input_transform ? humane(model.input_transform) + ", " : ""}${number(compilation.input_width || sensory.width || 0)} ports`;
     nodes.eye.detail = "R1_6, R7, R8 per ommatidium";
     nodes.readout.detail = `${compilation.output_width || 4} outputs from ${number(compilation.readout_neuron_count || 0)} neurons`;
-    // Real connectivity when the report has it (synapses between components), else anatomy.
-    const measured = (report.connectome || {}).component_edges;
-    const cellTypes = (report.connectome || {}).component_cell_types || {};
+    // Real connectivity when the report has it (synapses between components), else from the
+    // --connectome graph, else the anatomical order.
+    const graph = net.graph;
+    const measured = (report.connectome || {}).component_edges || (graph ? graph.component_edges : null);
+    let cellTypes = (report.connectome || {}).component_cell_types;
+    if (!cellTypes && graph) {
+      cellTypes = {};
+      for (const t of graph.cell_types) (cellTypes[t.component] = cellTypes[t.component] || {})[t.name] = t.count;
+    }
+    cellTypes = cellTypes || {};
     for (const [id, types] of Object.entries(cellTypes)) {
       if (!nodes[id]) continue;
       const ranked = Object.entries(types).sort((a, b) => b[1] - a[1]);
@@ -651,7 +728,8 @@ async function drawCircuit() {
       const peak = Math.max(1, ...all);
       for (const [from, targets] of Object.entries(measured)) {
         for (const [to, synapses] of Object.entries(targets)) {
-          if (from === to || !nodes[from] || !nodes[to] || synapses <= 0) continue;
+          // Weak links between distant stages would hide the main flow.
+          if (from === to || !nodes[from] || !nodes[to] || synapses < peak * 0.004) continue;
           edges.push({ from, to, present: true, synapses, weight: 0.8 + 3.2 * Math.log1p(synapses) / Math.log1p(peak) });
         }
       }
@@ -743,7 +821,7 @@ async function drawCircuit() {
   }
   target.replaceChildren(defs, edgeLayer, nodeLayer);
   $("brain-circuit-note").textContent = connectome
-    ? `${Object.keys(components).length} components, ${number(compilation.neuron_count || 0)} neurons and ${number(compilation.edge_count || 0)} connections in this model. ${(report.connectome || {}).component_edges ? "Arrow widths show synapse counts between components (hover one)." : "Arrows follow the fly's anatomy; this report does not list connections between components."} Dashed amber arrows mark what the readout uses.`
+    ? `${Object.keys(components).length} components, ${number(compilation.neuron_count || 0)} neurons and ${number(compilation.edge_count || 0)} connections in this model. ${(report.connectome || {}).component_edges ? "Arrow widths show this run's synapse counts between components (hover one)." : net.graph ? "Arrow widths show MaleCNS synapse counts between components from the connectome graph (hover one)." : "Arrows follow the fly's anatomy; start with --connectome to draw real synapse counts."} Dashed amber arrows mark what the readout uses.`
     : "This model has no connectome; it learns directly from eye features.";
   paintCircuitActivity();
 }
@@ -794,6 +872,385 @@ function describeNode(node, report) {
   ]);
 }
 
+// Network: the connectome itself, from --connectome. Nodes are cell types (or, at the
+// neuron level, every central-complex neuron); edges are synapses. The layout is
+// force-directed but anchored left to right in the order signals flow, and compass
+// neurons sit on a ring at their protocerebral-bridge angle.
+
+const COMPONENT_FLOW = ["photoreceptors", "lamina_relays", "medulla_relays", "visual_projection", "anterior_visual_inputs", "visual_kenyon", "tubercle_bulb", "ring_neurons", "compass", "steering"];
+const net = { graph: null, level: "types", nodes: [], edges: [], view: { x: 0, y: 0, k: 1 }, hover: null, running: 0, search: "" };
+
+async function ensureGraph() {
+  const info = (((selection.dataset || {}).workspaces || {}).brain || {});
+  if (!info.network) return null;
+  if (!net.graph) net.graph = await api("/api/brain/network");
+  return net.graph;
+}
+
+async function loadNetwork() {
+  const level = location.search.match(/[?&]network=(types|neurons)/);
+  if (level && !net.levelChosen) {
+    net.levelChosen = true;
+    net.level = level[1];
+    for (const input of document.querySelectorAll('input[name="network-level"]')) input.checked = input.value === net.level;
+  }
+  const info = (((selection.dataset || {}).workspaces || {}).brain || {});
+  if (!info.network) {
+    $("network-status").textContent = "No connectome graph. Build one with honey-factory-tools connectome-graph, then start the inspector with --connectome FILE.";
+    fitCanvas($("network-canvas"));
+    return;
+  }
+  if (!net.described) {
+    net.described = true;
+    await ensureGraph();
+    const g = net.graph;
+    facts($("network-facts"), [
+      ["Release", g.release],
+      ["Neurons", number(g.neuron_count)],
+      ["Edges", `${number(g.edge_count)} neuron pairs, at least ${g.minimum_synapse_count} synapses each`],
+      ["Synapses", number(g.synapse_count)],
+      ["Cell types", number(g.cell_types.length)],
+    ]);
+    $("network-legend").replaceChildren(
+      ...g.components.map((c) => {
+        const key = element("span", `${humane(c.name)} (${number(c.neurons)})`, "key");
+        key.style.setProperty("--key", STAGE_COLOURS[c.name] || STAGE_COLOURS.other);
+        return key;
+      }),
+      (() => { const k = element("span", "excitatory edge", "key"); k.style.setProperty("--key", "#c9a24a"); return k; })(),
+      (() => { const k = element("span", "inhibitory edge", "key"); k.style.setProperty("--key", "#4f8fe0"); return k; })(),
+    );
+  }
+  buildNetwork();
+}
+
+function buildNetwork() {
+  const g = net.graph;
+  const inhibitory = new Set(g.inhibitory_transmitters || []);
+  const column = (component) => Math.max(0, COMPONENT_FLOW.indexOf(component));
+  const limit = Number($("network-edges").value);
+  let nodes;
+  let edges;
+  if (net.level === "types") {
+    nodes = g.cell_types.map((t, i) => ({ i, name: t.name, component: t.component, count: t.count, transmitter: t.transmitter, r: 3 + 2.2 * Math.sqrt(t.count) ** 0.75 }));
+    edges = g.type_edges.slice(0, limit).filter(([a, b]) => a !== b).map(([a, b, w, pairs]) => ({ a, b, w, pairs }));
+  } else {
+    const types = g.cell_types;
+    nodes = g.neurons.map((n, i) => ({ i, name: types[n.cell_type].name, component: types[n.cell_type].component, count: 1, transmitter: types[n.cell_type].transmitter, body: n.body_id, side: n.side, instance: n.instance, angle: n.pb_angle, r: 3.2 }));
+    edges = [...g.neuron_edges].sort((x, y) => y[2] - x[2]).slice(0, limit).filter(([a, b]) => a !== b).map(([a, b, w]) => ({ a, b, w, pairs: 1 }));
+  }
+  const columns = [...new Set(nodes.map((n) => column(n.component)))].sort((a, b) => a - b);
+  const spacing = 170;
+  const place = (c) => (columns.indexOf(c) - (columns.length - 1) / 2) * spacing;
+  for (const n of nodes) {
+    n.cx = place(column(n.component));
+    n.x = n.cx + (Math.random() - 0.5) * 60;
+    n.y = (Math.random() - 0.5) * 400;
+    n.vx = 0;
+    n.vy = 0;
+    n.inhibitory = inhibitory.has(n.transmitter);
+    n.pinned = false;
+    if (net.level === "neurons" && n.component === "compass" && n.angle !== null && n.angle !== undefined) {
+      // A ring at the compass column: 0° (straight ahead) at the top.
+      const radius = n.name === "EPG" ? 120 : n.name.startsWith("PEN") ? 150 : 175;
+      const a = (n.angle * Math.PI) / 180;
+      n.x = n.cx + Math.sin(a) * radius;
+      n.y = -Math.cos(a) * radius;
+      n.pinned = true;
+    }
+  }
+  const peak = Math.max(1, ...edges.map((e) => e.w));
+  for (const e of edges) e.strength = Math.log1p(e.w) / Math.log1p(peak);
+  net.nodes = nodes;
+  net.edges = edges;
+  net.adjacency = nodes.map(() => ({ in: [], out: [] }));
+  const all = net.level === "types" ? g.type_edges.map(([a, b, w]) => ({ a, b, w })) : g.neuron_edges.map(([a, b, w]) => ({ a, b, w }));
+  for (const e of all) {
+    if (e.a === e.b) continue;
+    net.adjacency[e.b].in.push(e);
+    net.adjacency[e.a].out.push(e);
+  }
+  net.hover = null;
+  net.running = 360;
+  net.userMoved = false;
+  // Most of the settling happens before the first paint, so the graph opens readable;
+  // the last ticks animate.
+  const started = performance.now();
+  while (net.running > 90 && performance.now() - started < 400) step();
+  fitNetwork();
+  $("network-note").textContent = net.level === "types"
+    ? `${number(nodes.length)} cell types, sized by neuron count; ${number(edges.length)} strongest connections drawn. Columns follow the flow from the eye to steering.`
+    : `${number(nodes.length)} central-complex neurons; compass neurons sit on a ring at their bridge angle (EPG inside, PEN, then PEG and Δ7). ${number(edges.length)} strongest connections drawn.`;
+  requestAnimationFrame(simulate);
+}
+
+function simulate() {
+  if (net.running <= 0) return;
+  step();
+  // Keep the whole graph in view while it settles, until someone pans or zooms.
+  if (!net.userMoved && (net.running % 30 === 0 || net.running <= 0)) fitNetwork();
+  drawNetwork();
+  $("network-status").textContent = net.running > 0 ? `Laying out… ${Math.round(100 - (net.running / 360) * 100)}%` : "";
+  if (net.running > 0) requestAnimationFrame(simulate);
+}
+
+/** Three ticks of the force layout. */
+function step() {
+  const nodes = net.nodes;
+  const alpha = Math.max(0.02, net.running / 360);
+  for (let step = 0; step < 3; step++) {
+    // Repulsion between nearby nodes in the same or neighbouring columns.
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j];
+        const dx = b.x - a.x;
+        if (dx > 220 || dx < -220) continue;
+        const dy = b.y - a.y;
+        const d2 = dx * dx + dy * dy + 0.01;
+        if (d2 > 48000) continue;
+        const d = Math.sqrt(d2);
+        const min = a.r + b.r + 4;
+        // Inverse-square repulsion, capped so near-coincident nodes cannot explode, plus a
+        // firm push apart while they overlap.
+        const force = Math.min(3, (alpha * 900) / d2) + (d < min ? (min - d) * 0.25 : 0);
+        const fx = (dx / d) * force;
+        const fy = (dy / d) * force;
+        a.vx -= fx; a.vy -= fy;
+        b.vx += fx; b.vy += fy;
+      }
+    }
+    for (const e of net.edges) {
+      const a = nodes[e.a];
+      const b = nodes[e.b];
+      const dy = b.y - a.y;
+      const pull = 0.004 * alpha * e.strength;
+      a.vy += dy * pull;
+      b.vy -= dy * pull;
+    }
+    for (const n of nodes) {
+      if (n.pinned) { n.vx = n.vy = 0; continue; }
+      n.vx += (n.cx - n.x) * 0.06 * alpha;
+      n.vy += -n.y * 0.0015 * alpha;
+      n.vx *= 0.6;
+      n.vy *= 0.6;
+      n.x += n.vx;
+      n.y += n.vy;
+    }
+  }
+  net.running -= 3;
+}
+
+function fitNetwork() {
+  const canvas = $("network-canvas");
+  if (!canvas.clientWidth || net.nodes.some((n) => !Number.isFinite(n.x) || !Number.isFinite(n.y))) return;
+  const xs = net.nodes.map((n) => n.x);
+  const ys = net.nodes.map((n) => n.y);
+  const [x0, x1, y0, y1] = [Math.min(...xs) - 30, Math.max(...xs) + 30, Math.min(...ys) - 30, Math.max(...ys) + 30];
+  const ratio = devicePixelRatio;
+  const k = Math.min((canvas.clientWidth * ratio) / (x1 - x0), (canvas.clientHeight * ratio) / (y1 - y0));
+  net.view = { k, x: (canvas.clientWidth * ratio) / 2 - ((x0 + x1) / 2) * k, y: (canvas.clientHeight * ratio) / 2 - ((y0 + y1) / 2) * k };
+}
+
+function typeActivity() {
+  if (!brain.trace || !brain.frame || brain.traceClip !== brain.frame.clipId) return null;
+  const values = {};
+  let peak = 1e-6;
+  for (const group of brain.trace.groups) {
+    const v = Math.abs(group.mean[brain.step] ?? 0);
+    values[group.cell_type] = v;
+    peak = Math.max(peak, v);
+  }
+  return { values, peak };
+}
+
+function drawNetwork() {
+  const canvas = $("network-canvas");
+  const context = fitCanvas(canvas);
+  if (!net.nodes.length) return;
+  const { x: ox, y: oy, k } = net.view;
+  const ratio = devicePixelRatio;
+  const at = (n) => [ox + n.x * k, oy + n.y * k];
+  const hover = net.hover;
+  const linked = new Set();
+  if (hover !== null) {
+    linked.add(hover);
+    for (const e of net.adjacency[hover].in) linked.add(e.a);
+    for (const e of net.adjacency[hover].out) linked.add(e.b);
+  }
+  const search = net.search;
+  // Edges first, faint; the hovered node's edges on top, bright.
+  context.lineWidth = Math.max(0.5, 0.8 * ratio);
+  for (const e of net.edges) {
+    const a = net.nodes[e.a];
+    const b = net.nodes[e.b];
+    const focus = hover !== null && (e.a === hover || e.b === hover);
+    if (hover !== null && !focus) continue;
+    const [ax, ay] = at(a);
+    const [bx, by] = at(b);
+    const alpha = focus ? 0.35 + 0.6 * e.strength : 0.04 + 0.22 * e.strength ** 2;
+    context.strokeStyle = a.inhibitory ? `rgb(79 143 224 / ${alpha})` : `rgb(201 162 74 / ${alpha})`;
+    context.beginPath();
+    context.moveTo(ax, ay);
+    const mx = (ax + bx) / 2;
+    context.bezierCurveTo(mx, ay, mx, by, bx, by);
+    context.stroke();
+  }
+  const activity = typeActivity();
+  for (const n of net.nodes) {
+    const [x, y] = at(n);
+    const r = Math.max(1.5 * ratio, n.r * k);
+    const dim = hover !== null && !linked.has(n.i);
+    const match = search && n.name.toLowerCase().includes(search);
+    context.globalAlpha = dim ? 0.15 : 1;
+    if (activity && activity.values[n.name] !== undefined) {
+      const glow = activity.values[n.name] / activity.peak;
+      context.fillStyle = `rgb(240 180 41 / ${0.15 + 0.5 * glow})`;
+      context.beginPath();
+      context.arc(x, y, r + (3 + 9 * glow) * ratio, 0, 2 * Math.PI);
+      context.fill();
+    }
+    context.fillStyle = STAGE_COLOURS[n.component] || STAGE_COLOURS.other;
+    context.beginPath();
+    context.arc(x, y, r, 0, 2 * Math.PI);
+    context.fill();
+    if (n.i === hover || match) {
+      context.strokeStyle = cssVar("--ink");
+      context.lineWidth = 2 * ratio;
+      context.stroke();
+    }
+  }
+  context.globalAlpha = 1;
+  // Labels: the hovered node and its partners, search matches, and the biggest nodes when zoomed in.
+  context.font = `${11 * ratio}px ${cssVar("--mono")}`;
+  context.textBaseline = "middle";
+  for (const n of net.nodes) {
+    const show = n.i === hover || (hover !== null && linked.has(n.i) && linked.size < 40) || (search && n.name.toLowerCase().includes(search)) || (hover === null && !search && n.r * k > 9 * ratio);
+    if (!show) continue;
+    const [x, y] = at(n);
+    const label = net.level === "neurons" && n.i === hover ? n.instance : n.name;
+    context.fillStyle = cssVar("--bg");
+    const w = context.measureText(label).width;
+    context.globalAlpha = 0.75;
+    context.fillRect(x + n.r * k + 3 * ratio, y - 7 * ratio, w + 6 * ratio, 14 * ratio);
+    context.globalAlpha = 1;
+    context.fillStyle = cssVar("--ink");
+    context.fillText(label, x + n.r * k + 6 * ratio, y);
+  }
+  context.textBaseline = "alphabetic";
+}
+
+function paintNetworkActivity() {
+  if (net.running <= 0) drawNetwork();
+}
+
+function describeNetworkNode(index) {
+  if (index === null) return;
+  const n = net.nodes[index];
+  const g = net.graph;
+  $("network-node-title").textContent = net.level === "neurons" ? n.instance : n.name;
+  const activity = typeActivity();
+  facts($("network-node-facts"), [
+    ["Cell type", n.name],
+    ["Component", humane(n.component)],
+    ["Neurons", net.level === "types" ? number(n.count) : undefined],
+    ["Body ID", n.body],
+    ["Bridge angle", n.angle === null || n.angle === undefined ? undefined : `${number(n.angle, 0)}°`],
+    ["Transmitter", `${n.transmitter}${n.inhibitory ? " (inhibitory)" : n.transmitter === "acetylcholine" ? " (excitatory)" : ""}`],
+    ["Activity now", activity && activity.values[n.name] !== undefined ? number(activity.values[n.name], 4) : undefined],
+  ]);
+  const label = (i) => (net.level === "types" ? g.cell_types[i].name : net.nodes[i].instance);
+  const bars = (list, key) => {
+    const top = [...list].sort((a, b) => b.w - a.w).slice(0, 8);
+    const peak = Math.max(1, ...top.map((e) => e.w));
+    return top.map((e) => {
+      const row = element("div", null, "bar-row");
+      const bar = element("span", null, "bar");
+      bar.style.setProperty("--value", String(e.w / peak));
+      bar.style.setProperty("--fill", STAGE_COLOURS[net.nodes[e[key]].component] || STAGE_COLOURS.other);
+      row.append(element("span", label(e[key]), "bar-label wide"), bar, element("span", number(e.w), "num"));
+      return row;
+    });
+  };
+  const adjacency = net.adjacency[index];
+  $("network-inputs").replaceChildren(...bars(adjacency.in, "a"));
+  $("network-outputs").replaceChildren(...bars(adjacency.out, "b"));
+}
+
+{
+  const canvas = $("network-canvas");
+  let drag = null;
+  const toWorld = (event) => {
+    const box = canvas.getBoundingClientRect();
+    const px = (event.clientX - box.left) * devicePixelRatio;
+    const py = (event.clientY - box.top) * devicePixelRatio;
+    return [px, py, (px - net.view.x) / net.view.k, (py - net.view.y) / net.view.k];
+  };
+  canvas.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const [px, py] = toWorld(event);
+    const factor = Math.exp(-event.deltaY * 0.0015);
+    net.view.x = px - (px - net.view.x) * factor;
+    net.view.y = py - (py - net.view.y) * factor;
+    net.view.k *= factor;
+    net.userMoved = true;
+    drawNetwork();
+  }, { passive: false });
+  canvas.addEventListener("pointerdown", (event) => {
+    drag = { x: event.clientX, y: event.clientY, id: event.pointerId };
+    canvas.setPointerCapture(event.pointerId);
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    if (drag && drag.id === event.pointerId) {
+      net.userMoved = true;
+      net.view.x += (event.clientX - drag.x) * devicePixelRatio;
+      net.view.y += (event.clientY - drag.y) * devicePixelRatio;
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+      drawNetwork();
+      return;
+    }
+    const [, , wx, wy] = toWorld(event);
+    let best = null;
+    let bestDistance = Infinity;
+    for (const n of net.nodes) {
+      const d = (n.x - wx) ** 2 + (n.y - wy) ** 2;
+      const reach = n.r + 6 / net.view.k;
+      if (d < reach * reach && d < bestDistance) {
+        best = n.i;
+        bestDistance = d;
+      }
+    }
+    if (best !== net.hover) {
+      net.hover = best;
+      describeNetworkNode(best);
+      drawNetwork();
+    }
+  });
+  const release = () => (drag = null);
+  canvas.addEventListener("pointerup", release);
+  canvas.addEventListener("pointercancel", release);
+  canvas.addEventListener("dblclick", () => { fitNetwork(); drawNetwork(); });
+  // The canvas may be laid out after the graph is built (a hidden panel has no size), so
+  // fit again whenever it changes size, unless someone has panned or zoomed.
+  new ResizeObserver(() => {
+    if (!net.nodes.length) return;
+    if (!net.userMoved) fitNetwork();
+    drawNetwork();
+  }).observe(canvas);
+}
+for (const input of document.querySelectorAll('input[name="network-level"]')) {
+  input.addEventListener("input", () => {
+    net.level = input.value;
+    if (net.graph) buildNetwork();
+  });
+}
+$("network-edges").addEventListener("input", () => net.graph && buildNetwork());
+$("network-search").addEventListener("input", (event) => {
+  net.search = event.target.value.trim().toLowerCase();
+  drawNetwork();
+});
+
 $("brain-run-filter").addEventListener("input", () => brain.runs && drawRuns());
 for (const input of document.querySelectorAll('input[name="brain-view"]')) {
   input.addEventListener("input", () => {
@@ -811,8 +1268,14 @@ workspaces.register("brain", {
   show: (sel) => show(sel).catch(report),
   hide() {
     brain.active = false;
+    filterClipList(false);
   },
   frame(sel) {
+    filterClipList(true);
+    if (brain.view === "playback" || brain.view === "circuit") {
+      if (openFirstTraced(sel)) return;
+    }
+    if (brain.view === "network" && !net.nodes.length) loadNetwork().catch(report);
     if (brain.view !== "runs") loadTrace(sel).catch(report);
   },
   sample() {},

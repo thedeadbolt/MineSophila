@@ -84,7 +84,10 @@ the URL opens a workspace, and for a clip dataset `?clip=s000123-c02` opens that
 - **Eye**: the frame sampled through fly-vision's default eye (310° panoramas only). It
   shows the camera frame; the image decoded from the receptors, where each pixel takes its
   nearest ommatidium; both eyes' ommatidia by viewing direction; and a globe you can turn.
-  Each view can show R1_6, R7, R8, a false-colour mix or honey coverage. Point at an
+  Each view can show **Colour**, R1_6, R7, R8, a false-colour mix or honey coverage.
+  Colour is computed from the receptors: for each ommatidium, the linear R, G, B light that
+  would produce its R1_6, R7 and R8 catches under its subtype's rhodopsins (a regularised
+  inverse of fly-vision's spectral model, which is linear while adaptation is off). Point at an
   ommatidium to read its receptors and rhodopsins. The side panel plots the rhodopsin
   curves on both pigment axes. `--no-eye` turns the workspace off.
 - **Brain**: fly-brain output, read from files. `--runs DIR` lists the `*.report.json`
@@ -95,11 +98,31 @@ the URL opens a workspace, and for a clip dataset `?clip=s000123-c02` opens that
   component-to-component synapse counts once fly-brain writes them. `--traces DIR` adds
   **Clip playback** for clips with a `fly-brain-clip-trace-v1` file: activity by cell type,
   the compass ring with its bump against the fly's heading, and the readout against the
-  truth. During playback the circuit's boxes also fill with each stage's activity.
+  truth, next to the fly's own view of that frame. In Brain the clip list shows only clips
+  that have a trace. During playback the circuit's boxes also fill with each stage's
+  activity.
+- **Network** (Brain): the connectome itself, from `--connectome FILE`. One node per cell
+  type, or every central-complex neuron with the compass neurons on a ring at their
+  bridge angle. Edges are synapse counts, coloured by the presynaptic transmitter. The
+  graph is laid out in the order signals flow. Point at a node to see its strongest inputs
+  and outputs. During playback, nodes glow with their cell type's activity. The same graph
+  gives the circuit real synapse counts between components.
+
+Build the graph once from the MaleCNS feather files (about 40 s). It uses fly-brain's
+component rules:
+
+```sh
+uv run honey-factory-tools connectome-graph /mnt/fastvault/minesophila/connectomes/male-cns-v1.0 \
+    --out connectome-graph.json
+```
+
+While anything loads, the masthead shows what it is waiting for, how many requests are
+done and the elapsed time.
 
 ```sh
 uv run honey-factory-tools inspect <clip dataset> \
-    --runs /mnt/fastvault/minesophila/derived/brain-localization-v3 --traces <trace directory>
+    --runs /mnt/fastvault/minesophila/derived/brain-localization-v3 --traces <trace directory> \
+    --connectome connectome-graph.json
 ```
 
 Reviews are appended to `<review root>/<dataset id>/<manifest hash prefix>.jsonl`, one

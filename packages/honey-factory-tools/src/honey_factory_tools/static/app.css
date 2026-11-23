@@ -112,6 +112,14 @@ a.workspace-link:hover { background: var(--raised); color: var(--ink); }
 .masthead h1 { font: 600 var(--step-1)/1.25 var(--mono); letter-spacing: -0.01em; overflow-wrap: anywhere; }
 #dataset-facts { margin: 0.1rem 0 0; color: var(--muted); font-size: var(--step--1); }
 #find { display: flex; gap: 0.4rem; }
+.activity {
+  margin: 0 0 0 auto; display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.7rem;
+  border: 1px solid var(--rule); border-radius: 999px; background: var(--surface);
+  color: var(--muted); font: var(--step--1) var(--mono); max-width: 46rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.spinner { width: 0.8rem; height: 0.8rem; border-radius: 50%; border: 2px solid var(--rule); border-top-color: var(--honey); animation: spin 0.8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
 #find input { width: 17rem; max-width: 60vw; font-family: var(--mono); font-size: var(--step--1); }
 #banner {
   flex: none; padding: 0.4rem 1rem; border-bottom: 1px solid var(--rule); max-height: 5.5rem; overflow: auto;
@@ -374,11 +382,12 @@ canvas.chart.short { height: 4.5rem; }
 canvas.map { width: 100%; aspect-ratio: 4 / 3; display: block; border: 1px solid var(--rule); border-radius: var(--radius-stage); }
 #clip-map + .hint { margin-top: 0.35rem; }
 
-.brain-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 0.8rem 1rem; }
-.brain-grid .heat { grid-column: 1 / -1; }
+.brain-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 0.8rem 1rem; }
+.brain-grid .heat, .brain-grid .decisions { grid-column: 1 / -1; }
+#brain-view { aspect-ratio: 310 / 160; background: var(--stage); }
 #brain-heatmap { height: max(14rem, 34vh); }
-#brain-compass { aspect-ratio: 1; max-height: 22rem; }
-#brain-decisions { height: 100%; min-height: 14rem; }
+#brain-compass { aspect-ratio: 1; }
+#brain-decisions { height: 14rem; }
 .decisions { min-height: 0; }
 .empty { border: 1px dashed var(--rule); border-radius: var(--radius); padding: 1rem 1.2rem; color: var(--muted); }
 .empty p { margin: 0 0 0.6rem; max-width: 60ch; }
@@ -421,3 +430,8 @@ table.data.compact tbody tr:hover { background: none; }
 #brain-circuit-svg .cells { font: 10.5px var(--sans); fill: var(--faint); }
 #brain-circuit-svg .size { fill: var(--faint); }
 #brain-circuit-svg .meter { fill: var(--honey); transition: width 0.08s linear; }
+
+/* Network */
+#brain-network { display: flex; flex-direction: column; gap: 0.5rem; flex: 1 1 auto; min-height: 0; }
+#network-canvas { width: 100%; height: max(26rem, 58vh); display: block; background: var(--bg); border: 1px solid var(--rule); border-radius: var(--radius-stage); cursor: grab; touch-action: none; }
+#network-search { width: 16rem; max-width: 100%; }
