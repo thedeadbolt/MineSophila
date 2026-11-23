@@ -115,3 +115,28 @@ def test_network_rejects_duplicate_names_and_foreign_components() -> None:
     )
     with pytest.raises(ValueError, match="different graph"):
         BrainNetwork(other, (sensory,))
+
+
+def test_component_summary_reports_synapse_flow_and_cell_types() -> None:
+    source = graph()
+    network = BrainNetwork(
+        source,
+        (
+            component(source, "sensory", (1, 2), ComponentRole.SENSORY),
+            component(source, "relay", (3,), ComponentRole.PROCESSING),
+            component(source, "output", (4,), ComponentRole.OUTPUT),
+        ),
+    )
+
+    summary = network.component_summary()
+
+    assert summary["component_edges"] == {
+        "sensory": {"relay": 11},
+        "relay": {"relay": 2, "output": 4},
+    }
+    assert summary["component_cell_types"] == {
+        "sensory": {"R7": 1, "R8": 1},
+        "relay": {"relay": 1},
+        "output": {"output": 1},
+    }
+    assert json.loads(json.dumps(summary)) == summary

@@ -144,6 +144,27 @@ class BrainNetwork:
             ),
         )
 
+    def component_summary(self) -> dict[str, dict[str, dict[str, int]]]:
+        """Synapse counts between components and neuron counts per cell type, for reports.
+
+        ``component_edges[source][target]`` sums anatomical synapses on the network's edges
+        from one component's neurons to another's (pairs without edges are omitted).
+        ``component_cell_types[component][cell_type]`` counts that component's neurons.
+        """
+        description = self.describe()
+        edges: dict[str, dict[str, int]] = {}
+        for item in description.connectivity:
+            edges.setdefault(item.source, {})[item.target] = item.anatomical_synapse_count
+        neurons = self.graph.neurons
+        cell_types: dict[str, dict[str, int]] = {}
+        for component in self.components:
+            selected = neurons.cell_types[np.isin(neurons.neuron_ids, component.neuron_ids)]
+            names, counts = np.unique(selected, return_counts=True)
+            cell_types[component.spec.name] = {
+                str(name): int(count) for name, count in zip(names, counts, strict=True)
+            }
+        return {"component_edges": edges, "component_cell_types": cell_types}
+
     def to_manifest(self) -> dict[str, object]:
         return {
             "graph_sha256": self.graph.graph_sha256,

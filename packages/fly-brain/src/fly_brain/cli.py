@@ -708,6 +708,7 @@ def _train_connectome_clips(args: argparse.Namespace) -> int:
             "release_id": graph.release.release_id,
             "graph_sha256": graph.graph_sha256,
             "components": dict(description.component_sizes),
+            **network.component_summary(),
         },
         "model": {
             **asdict(model_config),
@@ -1502,6 +1503,7 @@ def _train_connectome(args: argparse.Namespace) -> int:
             "graph_sha256": graph.graph_sha256,
             "components": dict(description.component_sizes),
             "anatomical_synapse_count": description.anatomical_synapse_count,
+            **network.component_summary(),
         },
         "input_map": {
             "path": str(args.input_map),
