@@ -807,6 +807,8 @@ The model has Delta7, EPG and PFL3 itself, about 11.5% of PFL3's real input.
 
 #### Planned after 9i: `fly-brain trace-clip` for the honey-factory-tools viewer
 
+**Status, 2026-11-23:** the base command has landed (1aa6a71) with every field below except the FC2/hΔ ones. Those, and the bump gain, come with 9i step 2.
+
 Agreed with the visualizer work (branch `feat/honey-factory-tools-visualizer`):
 `fly-brain trace-clip CACHE --config --checkpoint --clip-id --out` writes an npz with format
 `fly-brain-clip-trace-v1`.
