@@ -1,0 +1,79 @@
+{
+  "format": "fly-brain-connectome-clip-experiment-v1",
+  "model": {
+    "minimum_synapse_count": 5,
+    "time_constant": 2.0,
+    "dt": 1.0,
+    "activation": "graded",
+    "initial_edge_gain": 1.0,
+    "train_neuron_bias": false,
+    "edge_gain_mode": "cell_type_pair",
+    "maximum_edge_gain": 4.0,
+    "use_neurotransmitter_signs": true,
+    "components": [
+      "photoreceptors",
+      "lamina_relays",
+      "medulla_relays",
+      "visual_projection",
+      "anterior_visual_inputs",
+      "tubercle_bulb",
+      "ring_neurons",
+      "compass",
+      "steering"
+    ],
+    "readout_components": [
+      "compass",
+      "steering"
+    ],
+    "input_transform": "spatial_coverage",
+    "readout_normalization": "initial",
+    "transitions_per_frame": 4,
+    "compass_operating_point": "fitted",
+    "self_motion_input": "pen_yaw",
+    "self_motion_scale": 0.011369,
+    "compass_gains": {
+      "Delta7>Delta7": 0.00306,
+      "Delta7>EPG": 3.999773,
+      "Delta7>PEG": 3.999874,
+      "Delta7>PEN_a(PEN1)": 3.920079,
+      "Delta7>PEN_b(PEN2)": 3.999956,
+      "EPG>Delta7": 3.999925,
+      "EPG>EPG": 3.999712,
+      "EPG>PEG": 3.999383,
+      "EPG>PEN_a(PEN1)": 3.986239,
+      "EPG>PEN_b(PEN2)": 3.998893,
+      "PEG>EPG": 3.999159,
+      "PEG>PEG": 3.963464,
+      "PEG>PEN_a(PEN1)": 0.037596,
+      "PEG>PEN_b(PEN2)": 3.999756,
+      "PEN_a(PEN1)>EPG": 3.999553,
+      "PEN_a(PEN1)>PEG": 3.759825,
+      "PEN_a(PEN1)>PEN_a(PEN1)": 0.0026,
+      "PEN_a(PEN1)>PEN_b(PEN2)": 0.005395,
+      "PEN_b(PEN2)>EPG": 3.999819,
+      "PEN_b(PEN2)>PEG": 3.999487,
+      "PEN_b(PEN2)>PEN_a(PEN1)": 3.997936,
+      "PEN_b(PEN2)>PEN_b(PEN2)": 5.1e-05
+    },
+    "compass_type_bias": {
+      "Delta7": 0.004504,
+      "EPG": 0.004334,
+      "PEG": -0.028302,
+      "PEN_a(PEN1)": -0.129755,
+      "PEN_b(PEN2)": 0.135112
+    },
+    "release_thresholds": {
+      "PEN_a(PEN1)": -0.119578,
+      "PEN_b(PEN2)": 0.002095
+    },
+    "release_threshold_sharpness": 20.0
+  },
+  "training": {
+    "steps": 1500,
+    "batch_size": 4,
+    "learning_rate": 0.001,
+    "weight_decay": 1e-05,
+    "truncation_steps": 16,
+    "seed": 0
+  }
+}

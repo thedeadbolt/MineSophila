@@ -117,3 +117,15 @@ Define the dataset format and storage in [#1](https://github.com/thedeadbolt/Min
 
 The proposed adapter would convert honey-factory output into `Scene` objects and labels
 for training and evaluation. A third Python workspace package is one option.
+
+## fly-brain
+
+`fly-brain` is a Python workspace package downstream of `fly-vision`. Its foundation defines
+time-major image/video observations and separates permitted egocentric context from targets,
+privileged state and provenance. Later slices add connectome loading and named component assembly,
+conventional baselines, connectome-constrained models, training, evaluation and live inference.
+Biological structure is a measured prior rather than a hard restriction; shortcuts remain explicit
+and are retained when they improve held-out results.
+
+The proposed object model and incremental implementation slices are in the
+[fly-brain foundation plan](superpowers/plans/2026-11-19-fly-brain-foundation.md).

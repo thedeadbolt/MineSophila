@@ -1,0 +1,42 @@
+{
+  "format": "fly-brain-connectome-clip-experiment-v1",
+  "model": {
+    "minimum_synapse_count": 5,
+    "time_constant": 2.0,
+    "dt": 1.0,
+    "activation": "graded",
+    "initial_edge_gain": 1.0,
+    "train_neuron_bias": false,
+    "edge_gain_mode": "cell_type_pair",
+    "maximum_edge_gain": 4.0,
+    "use_neurotransmitter_signs": true,
+    "components": [
+      "photoreceptors",
+      "lamina_relays",
+      "medulla_relays",
+      "visual_projection",
+      "anterior_visual_inputs",
+      "tubercle_bulb",
+      "ring_neurons",
+      "compass",
+      "steering"
+    ],
+    "readout_components": [
+      "compass",
+      "steering"
+    ],
+    "input_transform": "spatial_coverage",
+    "readout_normalization": "initial",
+    "transitions_per_frame": 2,
+    "compass_operating_point": "ring_attractor",
+    "compass_tonic_bias": 0.02
+  },
+  "training": {
+    "steps": 1500,
+    "batch_size": 4,
+    "learning_rate": 0.001,
+    "weight_decay": 1e-05,
+    "truncation_steps": 16,
+    "seed": 0
+  }
+}

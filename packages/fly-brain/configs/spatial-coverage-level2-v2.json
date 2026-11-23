@@ -1,0 +1,29 @@
+{
+  "format": "fly-brain-spatial-experiment-v1",
+  "model": {
+    "hidden_width": 32,
+    "message_passing_layers": 3,
+    "neighbor_count": 6,
+    "neighbor_radius_deg": 7.5,
+    "include_directions": true,
+    "activation": "gelu",
+    "residual": true,
+    "pooling_temperature": 0.25,
+    "coverage_power": 2.0
+  },
+  "training": {
+    "steps": 6000,
+    "batch_size": 64,
+    "learning_rate": 0.001,
+    "weight_decay": 0.00001,
+    "seed": 0,
+    "presence_loss_weight": 1.0,
+    "coverage_loss_weight": 2.0,
+    "direction_loss_weight": 1.0,
+    "validation_interval": 100,
+    "early_stopping_patience": 8,
+    "threshold_search_steps": 181,
+    "threshold_search_min": 0.05,
+    "threshold_search_max": 0.95
+  }
+}

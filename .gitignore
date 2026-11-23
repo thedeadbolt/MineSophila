@@ -41,7 +41,7 @@ replay_*.log
 .DS_Store
 Thumbs.db
 
-# Data is out of scope until issue #1 is resolved.
+# Production datasets and large artifacts live on configured local storage (ADR 0025).
 data/
 # Minecraft data-pack resources shipped by the mod are source, not datasets.
 !packages/honey-factory/src/main/resources/data/

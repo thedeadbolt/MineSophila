@@ -29,3 +29,9 @@ Preserve accepted decisions. To change one, write a new ADR that supersedes it.
 | [0021](0021-spectral-remap.md) | Spectral remap of the fly's pigments into the visible | Accepted |
 | [0022](0022-fast-parallel-generation.md) | Fast and parallel generation | Accepted |
 | [0023](0023-motion-clips-and-teacher.md) | Motion clips and the first teacher | Accepted |
+| [0024](0024-fly-brain-package-and-experiment-boundaries.md) | fly-brain package and experiment boundaries | Accepted |
+| [0025](0025-local-dataset-and-artifact-storage.md) | Local dataset and large-artifact storage | Accepted |
+| [0026](0026-jax-first-learning-backend.md) | JAX as the first learning backend | Accepted |
+| [0027](0027-signed-resting-potential-connectome-dynamics.md) | Signed, resting-potential connectome dynamics | Accepted |
+| [0028](0028-thresholded-release-and-fitted-compass-integrator.md) | Thresholded release per cell type and a fitted compass integrator | Proposed |
+| [0030](0030-fan-shaped-body-goal-memory.md) | Fan-shaped-body goal memory with a learned egocentric vector input | Proposed |
