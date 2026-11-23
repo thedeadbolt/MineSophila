@@ -667,8 +667,25 @@ Then rerun the compass and self-motion clip experiments against the same GRU con
   follows yaw with corr 0.38 and gain 0.66°/° (corr 0.02 before), and holds that through
   occlusion.
 - `probe-compass` reports these measures for any clip checkpoint.
-- Clip training is running for the ring compass, with and without self-motion, on batch-A and
-  batch-B level 3.
+- Clip-trained ring compasses keep the ring (harmonic pair 1.05) and the bump through occlusion,
+  but their compass-readout occluded bearing is 74.7–81.6°, no better than the silent compass.
+  See the results doc.
+- Dead reckoning sets the ceiling: last visible bearing minus true yaw gives 16.8° on batch B,
+  and minus bump phase gives 72°. The gap comes from integrator noise (phase-yaw corr 0.36) and
+  from having no store for the onset bearing.
+
+**9i: goal memory and a cleaner integrator (next).**
+1. Raise the bump's phase-yaw correlation above 0.8 before any further training. Candidates:
+   - PEN input sign per hemisphere;
+   - self-motion scale against the tonic level;
+   - the strength of Delta7 inhibition.
+   The acceptance test is `probe-compass` on the untrained operating point.
+2. Add a goal memory, either the fan-shaped-body columnar types (hDeltas, FC) and PFL3 from
+   MaleCNS, or a minimal stand-in. It latches the heading-relative honey bearing while honey is
+   visible and holds it through occlusion; PFL3-style comparison with the bump then gives
+   egocentric bearing.
+3. Score each step against the dead-reckoning ceiling as well as the GRUs. Batch A is likely
+   dominated by translation, so batch B is the primary test.
 
 #### Planned for the action head: outcome-weighted imitation (proposed 2026-11-22)
 

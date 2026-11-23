@@ -64,6 +64,43 @@ and harder for every model.
 | Central complex, compass readout | **81.4%** | 52.0° | 78.1° | 73.6% |
 | Central complex, projection readout | 71.3% | 37.3° | **51.1°** | 72.7% |
 
+## Ring-attractor compass (9h), level 3, test split
+
+The compass starts at the ring-attractor operating point: a leading first-harmonic pair at 1.05,
+every other mode at most 0.73, and tonic bias 0.02. It is then clip-trained as before, starting
+from the level-1 checkpoint (seed 0). The compass readout is used throughout.
+
+| Batch | Self-motion | Visible bearing | Occluded bearing | Bump strength | Phase-yaw corr | Phase-yaw gain |
+|---|---|---:|---:|---:|---:|---:|
+| A | none | 39.2° | 81.6° | 0.56 | 0.03 | 0.00 |
+| A | PEN yaw, 0.05 | 35.8° | 74.7° | 0.35 | 0.37 | 0.66°/° |
+| B | PEN yaw, 0.05 | 41.6° | 74.8° | 0.38 | 0.36 | 0.65°/° |
+
+Training keeps the ring: the harmonic pair stays at 1.05 and the bump survives occlusion
+(strength 0.35–0.38, unchanged phase tracking). Bearing does not improve on the silent compass
+(71.6° and 78.1°). Ring neurons stay nearly silent (mean |a| about 0.005), so vision barely
+anchors the bump.
+
+**Dead-reckoning ceiling.** Egocentric honey bearing during occlusion is the last visible bearing
+minus the turn since then. Scoring that estimate directly, on occluded frames that follow a
+sighting, shows what a compass can offer:
+
+| Batch | Frames | Hold last bearing | Minus true yaw | Minus bump phase (gain-corrected) |
+|---|---:|---:|---:|---:|
+| A | 174 | **44.1°** | 60.4° | 75.6° |
+| B | 338 | 61.8° | **16.8°** | 72.2° |
+
+On batch B, a perfect yaw integrator plus a stored onset bearing reaches 16.8°, against about
+65° for the GRUs and 51° for the projection readout. On batch A, holding the bearing beats
+integrating yaw, probably because translation past nearby honey dominates there.
+
+Two things are missing:
+1. A heading estimate good enough to integrate. The bump's phase follows yaw with corr of only
+   0.36, which is worse than holding the bearing.
+2. A place to keep the onset bearing. A linear readout of a heading bump yields heading, not
+   honey relative to heading. In the fly, the fan-shaped body holds a goal and PFL3 compares it
+   with heading. Our CX has no fan-shaped body.
+
 ## Level 4 (batch B), test split
 
 600 clips from 150 scenes; the test split has 6,340 occluded frames with honey present. Occluded
@@ -120,8 +157,10 @@ appears only where bridging the occlusion matters more than visible precision.
   - TuBu supplies about 6% of each ring neuron's input weight.
   - Ring-neuron input to the compass is inhibitory, with no tonic activity to shape.
   - The linearised compass loop has spectral radius 0.54, so it cannot sustain activity.
-- **Next:** set the compass operating point (plan, 9h): loop gain near 1, tonic drive, and a bump
-  test before localisation. Then batch-B seeds.
+- **The ring-attractor operating point gives a bump that survives training and integrates yaw**
+  (gain 0.65°/°), but it does not yet help localisation; see the 9h section above. Dead reckoning
+  with true yaw sets a 16.8° ceiling on batch B, so the route is worth pursuing. It needs a
+  cleaner integrator and a goal memory that stores the onset bearing.
 
 ## Artifacts
 
@@ -136,6 +175,8 @@ Under `/mnt/fastvault/minesophila/derived/brain-localization-v3/`:
   `connectome-clips-level4-occ-b-central-complex-{compass,projection}-v1.*`
 - `temporal-level3-occ-b-s1-{tick,ports}-v1.fly-brain.npz`, `recurrent-level3-occ-b-s1-*`,
   `connectome-clips-level3-occ-b-s1-central-complex-{compass,projection}-v1.*`
+- `connectome-clips-level3-occ-a-central-complex-compass-ring{,-self-motion}-v1.*`,
+  `connectome-clips-level3-occ-b-s1-central-complex-compass-ring-self-motion-v1.*`
 
 Visible and occluded subsets come from scoring each checkpoint on the test split's
 `visible` and `occluded` intervals (occluded frames limited to those with honey present).
