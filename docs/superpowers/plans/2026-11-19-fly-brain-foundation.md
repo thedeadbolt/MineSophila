@@ -743,8 +743,15 @@ Agreed with the visualizer work (branch `feat/honey-factory-tools-visualizer`):
 - Per frame: `activity` (T, N) float16, `yaw`, `presence`, `direction` (T, 3), `visible`,
   `teacher_actions` and its mask, `readout` (T, 4), and EPG `bump_phase` and `bump_strength`.
 - Per neuron: `body_id`, `cell_type`, `side`, `pb_angle` (NaN when there is none) and `stage`.
+- `stage` uses the network component names (photoreceptors, lamina_relays, ..., compass,
+  steering).
 - JSON header: format, checkpoint sha256, config, and the frame-to-clip mapping (dataset id,
   clip id, frame offsets) so the viewer can line frames up with the clip.
+
+The connectome reports also gain two fields for the viewer's circuit diagram (ADR 0029 on that
+branch):
+- `connectome.component_edges`: `{from_component: {to_component: synapse_count}}`.
+- `connectome.component_cell_types`: `{component: {cell_type: neuron_count}}`.
 
 #### Planned for the action head: outcome-weighted imitation (proposed 2026-11-22)
 
