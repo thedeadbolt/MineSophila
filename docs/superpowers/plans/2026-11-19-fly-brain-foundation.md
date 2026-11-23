@@ -653,6 +653,23 @@ before asking it to remember:
 
 Then rerun the compass and self-motion clip experiments against the same GRU controls.
 
+**9h progress, 2026-11-23:**
+
+- Eigenmodes explain the silence. With every gain at one, the compass loop's leading mode is
+  uniform over EPG (eigenvalue 0.52, first-harmonic content 0.15), so raising gains uniformly
+  only makes all of the compass active together.
+- `compass_operating_point: "ring_attractor"` searches the 22 compass type-pair gains, inside the
+  cap, for a leading first-harmonic pair at 1.05 with every other mode at most 0.8 (reached:
+  0.73). It adds tonic bias of 0.02 to the 148 compass neurons. EPG ring angles come from
+  MaleCNS instance names (PB glomeruli L/R 1–8). The search raises Delta7 inhibition and EPG
+  output to the cap.
+- Untrained, with self-motion at 0.05, EPG bump strength is 0.36 (0.2 before). Bump phase
+  follows yaw with corr 0.38 and gain 0.66°/° (corr 0.02 before), and holds that through
+  occlusion.
+- `probe-compass` reports these measures for any clip checkpoint.
+- Clip training is running for the ring compass, with and without self-motion, on batch-A and
+  batch-B level 3.
+
 #### Planned for the action head: outcome-weighted imitation (proposed 2026-11-22)
 
 The teacher is imperfect on purpose. Drift and recovery give state coverage beyond perfect paths,
