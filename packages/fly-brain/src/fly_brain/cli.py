@@ -50,6 +50,14 @@ from fly_brain.connectome.compass import (
     compass_modes,
     pb_glomerulus_angle,
     ring_attractor_gains,
+    type_pair_raw_gains,
+)
+from fly_brain.connectome.integrator import (
+    CompassCircuit,
+    IntegratorFitConfig,
+    IntegratorStage,
+    constant_turn_response,
+    fit_compass_integrator,
 )
 from fly_brain.connectome.visual import (
     LAMINA_RELAY_TYPES,
@@ -213,6 +221,17 @@ def _parser() -> argparse.ArgumentParser:
     compass_probe.add_argument("--checkpoint", required=True, type=Path)
     compass_probe.add_argument("--split", default="test")
     compass_probe.add_argument("--report", required=True, type=Path)
+    integrator = commands.add_parser(
+        "fit-compass-integrator",
+        help="fit the compass as an angular integrator on recorded yaw (ADR 0028)",
+    )
+    integrator.add_argument("yaw_cache", type=Path, help="clip cache whose train split gives yaw")
+    integrator.add_argument("--layout-cache", required=True, type=Path)
+    integrator.add_argument("--connectome-root", required=True, type=Path)
+    integrator.add_argument("--config", required=True, type=Path, help="connectome clip config")
+    integrator.add_argument("--initial-checkpoint", required=True, type=Path)
+    integrator.add_argument("--fit-config", required=True, type=Path)
+    integrator.add_argument("--out", required=True, type=Path)
     temporal = commands.add_parser("train-recurrent")
     temporal.add_argument("cache", type=Path)
     temporal.add_argument("--config", required=True, type=Path)
@@ -640,6 +659,13 @@ def _train_connectome_clips(args: argparse.Namespace) -> int:
             "reused": ["edge_gain", "neuron_bias"],
         }
     operating_point: dict[str, object] | None = None
+    if model_config.compass_operating_point == "fitted":
+        initial, operating_point = _fitted_compass(
+            initial if initial is not None else model.initialize(training_config.seed),
+            model.brain,
+            graph,
+            model_config,
+        )
     if model_config.compass_operating_point == "ring_attractor":
         initial, operating_point = _compass_operating_point(
             initial if initial is not None else model.initialize(training_config.seed),
@@ -1653,7 +1679,12 @@ def _build_connectome(
             4,
             BiologicalStatus.LEARNED,
         ),
-        LeakyRateDynamics(config.time_constant, config.activation),
+        LeakyRateDynamics(
+            config.time_constant,
+            config.activation,
+            tuple(sorted(config.release_thresholds.items())),
+            config.release_threshold_sharpness,
+        ),
         SynapseCountPolicy(
             config.initial_edge_gain,
             config.train_neuron_bias,
@@ -1794,6 +1825,170 @@ def _compass_operating_point(
         "tonic_bias": point.tonic_bias,
         "tonic_neurons": int(members.sum()),
         "search": {"iterations": point.iterations, "seed": point.seed},
+    }
+    return (
+        parameters._replace(
+            edge_gain=jnp.asarray(gains, dtype=jnp.float32),  # pyright: ignore[reportUnknownMemberType]
+            neuron_bias=jnp.asarray(bias, dtype=jnp.float32),  # pyright: ignore[reportUnknownMemberType]
+        ),
+        report,
+    )
+
+
+def _load_integrator_fit_config(path: Path) -> tuple[IntegratorFitConfig, float]:
+    raw: Any = json.loads(path.read_text())
+    if not isinstance(raw, dict):
+        raise ValueError("unsupported compass integrator fit config")
+    values = dict(cast(dict[str, Any], raw))
+    if values.get("format") != "fly-brain-compass-integrator-fit-v1":
+        raise ValueError("unsupported compass integrator fit config")
+    values.pop("format")
+    harmonic = float(values.pop("initial_harmonic_eigenvalue", 1.5))
+    stages = tuple(IntegratorStage(**stage) for stage in values.pop("stages"))
+    try:
+        return IntegratorFitConfig(stages=stages, **values), harmonic
+    except TypeError as error:
+        raise ValueError(f"invalid compass integrator setting: {error}") from error
+
+
+def _compass_circuit(
+    brain: CompiledBrain, graph: ConnectomeGraph, connectome_root: Path
+) -> tuple[CompassCircuit, NDArray[np.int64], NDArray[np.bool_], NDArray[np.str_]]:
+    """The compass sub-circuit of a compiled brain, its global group ids, members and types."""
+    types, angles = _compass_layout(brain, graph, connectome_root)
+    members = np.isin(types, COMPASS_TYPES)
+    index = np.flatnonzero(members)
+    position = np.full(types.size, -1)
+    position[index] = np.arange(index.size)
+    inside = members[brain.source_indexes] & members[brain.target_indexes]
+    global_groups, local = np.unique(brain.edge_group_indexes[inside], return_inverse=True)
+    sources, targets = brain.source_indexes[inside], brain.target_indexes[inside]
+    pairs = tuple(
+        f"{types[sources[first]]}>{types[targets[first]]}"
+        for first in (np.flatnonzero(local == group)[0] for group in range(global_groups.size))
+    )
+    sides = graph.neurons.sides[np.searchsorted(graph.neurons.neuron_ids, brain.neuron_ids)]
+    maximum = brain.parameter_policy.maximum_edge_gain
+    if maximum is None:
+        raise ValueError("the compass integrator needs bounded edge gains")
+    circuit = CompassCircuit(
+        cell_types=types[index],
+        angles=angles[index],
+        sides=sides[index],
+        source=position[sources].astype(np.int32),
+        target=position[targets].astype(np.int32),
+        weight=brain.anatomical_weights[inside].astype(np.float32),
+        group=local.astype(np.int32),
+        group_pairs=pairs,
+        compass_types=COMPASS_TYPES,
+        leak=brain.dt / brain.dynamics.time_constant,
+        maximum_gain=maximum,
+    )
+    return circuit, global_groups.astype(np.int64), members, types
+
+
+def _fit_compass_integrator(args: argparse.Namespace) -> int:
+    started = time.perf_counter()
+    model_config, _, _ = _load_connectome_clip_config(args.config)
+    fit_config, harmonic = _load_integrator_fit_config(args.fit_config)
+    layout = _cached_sensor_layout([CachedStillDataset.load(args.layout_cache)])
+    graph, _, _, _, compiler = _build_connectome(layout, args.connectome_root, model_config)
+    brain = compiler.compile()
+    circuit, groups, members, _ = _compass_circuit(brain, graph, args.connectome_root)
+    values, _ = load_checkpoint(args.initial_checkpoint)
+    maximum = circuit.maximum_gain
+    start = maximum / (1.0 + np.exp(-np.asarray(values["edge_gain"], dtype=np.float64)))
+    _, angles = _compass_layout(brain, graph, args.connectome_root)
+    ring = ring_attractor_gains(
+        brain.source_indexes,
+        brain.target_indexes,
+        brain.anatomical_weights,
+        brain.edge_group_indexes,
+        start,
+        members,
+        angles,
+        maximum_gain=maximum,
+        point=CompassOperatingPoint(harmonic_eigenvalue=harmonic),
+    )
+    dataset = CachedClipDataset.load(args.yaw_cache)
+    context = dataset.batch("train", include_context=True)
+    width = context.features.shape[2] - dataset.motion_context.shape[1]
+    yaw = [
+        context.features[row, : int(context.time_mask[row].sum()), width + YAW_CONTEXT_INDEX]
+        for row in range(context.features.shape[0])
+    ]
+    fit = fit_compass_integrator(
+        circuit,
+        ring.gains[groups],
+        yaw,
+        fit_config,
+        progress=lambda record: print(json.dumps(record), flush=True),
+    )
+    response = constant_turn_response(circuit, fit, fit_config)
+    output = {
+        "format": "fly-brain-compass-integrator-v1",
+        "git_revision": _git_revision(),
+        "initial_checkpoint": {
+            "path": str(args.initial_checkpoint),
+            "sha256": _file_sha256(args.initial_checkpoint),
+        },
+        "yaw_cache": str(args.yaw_cache),
+        "fit_config": json.loads(args.fit_config.read_text()),
+        "initial_ring": {
+            "harmonic_eigenvalue": ring.harmonic_eigenvalue,
+            "other_eigenvalue": ring.other_eigenvalue,
+        },
+        "model_overrides": {
+            "compass_operating_point": "fitted",
+            "compass_gains": fit.gains,
+            "compass_type_bias": fit.type_bias,
+            "release_thresholds": fit.release_thresholds,
+            "release_threshold_sharpness": fit_config.release_sharpness,
+            "self_motion_scale": fit.self_motion_scale,
+            "transitions_per_frame": fit_config.transitions_per_frame,
+        },
+        "constant_turn": response,
+        "history": list(fit.history),
+        "runtime_seconds": time.perf_counter() - started,
+    }
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n")
+    print(json.dumps({"constant_turn": response}))
+    return 0
+
+
+def _fitted_compass(
+    parameters: BrainParameters,
+    brain: CompiledBrain,
+    graph: ConnectomeGraph,
+    config: ConnectomeModelConfig,
+) -> tuple[BrainParameters, dict[str, object]]:
+    """Apply a fitted compass integrator: named type-pair gains and per-type biases (9i)."""
+    maximum = brain.parameter_policy.maximum_edge_gain
+    if maximum is None or brain.parameter_policy.edge_gain_mode != "cell_type_pair":
+        raise ValueError("a fitted compass needs bounded cell-type-pair gains")
+    neurons = graph.neurons
+    types = neurons.cell_types[np.searchsorted(neurons.neuron_ids, brain.neuron_ids)]
+    gains = type_pair_raw_gains(
+        np.asarray(parameters.edge_gain),
+        brain.edge_group_indexes,
+        types[brain.source_indexes],
+        types[brain.target_indexes],
+        config.compass_gains,
+        maximum,
+    )
+    bias = np.asarray(parameters.neuron_bias, dtype=np.float32).copy()
+    for cell_type, value in config.compass_type_bias.items():
+        selected = types == cell_type
+        if not selected.any():
+            raise ValueError(f"compass type bias names unknown cell type {cell_type!r}")
+        bias[selected] += value
+    report: dict[str, object] = {
+        "mode": "fitted",
+        "biological_status": "learned",
+        "groups": len(config.compass_gains),
+        "type_bias": dict(config.compass_type_bias),
+        "release_thresholds": dict(config.release_thresholds),
     }
     return (
         parameters._replace(
@@ -2209,6 +2404,8 @@ def main(argv: list[str] | None = None) -> int:
             return _train_connectome_clips(args)
         if args.command == "probe-compass":
             return _probe_compass(args)
+        if args.command == "fit-compass-integrator":
+            return _fit_compass_integrator(args)
         if args.command == "train-recurrent":
             return _train_recurrent(args)
         if args.command == "train-recurrent-actions":
