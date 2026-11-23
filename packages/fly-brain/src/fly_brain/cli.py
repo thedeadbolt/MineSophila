@@ -18,6 +18,7 @@ from numpy.typing import NDArray
 
 from fly_brain.connectome import (
     CENTRAL_COMPLEX_COMPONENTS,
+    FAN_SHAPED_BODY_COMPONENTS,
     BiologicalStatus,
     BrainCompiler,
     BrainModelSpec,
@@ -36,6 +37,7 @@ from fly_brain.connectome import (
     build_first_visual_network,
     build_receptor_input_map,
     central_complex_cell_types,
+    fan_shaped_body_cell_types,
 )
 from fly_brain.connectome.central_complex import (
     ANTERIOR_VISUAL_INPUT_TYPES,
@@ -1630,6 +1632,8 @@ def _build_connectome(
     cell_types = PHOTORECEPTOR_TYPES + LAMINA_RELAY_TYPES + MEDULLA_RELAY_TYPES
     if set(CENTRAL_COMPLEX_COMPONENTS).intersection(config.components):
         cell_types += central_complex_cell_types()
+    if set(FAN_SHAPED_BODY_COMPONENTS).intersection(config.components):
+        cell_types += fan_shaped_body_cell_types()
     selector_loader = MaleCNSLoader(
         connectome_root,
         minimum_synapse_count=config.minimum_synapse_count,

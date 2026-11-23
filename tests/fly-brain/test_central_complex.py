@@ -76,3 +76,25 @@ def test_central_complex_components_are_opt_in_and_named() -> None:
     assert [item.spec.name for item in network.components] == list(names)
     with pytest.raises(ValueError, match="unknown"):
         build_first_visual_network(_graph(), component_names=("photoreceptors", "fan_shaped"))
+
+
+def test_fan_shaped_body_components_are_separate_opt_in_selections() -> None:
+    from fly_brain.connectome import (
+        FAN_SHAPED_BODY_COMPONENTS,
+        fan_shaped_body_cell_types,
+        fan_shaped_body_component_specs,
+    )
+
+    specs = {spec.name: spec for spec in fan_shaped_body_component_specs()}
+    types = fan_shaped_body_cell_types()
+
+    assert tuple(specs) == FAN_SHAPED_BODY_COMPONENTS
+    assert {"FC2A", "FC2B", "FC2C", "hDeltaA", "hDeltaM", "PFNd", "PFNv"} <= set(types)
+    assert not {"PFNp_a", "FB5A"} & set(types)
+    assert not set(types) & set(central_complex_cell_types())
+    assert specs["goal_memory"].role.value == "memory"
+    # The names are known to the network builder (this fixture has no FB neurons to resolve).
+    with pytest.raises(ValueError, match="resolved to no neurons"):
+        build_first_visual_network(
+            _graph(), component_names=("photoreceptors", "visual_projection", "goal_memory")
+        )

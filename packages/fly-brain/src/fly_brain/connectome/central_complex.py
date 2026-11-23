@@ -109,3 +109,43 @@ def central_complex_cell_types() -> tuple[str, ...]:
     """Central-brain cell types to load; MeTu inputs already load as visual projection."""
 
     return TUBERCLE_BULB_TYPES + RING_NEURON_TYPES + COMPASS_TYPES + STEERING_TYPES
+
+
+# Fan-shaped body (Slice 9i step 2). PFN neurons carry heading copies shifted per hemisphere,
+# gain-modulated by egocentric signals from the noduli; hDelta neurons combine them into
+# allocentric vectors; FC2 neurons hold a goal direction that PFL3 compares with heading.
+VECTOR_INPUT_TYPES = ("PFNa", "PFNd", "PFNm_a", "PFNm_b", "PFNv")
+FAN_SHAPED_BODY_COLUMN_TYPES = tuple(f"hDelta{letter}" for letter in "ABCDEFGHIJKLM")
+GOAL_MEMORY_TYPES = ("FC2A", "FC2B", "FC2C")
+FAN_SHAPED_BODY_COMPONENTS = ("vector_inputs", "fan_shaped_body_columns", "goal_memory")
+
+
+def fan_shaped_body_component_specs() -> tuple[ComponentSpec, ...]:
+    return (
+        ComponentSpec(
+            "vector_inputs",
+            AnnotationEquals("cell_types", VECTOR_INPUT_TYPES),
+            ComponentRole.PROCESSING,
+            "PFN neurons carrying hemisphere-shifted heading into the fan-shaped body, with gain "
+            "set by egocentric input through the noduli.",
+            BiologicalStatus.ANATOMICAL,
+        ),
+        ComponentSpec(
+            "fan_shaped_body_columns",
+            AnnotationEquals("cell_types", FAN_SHAPED_BODY_COLUMN_TYPES),
+            ComponentRole.PROCESSING,
+            "hDelta columnar neurons combining PFN vectors across fan-shaped-body columns.",
+            BiologicalStatus.ANATOMICAL,
+        ),
+        ComponentSpec(
+            "goal_memory",
+            AnnotationEquals("cell_types", GOAL_MEMORY_TYPES),
+            ComponentRole.MEMORY,
+            "FC2 columnar neurons holding a goal direction for PFL3 to compare with heading.",
+            BiologicalStatus.ANATOMICAL,
+        ),
+    )
+
+
+def fan_shaped_body_cell_types() -> tuple[str, ...]:
+    return VECTOR_INPUT_TYPES + FAN_SHAPED_BODY_COLUMN_TYPES + GOAL_MEMORY_TYPES

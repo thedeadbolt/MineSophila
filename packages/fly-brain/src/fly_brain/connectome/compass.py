@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-_GLOMERULUS = re.compile(r"_([LR])(\d)$")
+_GLOMERULUS = re.compile(r"_([LR])(\d)(?:_C\d+\w*)?$")
 _HARMONIC_MODE = 0.6
 
 
@@ -208,3 +208,38 @@ def type_pair_raw_gains(
             raise ValueError(f"compass gain {key!r} matches no edge group")
         updated[groups[0]] = np.log(value / (maximum_gain - value))
     return updated
+
+
+def connectivity_angles(
+    source: NDArray[np.integer],
+    target: NDArray[np.integer],
+    weight: NDArray[np.floating],
+    angles: NDArray[np.floating],
+    assign: NDArray[np.bool_],
+    *,
+    passes: int = 2,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Heading angles for neurons without one, from the weighted circular mean of angled inputs.
+
+    Neurons in ``assign`` that lack an angle take the angle of the summed vector
+    ``sum(|w| exp(i theta_source))`` over angled presynaptic partners. Each pass can reach neurons
+    one synapse further. Returns angles and the concentration ``|sum| / sum |w|`` (NaN where
+    unassigned). Fan-shaped-body columns are compressed at the edges relative to their labels, so
+    connectivity defines their heading.
+    """
+    result = np.asarray(angles, dtype=np.float64).copy()
+    concentration = np.full(result.size, np.nan)
+    magnitude = np.abs(np.asarray(weight, dtype=np.float64))
+    for _ in range(passes):
+        known = np.isfinite(result)
+        use = known[source] & assign[target] & ~known[target]
+        if not use.any():
+            break
+        vector = np.zeros(result.size, dtype=np.complex128)
+        total = np.zeros(result.size)
+        np.add.at(vector, target[use], magnitude[use] * np.exp(1j * result[source[use]]))
+        np.add.at(total, target[use], magnitude[use])
+        reached = total > 0
+        result[reached] = np.angle(vector[reached])
+        concentration[reached] = np.abs(vector[reached]) / total[reached]
+    return result, concentration

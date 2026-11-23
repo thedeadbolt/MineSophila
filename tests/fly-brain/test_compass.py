@@ -200,3 +200,31 @@ def test_type_pair_gains_set_the_named_groups_and_reject_unknown_pairs() -> None
     np.testing.assert_allclose(effective, [3.0, 2.0, 1.0], rtol=1e-5)
     with pytest.raises(ValueError, match="no edge group"):
         type_pair_raw_gains(raw, edge_group, source_types, target_types, {"PEG>EPG": 1.0}, 4.0)
+
+
+def test_pb_glomerulus_angle_accepts_a_trailing_fan_shaped_body_column() -> None:
+    assert pb_glomerulus_angle("PFL3(PB12c)_L1_C3") == pytest.approx(pb_glomerulus_angle("x_L1"))
+    assert pb_glomerulus_angle("PFNd(PB09)_R4_C6") == pytest.approx(pb_glomerulus_angle("x_R4"))
+    with pytest.raises(ValueError, match="glomerulus"):
+        pb_glomerulus_angle("FC2A_C3_L")
+
+
+def test_connectivity_angles_follow_weighted_angled_inputs() -> None:
+    from fly_brain.connectome.compass import connectivity_angles
+
+    # Neurons 0-3 have angles; 4 hears 0 and 1 equally; 5 hears 2 strongly and 0 (opposite) weakly;
+    # 6 hears only 4, so it is reached in a second pass; 7 hears nothing angled.
+    angles = np.array([0.0, np.pi / 2, np.pi, 0.0, np.nan, np.nan, np.nan, np.nan])
+    source = np.array([0, 1, 2, 0, 4])
+    target = np.array([4, 4, 5, 5, 6])
+    weight = np.array([1.0, 1.0, 3.0, 1.0, 1.0])
+    assign = np.array([False, False, False, False, True, True, True, True])
+
+    result, concentration = connectivity_angles(source, target, weight, angles, assign, passes=2)
+
+    assert result[4] == pytest.approx(np.pi / 4)
+    assert abs(np.angle(np.exp(1j * (result[5] - np.pi)))) < 1e-6
+    assert concentration[5] == pytest.approx(0.5)
+    assert result[6] == pytest.approx(np.pi / 4)
+    assert np.isnan(result[7])
+    assert result[0] == 0.0

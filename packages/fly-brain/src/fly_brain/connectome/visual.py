@@ -1,6 +1,9 @@
 """Reviewed first visual component selection for MaleCNS v1.0."""
 
-from fly_brain.connectome.central_complex import central_complex_component_specs
+from fly_brain.connectome.central_complex import (
+    central_complex_component_specs,
+    fan_shaped_body_component_specs,
+)
 from fly_brain.connectome.components import (
     BiologicalStatus,
     ComponentResolver,
@@ -107,6 +110,7 @@ def build_first_visual_network(
         visual_kenyon_input_component_spec(minimum_synapse_count),
         visual_kenyon_component_spec(minimum_synapse_count),
         *central_complex_component_specs(),
+        *fan_shaped_body_component_specs(),
     )
     if component_names is None:
         specs = first_visual_component_specs()

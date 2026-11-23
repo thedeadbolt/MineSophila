@@ -2,8 +2,11 @@
 
 from fly_brain.connectome.central_complex import (
     CENTRAL_COMPLEX_COMPONENTS,
+    FAN_SHAPED_BODY_COMPONENTS,
     central_complex_cell_types,
     central_complex_component_specs,
+    fan_shaped_body_cell_types,
+    fan_shaped_body_component_specs,
 )
 from fly_brain.connectome.compiler import (
     BrainCompiler,
@@ -62,6 +65,7 @@ from fly_brain.connectome.visual import (
 
 __all__ = [
     "CENTRAL_COMPLEX_COMPONENTS",
+    "FAN_SHAPED_BODY_COMPONENTS",
     "MALE_CNS_V1_RELEASE",
     "AnnotationEquals",
     "BiologicalStatus",
@@ -106,6 +110,8 @@ __all__ = [
     "build_receptor_input_map",
     "central_complex_cell_types",
     "central_complex_component_specs",
+    "fan_shaped_body_cell_types",
+    "fan_shaped_body_component_specs",
     "first_visual_component_specs",
     "visual_kenyon_component_spec",
     "visual_kenyon_input_component_spec",
