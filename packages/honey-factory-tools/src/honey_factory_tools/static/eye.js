@@ -25,7 +25,8 @@ const eye = {
   pending: null,
   hover: null,
   wipe: 0.5,
-  globe: { yaw: -0.5, pitch: 0.35 },
+  // Face the fly from the front, a little to its right and above, so what it looks at shows.
+  globe: { yaw: Math.PI - 0.45, pitch: 0.3 },
   hexPoints: [],
   globePoints: [],
 };
@@ -269,6 +270,29 @@ function tinted(mask, already) {
   return canvas;
 }
 
+/** The honey's bounding box as viewing directions: [left az, right az, top el, bottom el]
+    in degrees, from the panorama's 310° × 160° layout centred 10° up. */
+function honeyBoxDirections() {
+  const overlay = eye.overlay;
+  if (!$("eye-box").checked || !overlay || !overlay.box || !overlay.size) return null;
+  const [bx, by, bw, bh] = overlay.box;
+  const [w, h] = overlay.size;
+  const az = (x) => (x / w - 0.5) * 310;
+  const el = (y) => 10 + (0.5 - y / h) * 160;
+  return [az(bx), az(bx + bw), el(by), el(by + bh)];
+}
+
+/** A cyan ring round an ommatidium that sees honey, stronger the more of its view is honey. */
+function coverageRing(context, i, draw) {
+  if (!$("eye-mask").checked || !eye.data || !eye.data.coverage) return;
+  const c = eye.data.coverage[i] || 0;
+  if (c <= 0) return;
+  context.strokeStyle = `rgb(24 200 240 / ${0.45 + 0.55 * Math.min(1, c * 2)})`;
+  context.lineWidth = (1.2 + 1.6 * Math.min(1, c * 2)) * devicePixelRatio;
+  draw();
+  context.stroke();
+}
+
 /** The honey's mask and box over a panorama drawn in ``box``. */
 function drawHoney(context, box) {
   const overlay = eye.overlay;
@@ -413,8 +437,24 @@ function drawHex() {
         context.lineWidth = ratio;
         context.stroke();
       }
+      coverageRing(context, i, () => hexagon(context, x, y, r + 1.2 * ratio));
       eye.hexPoints.push([x, y, i]);
       if (i === eye.hover) marker(context, x, y, r + 2 * ratio);
+    }
+    // The honey's box, where it falls inside this eye's field.
+    const dirs = honeyBoxDirections();
+    if (dirs) {
+      const [l, rgt, t, b] = dirs;
+      const px0 = left + (Math.max(l, a0) - a0) * scale;
+      const px1 = left + (Math.min(rgt, a1) - a0) * scale;
+      const py0 = top + (e1 - Math.min(t, e1)) * scale;
+      const py1 = top + (e1 - Math.max(b, e0)) * scale;
+      if (px1 > px0 && py1 > py0) {
+        const pad = 2.2 * scale;
+        context.strokeStyle = cssVar("--honey");
+        context.lineWidth = 1.5 * ratio;
+        context.strokeRect(px0 - pad, py0 - pad, px1 - px0 + 2 * pad, py1 - py0 + 2 * pad);
+      }
     }
   });
 }
@@ -481,6 +521,10 @@ function drawGlobe() {
       context.strokeStyle = cssVar("--faint");
       context.stroke();
     }
+    coverageRing(context, i, () => {
+      context.beginPath();
+      context.arc(px, py, r * (0.55 + 0.45 * z) + 1.5 * ratio, 0, 2 * Math.PI);
+    });
     eye.globePoints.push([px, py, i]);
     if (i === eye.hover) {
       context.globalAlpha = 1;
@@ -488,6 +532,29 @@ function drawGlobe() {
     }
   }
   context.globalAlpha = 1;
+  // The honey's box traced on the sphere, front side only.
+  const dirs = honeyBoxDirections();
+  if (dirs) {
+    const [l, rgt, t, b] = dirs;
+    const unit = (az, el) => {
+      const a = (az * Math.PI) / 180;
+      const e = (el * Math.PI) / 180;
+      return [Math.cos(e) * Math.cos(a), Math.cos(e) * Math.sin(a), Math.sin(e)];
+    };
+    const pad = 2;
+    const [L, R, T, B] = [l - pad, rgt + pad, t + pad, b - pad];
+    const edge = (n, f) => Array.from({ length: n + 1 }, (_, k) => f(k / n));
+    const outline = [
+      ...edge(24, (u) => unit(L + (R - L) * u, T)),
+      ...edge(24, (u) => unit(R, T + (B - T) * u)),
+      ...edge(24, (u) => unit(R - (R - L) * u, B)),
+      ...edge(24, (u) => unit(L, B - (B - T) * u)),
+    ];
+    context.strokeStyle = cssVar("--honey");
+    context.lineWidth = 1.6 * ratio;
+    line(outline);
+    context.lineWidth = ratio;
+  }
   // The direction the fly faces.
   const [fx, fy, fz] = rotate([1, 0, 0]);
   if (fz > 0) {
@@ -717,7 +784,7 @@ $("eye-hex").addEventListener("pointermove", (event) => {
 }
 for (const id of ["eye-decoded", "eye-camera", "eye-hex", "eye-globe"]) $(id).addEventListener("pointerleave", () => setHover(null));
 for (const input of document.querySelectorAll('input[name="eye-channel"], #eye-gain')) input.addEventListener("input", drawAll);
-for (const id of ["eye-mask", "eye-box"]) $(id).addEventListener("input", () => eye.data && (drawCamera(), drawDecoded()));
+for (const id of ["eye-mask", "eye-box"]) $(id).addEventListener("input", () => eye.data && drawAll());
 for (const input of document.querySelectorAll('input[name="eye-pigments"]')) input.addEventListener("input", () => eye.data && drawSpectra());
 new ResizeObserver(() => eye.active && drawAll()).observe($("eye-panel"));
 
