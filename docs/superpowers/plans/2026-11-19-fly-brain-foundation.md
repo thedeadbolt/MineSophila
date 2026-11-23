@@ -734,6 +734,18 @@ Then rerun the compass and self-motion clip experiments against the same GRU con
   Then ADR 0028 (per-cell-type activation), then FC2 (FC2A/B/C, 92 neurons in MaleCNS) as the
   goal memory read by PFL3.
 
+#### Planned after 9i: `fly-brain trace-clip` for the honey-factory-tools viewer
+
+Agreed with the visualizer work (branch `feat/honey-factory-tools-visualizer`):
+`fly-brain trace-clip CACHE --config --checkpoint --clip-id --out` writes an npz with format
+`fly-brain-clip-trace-v1`.
+
+- Per frame: `activity` (T, N) float16, `yaw`, `presence`, `direction` (T, 3), `visible`,
+  `teacher_actions` and its mask, `readout` (T, 4), and EPG `bump_phase` and `bump_strength`.
+- Per neuron: `body_id`, `cell_type`, `side`, `pb_angle` (NaN when there is none) and `stage`.
+- JSON header: format, checkpoint sha256, config, and the frame-to-clip mapping (dataset id,
+  clip id, frame offsets) so the viewer can line frames up with the clip.
+
 #### Planned for the action head: outcome-weighted imitation (proposed 2026-11-22)
 
 The teacher is imperfect on purpose. Drift and recovery give state coverage beyond perfect paths,
