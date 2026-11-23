@@ -197,3 +197,20 @@ def test_clip_activity_returns_chosen_neurons_per_frame() -> None:
     )
     with pytest.raises(ValueError, match="neuron"):
         model.activity(parameters, batch.features, batch.time_mask, np.array([99]))
+
+
+def test_existing_fixture_brain_output_is_pinned() -> None:
+    model = ConnectomeClipModel(compiled_brain(), 2)
+    batch = clips()
+
+    prediction = model.run(model.initialize(0), batch.features[:2], batch.time_mask[:2])
+
+    assert model.brain.edge_gain_count == 5
+    np.testing.assert_allclose(
+        prediction.presence_probability[0],
+        [0.5, 0.507762, 0.515862, 0.5212, 0.524421, 0.527828, 0.530712],
+        atol=2e-6,
+    )
+    np.testing.assert_allclose(
+        prediction.direction[0, -1], [0.772278, -0.586732, 0.243581], atol=2e-6
+    )

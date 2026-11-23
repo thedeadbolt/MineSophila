@@ -42,14 +42,19 @@ from fly_brain.connectome import (
 from fly_brain.connectome.central_complex import (
     ANTERIOR_VISUAL_INPUT_TYPES,
     COMPASS_TYPES,
+    FAN_SHAPED_BODY_COLUMN_TYPES,
+    GOAL_MEMORY_TYPES,
+    GOAL_TANGENTIAL_TYPES,
     RING_NEURON_TYPES,
     STEERING_TYPES,
     TUBERCLE_BULB_TYPES,
+    VECTOR_INPUT_TYPES,
 )
 from fly_brain.connectome.compass import (
     CompassOperatingPoint,
     bump_metrics,
     compass_modes,
+    connectivity_angles,
     pb_glomerulus_angle,
     ring_attractor_gains,
     type_pair_raw_gains,
@@ -65,6 +70,7 @@ from fly_brain.connectome.subcircuit import extract_subcircuit
 from fly_brain.connectome.trace import (
     bump_phase_strength,
     component_flow,
+    goal_phase_strength,
     primary_components,
     readout_decoding,
 )
@@ -1636,6 +1642,52 @@ def _load_connectome_config(
         raise ValueError(f"invalid connectome experiment setting: {error}") from error
 
 
+def _connectome_cell_types(config: ConnectomeModelConfig) -> tuple[str, ...]:
+    """Named cell types to load; central-complex and fan-shaped-body types only when selected."""
+    cell_types = PHOTORECEPTOR_TYPES + LAMINA_RELAY_TYPES + MEDULLA_RELAY_TYPES
+    if set(CENTRAL_COMPLEX_COMPONENTS).intersection(config.components):
+        cell_types += central_complex_cell_types()
+    if set(FAN_SHAPED_BODY_COMPONENTS).intersection(config.components):
+        cell_types += fan_shaped_body_cell_types()
+    return cell_types
+
+
+def _heading_angles(
+    brain: CompiledBrain, graph: ConnectomeGraph, connectome_root: Path
+) -> NDArray[np.float64]:
+    """Heading (radians) per compiled neuron: bridge glomerulus where the instance names one,
+    then connectivity for FC2, hDelta and FB5A (two passes); NaN elsewhere.
+
+    ``_compass_layout`` stays EPG-only because the ring-attractor search scores EPG angles.
+    """
+    neurons = graph.neurons
+    types = neurons.cell_types[np.searchsorted(neurons.neuron_ids, brain.neuron_ids)]
+    named = np.isin(types, (*COMPASS_TYPES, *STEERING_TYPES, *VECTOR_INPUT_TYPES))
+    angles = np.full(types.size, np.nan)
+    if named.any():
+        instances = MaleCNSLoader(connectome_root, verify_checksums=False).instances(
+            brain.neuron_ids[named]
+        )
+        for index in np.flatnonzero(named):
+            try:
+                angles[index] = pb_glomerulus_angle(instances[int(brain.neuron_ids[index])])
+            except ValueError:
+                continue
+    columnar = np.isin(
+        types, (*GOAL_MEMORY_TYPES, *FAN_SHAPED_BODY_COLUMN_TYPES, *GOAL_TANGENTIAL_TYPES)
+    )
+    if columnar.any():
+        angles, _ = connectivity_angles(
+            brain.source_indexes,
+            brain.target_indexes,
+            brain.anatomical_weights,
+            angles,
+            columnar,
+            passes=2,
+        )
+    return angles
+
+
 def _build_connectome(
     layout: SensorLayout,
     connectome_root: Path,
@@ -1647,11 +1699,7 @@ def _build_connectome(
     ReceptorInputMap,
     BrainCompiler,
 ]:
-    cell_types = PHOTORECEPTOR_TYPES + LAMINA_RELAY_TYPES + MEDULLA_RELAY_TYPES
-    if set(CENTRAL_COMPLEX_COMPONENTS).intersection(config.components):
-        cell_types += central_complex_cell_types()
-    if set(FAN_SHAPED_BODY_COMPONENTS).intersection(config.components):
-        cell_types += fan_shaped_body_cell_types()
+    cell_types = _connectome_cell_types(config)
     selector_loader = MaleCNSLoader(
         connectome_root,
         minimum_synapse_count=config.minimum_synapse_count,
@@ -1912,14 +1960,20 @@ def _trace_clip(args: argparse.Namespace) -> int:
         if selected.any():
             component_activity[:, position] = activity[:, selected].mean(axis=1)
             component_release[:, position] = release[:, selected].mean(axis=1)
-    angles = np.full(types.size, np.nan)
+    angles = _heading_angles(brain, graph, args.connectome_root)
     bump_phase = np.full(length, np.nan)
     bump_strength = np.full(length, np.nan)
+    goal: dict[str, NDArray[np.float32]] = {}
     if "compass" in model_config.components:
-        _, epg_angles = _compass_layout(brain, graph, args.connectome_root)
-        angles = epg_angles
         epg = np.flatnonzero(types == "EPG")
         bump_phase, bump_strength = bump_phase_strength(activity[:, epg], angles[epg])
+    if "goal_memory" in model_config.components:
+        fc2 = np.flatnonzero(np.isin(types, GOAL_MEMORY_TYPES))
+        goal_phase, goal_strength = goal_phase_strength(activity[:, fc2], angles[fc2])
+        goal = {
+            "goal_phase": goal_phase.astype(np.float32),
+            "goal_strength": goal_strength.astype(np.float32),
+        }
     start = int(dataset.offsets[clip_index])
     stop = start + length
     width = context.features.shape[2] - dataset.motion_context.shape[1]
@@ -1969,6 +2023,7 @@ def _trace_clip(args: argparse.Namespace) -> int:
         bearing_elevation_deg=elevation.astype(np.float32),
         bump_phase=bump_phase.astype(np.float32),
         bump_strength=bump_strength.astype(np.float32),
+        **goal,
         component_activity=component_activity,
         component_release=component_release,
         component_flow=flow,

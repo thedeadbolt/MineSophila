@@ -21,6 +21,14 @@ def bump_phase_strength(
     return np.degrees(np.angle(vector)), strength
 
 
+def goal_phase_strength(
+    activity: NDArray[np.floating], angles: NDArray[np.floating]
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Like ``bump_phase_strength`` over the neurons that have an angle (others are ignored)."""
+    angled = np.isfinite(np.asarray(angles))
+    return bump_phase_strength(np.asarray(activity)[:, angled], np.asarray(angles)[angled])
+
+
 def primary_components(
     neuron_ids: NDArray[np.integer],
     members: Mapping[str, NDArray[np.integer]],

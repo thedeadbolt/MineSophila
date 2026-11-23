@@ -61,3 +61,18 @@ def test_readout_decoding_matches_the_training_convention() -> None:
     np.testing.assert_allclose(probability, [0.5, 1 / (1 + np.exp(-10))], rtol=1e-6)
     np.testing.assert_allclose(azimuth, [45.0, -90.0], atol=1e-5)
     np.testing.assert_allclose(elevation, [0.0, 45.0], atol=1e-5)
+
+
+def test_goal_phase_ignores_neurons_without_angles() -> None:
+    from fly_brain.connectome.trace import goal_phase_strength
+
+    angles = np.append(np.radians(np.arange(8) * 45.0), np.nan)
+    ring = np.maximum(np.cos(angles[:8] - np.radians(135.0)), 0.0)
+    activity = np.append(ring, 5.0)[None]
+
+    phase, strength = goal_phase_strength(activity, angles)
+    expected, _ = bump_phase_strength(ring[None], angles[:8])
+
+    assert np.isfinite(phase).all()
+    assert np.isfinite(strength).all()
+    assert phase[0] == pytest.approx(expected[0], abs=1e-6)

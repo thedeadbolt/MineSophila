@@ -117,7 +117,15 @@ def central_complex_cell_types() -> tuple[str, ...]:
 VECTOR_INPUT_TYPES = ("PFNa", "PFNd", "PFNm_a", "PFNm_b", "PFNv")
 FAN_SHAPED_BODY_COLUMN_TYPES = tuple(f"hDelta{letter}" for letter in "ABCDEFGHIJKLM")
 GOAL_MEMORY_TYPES = ("FC2A", "FC2B", "FC2C")
-FAN_SHAPED_BODY_COMPONENTS = ("vector_inputs", "fan_shaped_body_columns", "goal_memory")
+# FB5A is the largest single input to FC2 and gets most of its own input from FC2: a loop
+# that may hold the goal.
+GOAL_TANGENTIAL_TYPES = ("FB5A",)
+FAN_SHAPED_BODY_COMPONENTS = (
+    "vector_inputs",
+    "fan_shaped_body_columns",
+    "goal_memory",
+    "goal_tangentials",
+)
 
 
 def fan_shaped_body_component_specs() -> tuple[ComponentSpec, ...]:
@@ -144,8 +152,20 @@ def fan_shaped_body_component_specs() -> tuple[ComponentSpec, ...]:
             "FC2 columnar neurons holding a goal direction for PFL3 to compare with heading.",
             BiologicalStatus.ANATOMICAL,
         ),
+        ComponentSpec(
+            "goal_tangentials",
+            AnnotationEquals("cell_types", GOAL_TANGENTIAL_TYPES),
+            ComponentRole.MEMORY,
+            "FB5A tangential neurons in a reciprocal loop with FC2.",
+            BiologicalStatus.ANATOMICAL,
+        ),
     )
 
 
 def fan_shaped_body_cell_types() -> tuple[str, ...]:
-    return VECTOR_INPUT_TYPES + FAN_SHAPED_BODY_COLUMN_TYPES + GOAL_MEMORY_TYPES
+    return (
+        VECTOR_INPUT_TYPES
+        + FAN_SHAPED_BODY_COLUMN_TYPES
+        + GOAL_MEMORY_TYPES
+        + GOAL_TANGENTIAL_TYPES
+    )

@@ -90,7 +90,7 @@ def test_fan_shaped_body_components_are_separate_opt_in_selections() -> None:
 
     assert tuple(specs) == FAN_SHAPED_BODY_COMPONENTS
     assert {"FC2A", "FC2B", "FC2C", "hDeltaA", "hDeltaM", "PFNd", "PFNv"} <= set(types)
-    assert not {"PFNp_a", "FB5A"} & set(types)
+    assert not {"PFNp_a", "FB4L"} & set(types)
     assert not set(types) & set(central_complex_cell_types())
     assert specs["goal_memory"].role.value == "memory"
     # The names are known to the network builder (this fixture has no FB neurons to resolve).
@@ -98,3 +98,27 @@ def test_fan_shaped_body_components_are_separate_opt_in_selections() -> None:
         build_first_visual_network(
             _graph(), component_names=("photoreceptors", "visual_projection", "goal_memory")
         )
+
+
+def test_goal_tangentials_component_selects_fb5a() -> None:
+    from fly_brain.connectome import FAN_SHAPED_BODY_COMPONENTS, fan_shaped_body_cell_types
+
+    assert "FB5A" in fan_shaped_body_cell_types()
+    assert "FB5A" not in central_complex_cell_types()
+    assert FAN_SHAPED_BODY_COMPONENTS[-1] == "goal_tangentials"
+
+
+def test_cell_types_without_fan_shaped_body_are_unchanged() -> None:
+    from fly_brain.cli import _connectome_cell_types  # pyright: ignore[reportPrivateUsage]
+    from fly_brain.connectome import FAN_SHAPED_BODY_COMPONENTS, fan_shaped_body_cell_types
+    from fly_brain.models import ConnectomeModelConfig
+
+    names = ("photoreceptors", "visual_projection", *CENTRAL_COMPLEX_COMPONENTS)
+    plain = _connectome_cell_types(ConnectomeModelConfig(components=names))
+    with_fb = _connectome_cell_types(
+        ConnectomeModelConfig(components=(*names, *FAN_SHAPED_BODY_COMPONENTS))
+    )
+
+    assert not set(plain) & set(fan_shaped_body_cell_types())
+    assert set(central_complex_cell_types()) <= set(plain)
+    assert set(with_fb) == set(plain) | set(fan_shaped_body_cell_types())
