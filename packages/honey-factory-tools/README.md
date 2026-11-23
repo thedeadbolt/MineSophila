@@ -94,14 +94,19 @@ the URL opens a workspace, and for a clip dataset `?clip=s000123-c02` opens that
   curves on both pigment axes. `--no-eye` turns the workspace off.
 - **Brain**: fly-brain output, read from files. `--runs DIR` lists the `*.report.json`
   files in a sortable table, and opening one shows its loss curve, scores by split and clip
-  type, and connectome components. **Circuit** draws the selected run, or the most complete
-  one, from the eye through the optic lobe and the compass pathway to the readout. It uses
-  the report's components, neuron counts, input and readout components, and its
-  component-to-component synapse counts once fly-brain writes them. `--traces DIR` adds
+  type, and connectome components. **Circuit** is a wiring diagram of the selected run
+  (or the most complete one), drawn as connectome papers draw circuits. The neuropils are
+  columns in signal order: the visual system along the top, and the anterior visual pathway
+  into the central complex below. Each column holds its most connected cell types as nodes,
+  sized by neuron count and coloured by transmitter. Edges are MaleCNS synapse counts from
+  `--connectome`, as wide as their count, ending in an arrow when excitatory and a bar when
+  inhibitory. Recurrent connections arc beside their column. Columns the run leaves out are
+  faded, and its readout components feed a readout block. Pointing at a node isolates its
+  connections. `--traces DIR` adds
   **Clip playback** for clips with a `fly-brain-clip-trace-v1` file: activity by cell type,
   the compass ring with its bump against the fly's heading, and the readout against the
   truth, next to the fly's own view of that frame. In Brain the clip list shows only clips
-  that have a trace. During playback the circuit's boxes also fill with each stage's
+  that have a trace. During playback the circuit's nodes also glow with each cell type's
   activity.
 - **3D brain** (Brain): every model neuron at its soma in MaleCNS space, a sampled cloud
   of the rest of the brain for its outline, and the 12,000 strongest connections, drawn
