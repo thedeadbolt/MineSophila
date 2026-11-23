@@ -57,8 +57,11 @@ class ConnectomeModelConfig:
     regional_elevation_bins: int = 4
     readout_normalization: Literal["none", "initial"] = "none"
     self_motion_input: Literal["none", "pen_yaw"] = "none"
+    self_motion_scale: float = 0.1
 
     def __post_init__(self) -> None:
+        if not np.isfinite(self.self_motion_scale) or self.self_motion_scale <= 0:
+            raise ValueError("self_motion_scale must be positive")
         if self.self_motion_input not in {"none", "pen_yaw"}:
             raise ValueError(f"unsupported self-motion input {self.self_motion_input!r}")
         if self.self_motion_input == "pen_yaw" and "compass" not in self.components:

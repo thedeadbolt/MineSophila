@@ -687,7 +687,7 @@ def _train_connectome_clips(args: argparse.Namespace) -> int:
                     "cell_types": list(PEN_TYPES),
                     "neurons": int(_self_motion_neurons(graph).size),
                     "context_feature": "yaw_rate",
-                    "scale": YAW_PORT_SCALE,
+                    "scale": model_config.self_motion_scale,
                     "sign": "+1 left, -1 right",
                     "biological_status": "approximation",
                 }
@@ -1630,7 +1630,6 @@ def _build_connectome(
 SELF_MOTION_PORT = "angular_velocity"
 PEN_TYPES = ("PEN_a(PEN1)", "PEN_b(PEN2)")
 YAW_CONTEXT_INDEX = 3  # yaw_rate in EGOCENTRIC_MOTION_SCHEMA
-YAW_PORT_SCALE = 0.1  # degrees per tick to port units, about the range of visual input
 
 
 def _self_motion_neurons(graph: ConnectomeGraph) -> NDArray[np.int64]:
@@ -1666,7 +1665,7 @@ def _connectome_clip_batch(
         batch.features[:, :, width:],
         yaw_index=YAW_CONTEXT_INDEX,
         signs=_self_motion_signs(graph),
-        scale=YAW_PORT_SCALE,
+        scale=config.self_motion_scale,
     )
     features = np.concatenate([batch.features[:, :, :width], motion], axis=2)
     return TemporalBatch(features, batch.time_mask, batch.presence, batch.direction)

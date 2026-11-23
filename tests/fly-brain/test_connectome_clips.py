@@ -23,6 +23,7 @@ from fly_brain.connectome import (
 from fly_brain.models import (
     ConnectomeClipModel,
     ConnectomeClipTrainingConfig,
+    ConnectomeModelConfig,
     TemporalBatch,
     self_motion_port_values,
     train_connectome_clips,
@@ -170,3 +171,11 @@ def test_self_motion_port_values_sign_yaw_by_brain_side() -> None:
     np.testing.assert_allclose(values[0], [[1.0, -1.0, 1.0], [-0.5, 0.5, -0.5]])
     with pytest.raises(ValueError, match="yaw"):
         self_motion_port_values(context, yaw_index=4, signs=signs, scale=0.1)
+
+
+def test_self_motion_scale_is_configurable_and_positive() -> None:
+    assert ConnectomeModelConfig().self_motion_scale == 0.1
+    assert ConnectomeModelConfig(self_motion_scale=0.002).self_motion_scale == 0.002
+    for bad in (0.0, -1.0, float("nan")):
+        with pytest.raises(ValueError, match="self_motion_scale"):
+            ConnectomeModelConfig(self_motion_scale=bad)
