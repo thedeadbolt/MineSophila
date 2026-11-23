@@ -33,3 +33,4 @@ Preserve accepted decisions. To change one, write a new ADR that supersedes it.
 | [0025](0025-local-dataset-and-artifact-storage.md) | Local dataset and large-artifact storage | Accepted |
 | [0026](0026-jax-first-learning-backend.md) | JAX as the first learning backend | Accepted |
 | [0027](0027-signed-resting-potential-connectome-dynamics.md) | Signed, resting-potential connectome dynamics | Accepted |
+| [0028](0028-thresholded-release-and-fitted-compass-integrator.md) | Thresholded release per cell type and a fitted compass integrator | Proposed |
