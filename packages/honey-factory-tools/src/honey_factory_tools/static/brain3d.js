@@ -11,6 +11,8 @@ const COMPONENT_COLOURS = {
   photoreceptors: [0.85, 0.87, 0.9], lamina_relays: [0.62, 0.66, 0.72], medulla_relays: [0.45, 0.62, 0.78],
   visual_projection: [0.66, 0.5, 1.0], anterior_visual_inputs: [0.24, 0.55, 0.99], visual_kenyon: [0.9, 0.37, 0.69],
   tubercle_bulb: [0.09, 0.78, 0.94], ring_neurons: [0.36, 0.79, 0.54], compass: [0.94, 0.71, 0.16], steering: [0.91, 0.45, 0.23],
+  collision_relays: [1.0, 0.36, 0.45], vector_inputs: [0.78, 0.88, 0.35], goal_circuit: [0.83, 0.65, 1.0], steering_outputs: [0.96, 0.62, 0.42],
+  steering_bridges: [0.69, 0.72, 0.77], touch_ascending: [0.5, 0.89, 0.75], descending_steering: [1.0, 0.23, 0.23],
 };
 const EXCITATORY = [0.32, 0.86, 0.85];
 const INHIBITORY = [0.42, 0.55, 1.0];

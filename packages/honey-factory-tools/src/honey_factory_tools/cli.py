@@ -87,6 +87,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     graph.add_argument("directory", type=Path, help="the male-cns-v1.0 feather directory")
     graph.add_argument("--out", type=Path, required=True, help="the graph JSON to write")
     graph.add_argument("--minimum-synapses", type=int, default=5, help="per neuron pair")
+    graph.add_argument(
+        "--components-from",
+        type=Path,
+        action="append",
+        default=[],
+        help="a fly-brain run report whose components (for example pathfinding pathways) to"
+        " add; repeatable",
+    )
     inspect.add_argument("--port", type=int, default=0, help="port on 127.0.0.1 (0: any free one)")
     inspect.add_argument("--no-browser", action="store_true", help="do not open a browser")
     inspect.add_argument("directory", type=Path, help="the dataset directory holding dataset.json")
@@ -210,7 +218,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _inspect(cast(Catalog, catalog), args, LiveTraces(catalog))
     if args.command == "connectome-graph":
         try:
-            built = connectome.build(cast(Path, args.directory), cast(int, args.minimum_synapses))
+            extra: dict[str, list[str]] = {}
+            for report in cast(list[Path], args.components_from):
+                for name, types in connectome.report_components(report).items():
+                    extra.setdefault(name, [])
+                    extra[name] += [t for t in types if t not in extra[name]]
+            built = connectome.build(
+                cast(Path, args.directory),
+                cast(int, args.minimum_synapses),
+                extra_components=extra or None,
+            )
         except connectome.ConnectomeError as error:
             print(f"error: {error}", file=sys.stderr)
             return 2

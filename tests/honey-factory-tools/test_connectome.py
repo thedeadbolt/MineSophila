@@ -106,6 +106,28 @@ class TestBuild:
         assert "DNp01" not in names
         assert names.index("R1-R6") < names.index("Tm3") < names.index("EPG") < names.index("PFL3")
 
+    def test_extra_components_from_a_model_add_their_cell_types(self, connectome_dir: Path) -> None:
+        # A pathfinding model's descending neurons (DNp01 here); EPG stays in the compass.
+        extra = {"descending_steering": ["DNp01", "EPG"], "collision_relays": ["SMP001"]}
+        graph = connectome.build(connectome_dir, extra_components=extra)
+        counts = {c["name"]: c["neurons"] for c in graph["components"]}
+        assert counts["descending_steering"] == 1
+        assert counts["collision_relays"] == 1
+        assert counts["compass"] == 2
+        names = [t["name"] for t in graph["cell_types"]]
+        assert names.index("PFL3") < names.index("DNp01")
+        edges = {(names[a], names[b]): w for a, b, w, _ in graph["type_edges"]}
+        assert edges[("PFL3", "DNp01")] == 30
+        assert graph["component_edges"]["steering"]["descending_steering"] == 30
+
+    def test_extra_components_come_from_a_fly_brain_report(self, tmp_path: Path) -> None:
+        report = tmp_path / "report.json"
+        report.write_text(json.dumps({"connectome": {"component_cell_types": {
+            "descending_steering": {"DNp01": 1}, "compass": {"EPG": 2}}}}))  # fmt: skip
+        assert connectome.report_components(report) == {
+            "descending_steering": ["DNp01"], "compass": ["EPG"]
+        }
+
     def test_counts_synapses_by_cell_type_and_component(self, connectome_dir: Path) -> None:
         graph = connectome.build(connectome_dir)
         names = [t["name"] for t in graph["cell_types"]]

@@ -66,12 +66,19 @@ COMPONENT_ORDER = (
     "lamina_relays",
     "medulla_relays",
     "visual_projection",
+    "collision_relays",
     "anterior_visual_inputs",
     "visual_kenyon",
     "tubercle_bulb",
     "ring_neurons",
     "compass",
+    "vector_inputs",
+    "goal_circuit",
     "steering",
+    "steering_outputs",
+    "steering_bridges",
+    "touch_ascending",
+    "descending_steering",
 )
 NEURON_COMPONENTS = ("tubercle_bulb", "ring_neurons", "compass", "steering")
 _GLOMERULUS = re.compile(r"_([LR])(\d)$")
@@ -114,8 +121,37 @@ def component_of(cell_type: str | None, superclass: str | None) -> str | None:
     return None
 
 
-def build(directory: Path, minimum_synapse_count: int = 5, max_type_edges: int = 6000) -> Record:
-    """The graph described in the module docstring, from a MaleCNS v1.0 directory."""
+def _ranks(body: dict[int, Record]) -> dict[str, int]:
+    """Each component's place in the flow: ``COMPONENT_ORDER``, then any others by name."""
+    extra = sorted({str(r["component"]) for r in body.values()} - set(COMPONENT_ORDER))
+    return {name: rank for rank, name in enumerate((*COMPONENT_ORDER, *extra))}
+
+
+def report_components(report: Path) -> dict[str, list[str]]:
+    """A fly-brain run report's components as ``{component: [cell types]}``, from its
+    ``connectome.component_cell_types``."""
+    value: Any = json.loads(report.read_text())
+    types: Any = ((value.get("connectome") or {}).get("component_cell_types")) or {}
+    if not isinstance(types, dict) or not types:
+        raise ConnectomeError(f"{report} lists no connectome.component_cell_types")
+    return {str(name): sorted(str(t) for t in members) for name, members in types.items()}
+
+
+def build(
+    directory: Path,
+    minimum_synapse_count: int = 5,
+    max_type_edges: int = 6000,
+    extra_components: dict[str, list[str]] | None = None,
+) -> Record:
+    """The graph described in the module docstring, from a MaleCNS v1.0 directory.
+
+    ``extra_components`` (``{component: [cell types]}``, for example a pathfinding model's,
+    see ``report_components``) adds every neuron of those types that the built-in rules leave
+    out, under the first component listing it."""
+    extra_type: dict[str, str] = {}
+    for name, types in (extra_components or {}).items():
+        for cell_type in types:
+            extra_type.setdefault(cell_type, name)
     for name in (ANNOTATIONS, TRANSMITTERS, WEIGHTS):
         if not (directory / name).is_file():
             raise ConnectomeError(f"{directory} has no {name}")
@@ -129,7 +165,7 @@ def build(directory: Path, minimum_synapse_count: int = 5, max_type_edges: int =
     body: dict[int, Record] = {}
     kenyon: set[int] = set()
     for row in annotations:
-        component = component_of(row["type"], row["superclass"])
+        component = component_of(row["type"], row["superclass"]) or extra_type.get(row["type"])
         if component is not None:
             body[int(row["bodyId"])] = {**row, "component": component}
         elif row["class"] == "Kenyon_Cell":
@@ -219,7 +255,7 @@ def _summarise(
     minimum_synapse_count: int,
     max_type_edges: int,
 ) -> Record:
-    order = {name: rank for rank, name in enumerate(COMPONENT_ORDER)}
+    order = _ranks(body)
     type_rows: dict[str, list[int]] = defaultdict(list)
     for body_id, row in body.items():
         type_rows[str(row["type"] or "untyped")].append(body_id)
@@ -266,7 +302,9 @@ def _summarise(
     ]
 
     present = [
-        name for name in COMPONENT_ORDER if any(r["component"] == name for r in body.values())
+        name
+        for name in sorted(_ranks(body), key=_ranks(body).get)
+        if any(r["component"] == name for r in body.values())
     ]
     return {
         "format": FORMAT,
@@ -328,7 +366,7 @@ def _atlas(
     repeated so positions spread outwards from the medulla, plus a small fixed offset per
     body so they do not stack. ``background`` is a fixed sample of the other brain neurons'
     somas (the nerve cord left out), which draws the outline of the brain."""
-    order = {name: rank for rank, name in enumerate(COMPONENT_ORDER)}
+    order = _ranks(body)
     type_index = {t["name"]: i for i, t in enumerate(cell_types)}
     ids = sorted(body, key=lambda b: (order[body[b]["component"]], str(body[b]["type"] or ""), b))
     index = {b: i for i, b in enumerate(ids)}

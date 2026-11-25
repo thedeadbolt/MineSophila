@@ -10,6 +10,9 @@ const STAGE_COLOURS = {
   photoreceptors: "#c9ccd1", lamina_relays: "#a7adb6", medulla_relays: "#858c96", visual_projection: "#b48cff", visual_kenyon: "#e05fb0",
   anterior_visual_inputs: "#3d8bfd", MeTu: "#3d8bfd", tubercle_bulb: "#18c8f0", TuBu: "#18c8f0", ring_neurons: "#5cc98a", ER: "#5cc98a",
   compass: "#f0b429", steering: "#e8743b", PFL: "#e8743b", other: "#6b717a",
+  // Pathfinding (ADR 0034) and goal-memory components.
+  collision_relays: "#ff5d73", vector_inputs: "#c8e05a", goal_circuit: "#d4a5ff", steering_outputs: "#f59e6b",
+  steering_bridges: "#b0b8c4", touch_ascending: "#7fe3c0", descending_steering: "#ff3b3b",
 };
 const brain = {
   active: false,
@@ -745,6 +748,14 @@ const REGIONS = [
   ["ring_neurons", "Bulb → ellipsoid body", 2, 1],
   ["compass", "Ellipsoid body, PB", 3, 1],
   ["steering", "Bridge → LAL", 4, 1],
+  ["steering_outputs", "LAL → descending", 5, 1],
+  // A third row for the pathfinding pathways (ADR 0034) and the goal memory.
+  ["vector_inputs", "PFN vector inputs", 0, 2],
+  ["goal_circuit", "Fan-shaped body goal", 1, 2],
+  ["touch_ascending", "Ascending touch", 2, 2],
+  ["collision_relays", "Lobula → collision relays", 3, 2],
+  ["steering_bridges", "Steering bridges", 4, 2],
+  ["descending_steering", "Descending neurons", 5, 2],
 ];
 const TRANSMITTERS = {
   acetylcholine: { colour: "#e0a33a", name: "acetylcholine", sign: "excitatory" },
@@ -790,6 +801,18 @@ async function drawCircuit() {
   const graph = await ensureGraph();
   // The run list names the models; the circuit follows the open episode's when it is there.
   if (!brain.runs && ((((selection.dataset || {}).workspaces || {}).brain || {}).runs)) await loadRuns();
+  // A live episode names its model run in its clip record, before any trace is loaded.
+  const clipId = selectionClip(selection);
+  if (clipId && brain.episodeRunClip !== clipId && clipId.includes(".")) {
+    brain.episodeRunClip = clipId;
+    try {
+      const body = await api(`/api/clips/${encodeURIComponent(clipId)}`);
+      const runDir = ((body.clip || {}).live || {}).run_dir;
+      if (runDir) brain.episodeRun = runDir.replace(/\/+$/, "").split("/").pop();
+    } catch (error) {
+      // Not a live episode: keep the default choice.
+    }
+  }
   const name = chooseCircuitRun();
   if (!graph) {
     target.replaceChildren();
@@ -806,7 +829,8 @@ async function drawCircuit() {
   const components = (report.connectome || {}).components || {};
   const inModel = (component) => !name || !Object.keys(components).length || component in components;
   const model = report.model || {};
-  const readouts = new Set(model.readout_components || []);
+  // The model's readouts, and the components its action head reads (the motor output).
+  const readouts = new Set([...(model.readout_components || []), ...(model.action_components || [])]);
   const compilation = model.compilation || {};
   const limit = Number($("circuit-edges").value);
   const showRecurrent = $("circuit-recurrent").checked;
@@ -845,8 +869,9 @@ async function drawCircuit() {
   }
 
   // Place regions: columns left to right, the two rows one under the other.
-  const rowHeight = [0, 1].map((row) => Math.max(0, ...regions.filter((r) => r.row === row).map((r) => CIRCUIT.header + r.members.length * CIRCUIT.row)));
-  const rowTop = [CIRCUIT.top, CIRCUIT.top + rowHeight[0] + CIRCUIT.rowGap];
+  const rowHeight = [0, 1, 2].map((row) => Math.max(0, ...regions.filter((r) => r.row === row).map((r) => CIRCUIT.header + r.members.length * CIRCUIT.row)));
+  const rowTop = [CIRCUIT.top];
+  for (const h of rowHeight.slice(0, -1)) rowTop.push(rowTop[rowTop.length - 1] + h + (h ? CIRCUIT.rowGap : 0));
   let height = 0;
   for (const region of regions) {
     region.x = CIRCUIT.left + region.column * CIRCUIT.columnWidth;
@@ -926,7 +951,7 @@ async function drawCircuit() {
     const y = rowTop[1] + 20;
     terminals.append(svg("rect", { x, y, width: 112, height: 60, rx: 8, class: "terminal read" }));
     terminals.append(svg("text", { x: x + 10, y: y + 21, class: "band-title" }, "Readout"));
-    terminals.append(svg("text", { x: x + 10, y: y + 36, class: "band-sub" }, "presence, bearing"));
+    terminals.append(svg("text", { x: x + 10, y: y + 36, class: "band-sub" }, (model.action_components || []).length ? "presence, bearing, actions" : "presence, bearing"));
     terminals.append(svg("text", { x: x + 10, y: y + 49, class: "band-sub" }, compilation.readout_neuron_count ? `${number(compilation.readout_neuron_count)} neurons` : ""));
     for (const region of regions) {
       if (!readouts.has(region.component)) continue;
@@ -1128,7 +1153,7 @@ function paintCircuitActivity() {
 // force-directed but anchored left to right in the order signals flow, and compass
 // neurons sit on a ring at their protocerebral-bridge angle.
 
-const COMPONENT_FLOW = ["photoreceptors", "lamina_relays", "medulla_relays", "visual_projection", "anterior_visual_inputs", "visual_kenyon", "tubercle_bulb", "ring_neurons", "compass", "steering"];
+const COMPONENT_FLOW = ["photoreceptors", "lamina_relays", "medulla_relays", "visual_projection", "collision_relays", "anterior_visual_inputs", "visual_kenyon", "tubercle_bulb", "ring_neurons", "compass", "vector_inputs", "goal_circuit", "steering", "steering_outputs", "steering_bridges", "touch_ascending", "descending_steering"];
 const net = { graph: null, level: "types", nodes: [], edges: [], view: { x: 0, y: 0, k: 1 }, hover: null, running: 0, search: "" };
 
 async function ensureGraph() {
