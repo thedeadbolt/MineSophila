@@ -142,6 +142,10 @@ async function loadTrace(sel) {
     }
     brain.trace = await api(`/api/brain/traces/${encodeURIComponent(clipId)}`);
     brain.traceClip = clipId;
+    // A live episode's circuit is its own model's: the run folder holding its checkpoint.
+    const header = brain.trace.header || {};
+    const parts = header.source === "live" && header.checkpoint ? header.checkpoint.split("/") : [];
+    brain.episodeRun = parts.length > 1 ? parts[parts.length - 2] : null;
     $("brain-empty").hidden = true;
     $("brain-trace").hidden = false;
     describeTrace();
@@ -763,8 +767,11 @@ function svg(tag, attributes, text) {
 }
 
 function chooseCircuitRun() {
-  if (brain.circuitRun) return brain.circuitRun.name;
   const runs = (brain.runs && brain.runs.runs) || [];
+  // A run picked in Runs wins; then the model that drove the open live episode.
+  if (brain.run) return brain.run.name;
+  if (brain.episodeRun && runs.some((run) => run.name === brain.episodeRun)) return brain.episodeRun;
+  if (brain.circuitRun) return brain.circuitRun.name;
   // The run that compiles the most neurons shows the most of the circuit.
   let best = null;
   for (const run of runs) {
@@ -781,6 +788,8 @@ function transmitterOf(name) {
 async function drawCircuit() {
   const target = $("brain-circuit-svg");
   const graph = await ensureGraph();
+  // The run list names the models; the circuit follows the open episode's when it is there.
+  if (!brain.runs && ((((selection.dataset || {}).workspaces || {}).brain || {}).runs)) await loadRuns();
   const name = chooseCircuitRun();
   if (!graph) {
     target.replaceChildren();
@@ -792,7 +801,8 @@ async function drawCircuit() {
     if (!brain.circuitRun || brain.circuitRun.name !== name) brain.circuitRun = { name, report: await api(`/api/brain/runs/${encodeURIComponent(name)}`) };
     report = brain.circuitRun.report;
   }
-  $("brain-circuit-run").textContent = name ? `${name}${brain.run ? "" : " · the most complete run; pick another in Runs"}` : "";
+  const why = brain.run ? "" : name === brain.episodeRun ? " · the model that drove this episode" : " · the most complete run; pick another in Runs";
+  $("brain-circuit-run").textContent = name ? `${name}${why}` : "";
   const components = (report.connectome || {}).components || {};
   const inModel = (component) => !name || !Object.keys(components).length || component in components;
   const model = report.model || {};

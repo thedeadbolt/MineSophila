@@ -101,6 +101,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="run-live output directories, or folders of them (new runs and episodes appear)",
     )
     live.add_argument(
+        "--include-unfilmed",
+        action="store_true",
+        help="also list episodes recorded before videos (grey frames)",
+    )
+    live.add_argument(
         "--trace-command",
         help="command that traces an episode on demand, given RUN_DIR --episodes NAME (for"
         " example 'uv run --project ../MineSophila fly-brain trace-live'); off without it",
@@ -196,7 +201,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "inspect-live":
         command = cast(str | None, args.trace_command)
         catalog = LiveCatalog(
-            cast(list[Path], args.run_dirs), shlex.split(command) if command else None
+            cast(list[Path], args.run_dirs),
+            shlex.split(command) if command else None,
+            include_unfilmed=cast(bool, args.include_unfilmed),
         )
         args.reviews = None
         args.traces = None

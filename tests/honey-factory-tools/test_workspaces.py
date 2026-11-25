@@ -143,6 +143,17 @@ class TestRuns:
         with pytest.raises(BrainError):
             Runs(runs_dir / "nowhere")
 
+    def test_finds_run_folders_report_json_one_or_two_levels_down(self, runs_dir: Path) -> None:
+        # fly-brain's newer runs keep RUN/report.json, often under a runs/ folder.
+        for folder in (runs_dir / "pf-p1v", runs_dir / "runs" / "pf-p2"):
+            folder.mkdir(parents=True)
+            (folder / "report.json").write_text(json.dumps(report(36.0)))
+        (runs_dir / "runs" / "live-l3-p1v").mkdir()
+        (runs_dir / "runs" / "live-l3-p1v" / "summary.json").write_text("{}")
+        runs = Runs(runs_dir)
+        assert set(runs.names()) == {"a", "b", "broken", "pf-p1v", "pf-p2"}
+        assert runs.report("pf-p2")["test"]["mean_bearing_error_deg"] == 36.0
+
     def test_family_names_drop_the_shared_prefix_and_suffix(self) -> None:
         assert family("fly-brain-recurrent-report-v1") == "recurrent"
         assert family("fly-brain-clip-feature-probe-v1") == "clip-feature-probe"

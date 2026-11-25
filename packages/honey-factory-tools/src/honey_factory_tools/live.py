@@ -208,8 +208,9 @@ def frame_record(clip_id: str, step: int, row: Record) -> Record:
 class _Run:
     """One live run's episodes, read from its files; reread when ``episodes.jsonl`` changes."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, include_unfilmed: bool = False) -> None:
         self.path = path
+        self.include_unfilmed = include_unfilmed
         self.stamp: tuple[float, int] | None = None
         self.capture = DEFAULT_CAPTURE
         self.level: int | None = None
@@ -224,7 +225,7 @@ class _Run:
         stamp = (stat.st_mtime, stat.st_size)
         if stamp == self.stamp:
             return False
-        loaded = _Run(self.path)
+        loaded = _Run(self.path, self.include_unfilmed)
         loaded.read()
         self.__dict__.update({**loaded.__dict__, "stamp": stamp})
         return True
@@ -253,6 +254,8 @@ class _Run:
             rows: list[Record] = episode.get("trace") or []
             frames = [frame_record(clip_id, step, row) for step, row in enumerate(rows)]
             video = run / "videos" / f"{name}.mp4"
+            if not video.is_file() and not self.include_unfilmed:
+                continue  # recorded before videos: nothing to look at
             honey = next(
                 (
                     [
@@ -347,7 +350,8 @@ class LiveCatalog:
     """Live runs' episodes as one clip dataset, with the members the inspector reads.
 
     ``paths`` are run directories or folders of them; runs and episodes that appear later are
-    picked up when the clips are next read, at most every ``refresh_seconds``. With a
+    picked up when the clips are next read, at most every ``refresh_seconds``. Episodes without
+    a video (recorded before videos were written) are left out unless ``include_unfilmed``. With a
     ``trace_command`` (for example ``fly-brain trace-live``), an episode with recorded inputs but
     no trace is traced when its trace is first asked for.
     """
@@ -357,8 +361,10 @@ class LiveCatalog:
         paths: list[Path],
         trace_command: list[str] | None = None,
         refresh_seconds: float = 5.0,
+        include_unfilmed: bool = False,
     ) -> None:
         self.paths = paths
+        self.include_unfilmed = include_unfilmed
         self.trace_command = trace_command
         self.refresh_seconds = refresh_seconds
         self.root = paths[0].resolve() if paths else Path()
@@ -390,7 +396,7 @@ class LiveCatalog:
             self._checked = now
             changed = False
             for path in _runs(self.paths):
-                run = self._runs.setdefault(path, _Run(path))
+                run = self._runs.setdefault(path, _Run(path, self.include_unfilmed))
                 try:
                     changed |= run.refresh()
                 except (OSError, ValueError) as error:

@@ -202,9 +202,8 @@ def test_an_episodes_brain_trace_carries_its_live_columns(live_client: Client) -
     assert len(trace["series"]["live_actions"]) == 3
 
 
-def test_a_run_without_videos_or_traces_still_lists_its_episodes(tmp_path: Path) -> None:
+def test_a_run_without_traces_or_a_summary_still_lists_its_episodes(tmp_path: Path) -> None:
     run = make_run(tmp_path)
-    shutil.rmtree(run / "videos")
     shutil.rmtree(run / "traces")
     (run / "summary.json").unlink()  # still running
     catalog = LiveCatalog([run])
@@ -220,6 +219,7 @@ def test_a_runs_folder_finds_every_live_run_and_new_episodes(tmp_path: Path) -> 
     assert list(catalog.clips) == [CLIP]
     episode = json.loads((run / "episodes.jsonl").read_text())
     episode["scene_index"] = 3
+    shutil.copy(run / "videos" / "s778-scene2.mp4", run / "videos" / "s778-scene3.mp4")
     with (run / "episodes.jsonl").open("a") as stream:
         stream.write(json.dumps(episode) + "\n")
     assert list(catalog.clips) == [CLIP, CLIP.replace("scene2", "scene3")]
@@ -250,6 +250,7 @@ def test_an_episode_without_a_trace_is_traced_when_its_brain_view_opens(tmp_path
 def test_an_episode_without_a_video_shows_grey_frames(tmp_path: Path) -> None:
     run = make_run(tmp_path)
     (run / "videos" / "s778-scene2.mp4").unlink()
-    frames = LiveCatalog([run]).clip_frames(CLIP)
+    assert LiveCatalog([run]).clip_ids() == []  # unfilmed episodes are left out by default
+    frames = LiveCatalog([run], include_unfilmed=True).clip_frames(CLIP)
     image = Image.open(io.BytesIO(frames.frame_png(1, 0.5)))
     assert image.size == (64, 32)

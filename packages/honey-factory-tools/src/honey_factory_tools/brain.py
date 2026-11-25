@@ -78,10 +78,24 @@ class Runs:
             raise BrainError(f"{root} is not a directory of fly-brain reports")
         self.root = root
 
-    def names(self) -> list[str]:
-        return sorted(
-            path.name.removesuffix(".report.json") for path in self.root.glob("*.report.json")
+    def paths(self) -> dict[str, Path]:
+        """Each run's report: ``NAME.report.json`` here, or ``NAME/report.json`` one or two
+        folders down (fly-brain's run directories, often under ``runs/``)."""
+        found = {
+            path.parent.name: path
+            for pattern in ("*/*/report.json", "*/report.json")
+            for path in self.root.glob(pattern)
+        }
+        found.update(
+            {
+                path.name.removesuffix(".report.json"): path
+                for path in self.root.glob("*.report.json")
+            }
         )
+        return found
+
+    def names(self) -> list[str]:
+        return sorted(self.paths())
 
     def summaries(self) -> list[Record]:
         out: list[Record] = []
@@ -98,6 +112,8 @@ class Runs:
         if "/" in name or "\\" in name or name.startswith("."):
             raise BrainError(f"bad run name {name!r}")
         path = self.root / f"{name}.report.json"
+        if not path.is_file():
+            path = self.paths().get(name, path)
         if not path.is_file():
             raise BrainError(f"no run {name}")
         try:
