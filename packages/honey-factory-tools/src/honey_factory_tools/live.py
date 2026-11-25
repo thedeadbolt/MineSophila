@@ -240,7 +240,9 @@ class LiveCatalog:
         }
 
     def _add_run(self, run: Path) -> dict[str, int]:
-        report: Record = json.loads((run / "summary.json").read_text())
+        # A run still going has no summary yet; its episodes still show.
+        summary = run / "summary.json"
+        report: Record = json.loads(summary.read_text()) if summary.is_file() else {}
         capture = cast(dict[str, int], report.get("capture") or DEFAULT_CAPTURE)
         preset = str(cast(Record, report.get("scene") or {}).get("preset", ""))
         if preset.startswith("level") and preset[5:].isdigit():
