@@ -234,6 +234,14 @@ def load_trace(path: Path) -> Record:
     for name in PER_STEP_VECTORS:
         if name in arrays and arrays[name].ndim == 2 and arrays[name].shape[0] == steps:
             series[name] = _rounded(arrays[name])
+    # Live episodes (fly-brain trace-live): every per-step live_* column, as recorded.
+    for name in sorted(arrays):
+        if (
+            name.startswith("live_")
+            and arrays[name].shape[:1] == (steps,)
+            and arrays[name].ndim <= 2
+        ):
+            series[name] = _rounded(arrays[name])
     return {
         "header": header,
         "file": path.name,

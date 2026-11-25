@@ -425,6 +425,29 @@ function drawDecisions() {
       { values: series.teacher_actions.map((a) => a[1] ?? null), colour: cssVar("--mask"), label: "turn" },
     ] });
   }
+  if (series.live_turn_rate) {
+    // A live episode (trace-live): what the fly did, and what it ran into.
+    const elevation = trace.frames.map((n) => (frames[n] && frames[n].bearing ? -frames[n].bearing.elevation_degrees : null));
+    lanes.push({ name: "Fly turn", range: null, lines: [
+      { values: series.live_turn_rate, colour: cssVar("--mask"), label: "turn °/tick (right +)" },
+    ] });
+    lanes.push({ name: "Fly forward", range: [0, 1], lines: [
+      { values: series.live_forward || [], colour: cssVar("--ink"), label: "forward" },
+    ] });
+    lanes.push({ name: "Head pitch", range: [-90, 90], lines: [
+      { values: elevation, colour: cssVar("--muted"), label: "honey below the eye (°)", dash: true },
+      { values: series.live_pitch || [], colour: cssVar("--honey"), label: "pitch (down +)" },
+    ] });
+    lanes.push({ name: "Contact", range: [0, 1], lines: [
+      { values: series.live_touch || [], colour: "#e67e22", label: "touching" },
+      { values: series.live_bumped || [], colour: "#e74c3c", label: "bumped" },
+    ] });
+    const predicted = series.live_clearance ? series.live_clearance.map((rays) => (rays && rays.length > 4 ? 6 * (1 - rays[4]) : null)) : [];
+    lanes.push({ name: "Wall ahead", range: [0, 6], lines: [
+      { values: series.live_wall_ahead_blocks || [], colour: cssVar("--muted"), label: "true (blocks)", dash: true },
+      { values: predicted, colour: cssVar("--mask"), label: "predicted" },
+    ] });
+  }
   if (!lanes.length) {
     context.fillStyle = cssVar("--muted");
     context.font = `${12 * ratio}px ${cssVar("--sans")}`;
@@ -498,6 +521,13 @@ function describeStep() {
     ["Model bearing", decoded.azimuth && decoded.azimuth[s] !== null ? `${number(decoded.azimuth[s], 1)}° right` : "—"],
     ["Honey present", series.presence ? (series.presence[s] ? "yes" : "no") : "—"],
     ["Honey visible", series.visible ? (series.visible[s] ? "yes" : "no") : "—"],
+    ...(series.live_turn_rate ? [
+      ["Fly command", `forward ${number(series.live_forward[s], 2)}, turn ${number(series.live_turn_rate[s], 2)}°, look ${number(series.live_pitch_rate ? series.live_pitch_rate[s] : 0, 2)}°`],
+      ["Head pitch", series.live_pitch ? `${number(series.live_pitch[s], 1)}° down` : "—"],
+      ["Distance to honey", series.live_distance ? `${number(series.live_distance[s], 2)} blocks` : "—"],
+      ["Contact", `${series.live_bumped && series.live_bumped[s] ? "bumped" : "no bump"}, ${series.live_touch && series.live_touch[s] ? "touching" : "not touching"}`],
+      ["Wall ahead", series.live_wall_ahead_blocks ? `${number(series.live_wall_ahead_blocks[s], 2)} blocks` : "—"],
+    ] : []),
   ]);
 }
 

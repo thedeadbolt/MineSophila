@@ -19,7 +19,9 @@ const STATUS_COLOURS = {
 const MODE_COLOURS = { track: "#e0a100", reacquire: "#8e44ad", search: "#2980b9" };
 // Ticks the teacher did not drive alone are marked under the mode lane.
 const DRIVER_COLOURS = { script: "#555c63", teacher_drift: "#d35400" };
-const DRIVER_NAMES = { teacher: "teacher", teacher_drift: "teacher + drift", script: "script" };
+// Live episodes: the mode lane shows contact instead of a teacher mode.
+const CONTACT_COLOURS = { bumped: "#e74c3c", touching: "#e67e22" };
+const DRIVER_NAMES = { teacher: "teacher", teacher_drift: "teacher + drift", script: "script", fly: "the fly's brain" };
 const MASK_TINT = [24, 200, 240];
 const DETAILS = [0.25, 0.5, 1];
 const MIN_ZOOM = 0.05;
@@ -122,6 +124,24 @@ async function openClip(id) {
   $("clip-errors").replaceChildren(...errors.map((line) => element("div", line)));
   $("clip-errors").hidden = errors.length === 0;
   const record = body.clip;
+  if (record.live) {
+    const live = record.live;
+    const bumps = body.frames.filter((f) => f.tick_labels && f.tick_labels.senses.bumped).length;
+    facts($("clip-facts"), [
+      ["Run", record.split],
+      ["Model run", live.run_dir || "—"],
+      ["Policy", live.policy || "—"],
+      ["Seed, scene", `${live.seed}, ${live.scene_index}`],
+      ["Turned at the start", `${number(live.turned_deg ?? live.turn_before_deg ?? 0, 1)}°`],
+      ["Honey height", live.target_height && live.target_height !== "0" ? `${live.target_height} blocks up` : "on the floor"],
+      ["Outcome", live.reached ? `reached at step ${live.reach_step}` : humane(String(live.failure || "timed out"))],
+      ["Steps", record.frame_count],
+      ["Closest, final distance", `${number(live.min_distance, 2)}, ${number(live.final_distance, 2)} blocks`],
+      ["Ticks bumping, touching", `${bumps}, ${live.touch_ticks ?? "—"}`],
+      ["Turned toward the honey", live.turn_toward_fraction === null || live.turn_toward_fraction === undefined ? "—" : `${number(live.turn_toward_fraction * 100, 0)}% of ticks`],
+      ["Video", record.codec.name],
+    ]);
+  } else {
   const requested = record.requested_type === record.clip_type ? humane(record.clip_type) : `${humane(record.clip_type)} (asked for ${humane(record.requested_type)})`;
   facts($("clip-facts"), [
     ["Type", requested],
@@ -139,6 +159,7 @@ async function openClip(id) {
     ["Codec", record.codec.name + (record.codec.crf === undefined ? "" : ` crf ${record.codec.crf}`)],
     ["Attempt", record.attempt],
   ]);
+  }
   clip.detail = 0;
   clip.view.fit = true;
   fitView();
@@ -425,7 +446,8 @@ function drawTimeline() {
     context.fillStyle = STATUS_COLOURS[frame.target.target_status] || "#999";
     context.fillRect(x, 0, Math.ceil(step), lane - 2);
     const mode = labels && labels.teacher_mode;
-    context.fillStyle = mode ? MODE_COLOURS[mode] : "transparent";
+    const contact = labels && labels.live ? (labels.senses.bumped ? "bumped" : labels.senses.touch && labels.senses.touch.front ? "touching" : null) : null;
+    context.fillStyle = mode ? MODE_COLOURS[mode] : contact ? CONTACT_COLOURS[contact] : "transparent";
     context.fillRect(x, lane + bearing + 4, Math.ceil(step), lane - 2);
     const driver = labels && DRIVER_COLOURS[labels.driver];
     if (driver) {
@@ -437,7 +459,9 @@ function drawTimeline() {
   // Teacher turn: one bar per frame, up for a right turn, down for a left one.
   const turns = frames.map((_, n) => {
     const labels = tickLabelsAt(n);
-    return labels && labels.teacher ? labels.teacher.turn_rate : null;
+    // The teacher's turn, or in a live episode the fly's own.
+    const command = labels ? labels.teacher || (labels.live ? labels.executed : null) : null;
+    return command ? command.turn_rate : null;
   });
   const turnPeak = Math.max(1e-6, ...turns.map((t) => Math.abs(t || 0)));
   const middle = turnTop + (lane - 2) / 2;
@@ -499,6 +523,22 @@ function describe(frame) {
   const labels = tickLabelsAt(frame.frame);
   const command = (value) => (value ? `forward ${number(value.forward, 2)}, turn ${number(value.turn_rate, 2)}°, look ${number(value.pitch_rate, 2)}°${value.jump ? ", jump" : ""}` : "—");
   const belief = labels && labels.belief;
+  if (labels && labels.live) {
+    const live = labels.live;
+    facts($("tick-facts"), [
+      ["Driven by", DRIVER_NAMES.fly],
+      ["Fly command", command(labels.executed)],
+      ["Head pitch", `${number(labels.senses.pitch, 1)}° down`],
+      ["Bumped", labels.senses.bumped ? "yes" : "no"],
+      ["Touching", labels.senses.touch.front ? "yes" : "no"],
+      ["Wall ahead", live.wall_ahead_blocks === null || live.wall_ahead_blocks === undefined ? "—" : `${number(live.wall_ahead_blocks, 2)} blocks`],
+      ["Model presence", live.presence === null || live.presence === undefined ? "—" : number(live.presence, 3)],
+      ["Distance", live.distance === null || live.distance === undefined ? "—" : `${number(live.distance, 2)} blocks`],
+      ["Honey off the heading", live.yaw_error_deg === null || live.yaw_error_deg === undefined ? "—" : `${number(live.yaw_error_deg, 1)}°`],
+    ]);
+    $("frame-record").textContent = JSON.stringify(frame, null, 2);
+    return;
+  }
   facts($("tick-facts"), labels ? [
     ["Teacher mode", labels.teacher_mode || "—"],
     ["Driven by", labels.driver ? DRIVER_NAMES[labels.driver] : "—"],
