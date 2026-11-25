@@ -208,4 +208,5 @@ def test_a_run_without_videos_or_traces_still_lists_its_episodes(tmp_path: Path)
     (run / "summary.json").unlink()  # still running
     catalog = LiveCatalog([run])
     assert list(catalog.clips) == [CLIP]
+    assert catalog.clips[CLIP]["live"]["seed"] == 778
     assert LiveTraces(catalog).clip_ids(catalog.dataset_id) == []

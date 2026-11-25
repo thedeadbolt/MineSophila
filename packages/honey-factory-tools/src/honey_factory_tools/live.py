@@ -321,13 +321,14 @@ class LiveCatalog:
                     "ticks_by_mode": {},
                     "ticks_by_driver": {"fly": len(frames)},
                 },
+                # The episode's own fields win; the run's settings fill the rest.
                 "live": {
+                    **{key: value for key, value in settings.items() if value is not None},
                     **{
                         key: value
                         for key, value in episode.items()
                         if key not in ("trace", "scene")
                     },
-                    **settings,
                 },
             }
             self._frames[clip_id] = frames
