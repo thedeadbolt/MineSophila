@@ -91,6 +91,7 @@ def make_run(root: Path) -> Path:
         "turn_before_deg": 90.0,
         "target_height": "1-3",
         "capture": CAPTURE,
+        "scene": {"preset": "level3"},
     }
     (run / "summary.json").write_text(json.dumps(summary))
     episode = {
@@ -150,6 +151,8 @@ def test_a_live_run_lists_its_episodes_as_clips(live_client: Client) -> None:
     assert status == 200
     assert dataset["kind"] == "clips"
     assert dataset["clip_count"] == 1
+    assert dataset["difficulty"] == 3
+    assert dataset["lifecycle"] == "complete"
     assert dataset["workspaces"]["brain"]["traced_clips"] == [CLIP]
     status, listing = live_client.get("/api/clips")
     assert [clip["clip_id"] for clip in listing["clips"]] == [CLIP]

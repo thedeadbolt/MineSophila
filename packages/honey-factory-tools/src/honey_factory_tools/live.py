@@ -219,11 +219,13 @@ class LiveCatalog:
         self.validation = Validation()
         self.validation.state = "done"
         capture = DEFAULT_CAPTURE
+        self.level: int | str = "live"
         for run in runs:
             capture = self._add_run(run.resolve())
         self.manifest: Record = {
-            "lifecycle": {"state": "live"},
-            "difficulty": None,
+            # "complete" keeps the page's not-for-training banner off; these are evaluation runs.
+            "lifecycle": "complete",
+            "difficulty": self.level,
             "capture": {
                 "mode": "PANORAMA_310",
                 "width": capture["width"],
@@ -240,6 +242,9 @@ class LiveCatalog:
     def _add_run(self, run: Path) -> dict[str, int]:
         report: Record = json.loads((run / "summary.json").read_text())
         capture = cast(dict[str, int], report.get("capture") or DEFAULT_CAPTURE)
+        preset = str(cast(Record, report.get("scene") or {}).get("preset", ""))
+        if preset.startswith("level") and preset[5:].isdigit():
+            self.level = int(preset[5:])
         settings = {
             key: report.get(key)
             for key in ("run_dir", "policy", "turn_before_deg", "target_height", "seed")
