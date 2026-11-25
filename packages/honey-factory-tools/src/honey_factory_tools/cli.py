@@ -4,6 +4,7 @@
 
 import argparse
 import json
+import shlex
 import sys
 import webbrowser
 from collections.abc import Sequence
@@ -93,7 +94,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         "inspect-live",
         help="browse fly-brain live runs (run-live --out-dir): episodes, videos and brain traces",
     )
-    live.add_argument("run_dirs", nargs="+", type=Path, help="run-live output directories")
+    live.add_argument(
+        "run_dirs",
+        nargs="+",
+        type=Path,
+        help="run-live output directories, or folders of them (new runs and episodes appear)",
+    )
+    live.add_argument(
+        "--trace-command",
+        help="command that traces an episode on demand, given RUN_DIR --episodes NAME (for"
+        " example 'uv run --project ../MineSophila fly-brain trace-live'); off without it",
+    )
     live.add_argument(
         "--runs", type=Path, help="directory of fly-brain *.report.json files (Brain workspace)"
     )
@@ -183,7 +194,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "control-demo":
         return _control_demo(args)
     if args.command == "inspect-live":
-        catalog = LiveCatalog(cast(list[Path], args.run_dirs))
+        command = cast(str | None, args.trace_command)
+        catalog = LiveCatalog(
+            cast(list[Path], args.run_dirs), shlex.split(command) if command else None
+        )
         args.reviews = None
         args.traces = None
         return _inspect(cast(Catalog, catalog), args, LiveTraces(catalog))

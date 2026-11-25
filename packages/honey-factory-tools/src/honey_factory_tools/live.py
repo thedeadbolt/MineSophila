@@ -22,14 +22,16 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
 import threading
+import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, cast
 
 from PIL import Image
 
-from honey_factory_tools.brain import Traces, load_trace
+from honey_factory_tools.brain import BrainError, Traces, load_trace
 from honey_factory_tools.catalog import Validation
 from honey_factory_tools.clips import ClipFrames, decode_frames, scaled_size
 
@@ -56,8 +58,10 @@ class LiveFrames(ClipFrames):
     """An episode video's frames at the capture's size, its status strip cut off, and blank
     masks (live runs have no honey mask)."""
 
-    def __init__(self, video: Path, width: int, height: int) -> None:
-        super().__init__(video, video, width, height)
+    def __init__(self, video: Path | None, width: int, height: int, count: int) -> None:
+        super().__init__(video or Path(), video or Path(), width, height)
+        self.video = video
+        self.count = count
         self._native: list[Image.Image] | None = None
 
     def _frames(self, mode: Any, scale: float) -> list[bytes]:
@@ -80,6 +84,10 @@ class LiveFrames(ClipFrames):
 
     def _native_frames(self) -> list[Image.Image]:
         """Every frame at the video's size, above the strip (same aspect as the capture)."""
+        if self._native is None and self.video is None:
+            # An episode run before videos were written: grey frames keep the views working.
+            grey = Image.new("RGB", scaled_size(self.width, self.height, 0.5), (96, 96, 96))
+            self._native = [grey] * self.count
         if self._native is None:
             probe = _video_size(self.paths["RGB"])
             width, height = probe
@@ -197,53 +205,38 @@ def frame_record(clip_id: str, step: int, row: Record) -> Record:
     }
 
 
-class LiveCatalog:
-    """Live runs' episodes as one clip dataset, with the members the inspector reads."""
+class _Run:
+    """One live run's episodes, read from its files; reread when ``episodes.jsonl`` changes."""
 
-    def __init__(self, runs: list[Path]) -> None:
-        self.root = runs[0].resolve() if runs else Path()
-        self.dataset_id = LIVE_DATASET_ID
-        self.manifest_sha256 = ""
-        self.kind = "clips"
-        self.index_errors: list[str] = []
-        self.samples: list[Record] = []
-        self.by_sample: dict[str, Record] = {}
-        self.scene_samples: dict[str, list[Record]] = {}
-        self.scenes: dict[str, Record] = {}
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.stamp: tuple[float, int] | None = None
+        self.capture = DEFAULT_CAPTURE
+        self.level: int | None = None
         self.clips: dict[str, Record] = {}
-        self.traces: dict[str, Path] = {}
-        self._frames: dict[str, list[Record]] = {}
-        self._videos: dict[str, Path] = {}
-        self._decoded: OrderedDict[str, LiveFrames] = OrderedDict()
-        self._lock = threading.Lock()
-        self.validation = Validation()
-        self.validation.state = "done"
-        capture = DEFAULT_CAPTURE
-        self.level: int | str = "live"
-        for run in runs:
-            capture = self._add_run(run.resolve())
-        self.manifest: Record = {
-            # "complete" keeps the page's not-for-training banner off; these are evaluation runs.
-            "lifecycle": "complete",
-            "difficulty": self.level,
-            "capture": {
-                "mode": "PANORAMA_310",
-                "width": capture["width"],
-                "height": capture["height"],
-                "projection": PROJECTION,
-            },
-            "target": {"block_id": "minecraft:honey_block"},
-            "counts": {"clips": len(self.clips)},
-            "splits": {},
-            "software": {},
-            "render_environment": {},
-        }
+        self.scenes: dict[str, Record] = {}
+        self.frames: dict[str, list[Record]] = {}
+        self.names: dict[str, str] = {}
 
-    def _add_run(self, run: Path) -> dict[str, int]:
+    def refresh(self) -> bool:
+        """Rereads the run if its episodes changed; True when it did."""
+        stat = (self.path / "episodes.jsonl").stat()
+        stamp = (stat.st_mtime, stat.st_size)
+        if stamp == self.stamp:
+            return False
+        loaded = _Run(self.path)
+        loaded.read()
+        self.__dict__.update({**loaded.__dict__, "stamp": stamp})
+        return True
+
+    def read(self) -> None:
+        loaded = self
+        run = self.path
         # A run still going has no summary yet; its episodes still show.
         summary = run / "summary.json"
         report: Record = json.loads(summary.read_text()) if summary.is_file() else {}
         capture = cast(dict[str, int], report.get("capture") or DEFAULT_CAPTURE)
+        self.capture = capture
         preset = str(cast(Record, report.get("scene") or {}).get("preset", ""))
         if preset.startswith("level") and preset[5:].isdigit():
             self.level = int(preset[5:])
@@ -272,7 +265,7 @@ class LiveCatalog:
                 ),
                 None,
             )
-            self.scenes[clip_id] = {
+            loaded.scenes[clip_id] = {
                 "scene_id": clip_id,
                 "split": run.name,
                 "target": {
@@ -286,11 +279,11 @@ class LiveCatalog:
                 if frames
                 else {"position": [None, None, None], "yaw_degrees": 0.0, "pitch_degrees": 0.0}
             )
-            self.clips[clip_id] = {
+            loaded.clips[clip_id] = {
                 "clip_id": clip_id,
                 "scene_id": clip_id,
                 "split": run.name,
-                "clip_index": len(self.clips),
+                "clip_index": len(loaded.clips),
                 "requested_type": "live",
                 "clip_type": "live",
                 "attempt": 0,
@@ -331,13 +324,114 @@ class LiveCatalog:
                     },
                 },
             }
-            self._frames[clip_id] = frames
-            if video.is_file():
-                self._videos[clip_id] = video
-            trace = run / "traces" / f"{name}.trace.npz"
-            if trace.is_file():
-                self.traces[clip_id] = trace
-        return capture
+            loaded.frames[clip_id] = frames
+            loaded.names[clip_id] = name
+
+
+def _runs(paths: list[Path]) -> list[Path]:
+    """Live run directories: each path that is one (it holds ``episodes.jsonl``), and the ones
+    directly inside each path that is not."""
+    found: list[Path] = []
+    for path in paths:
+        path = path.resolve()
+        if (path / "episodes.jsonl").is_file():
+            found.append(path)
+        elif path.is_dir():
+            found.extend(
+                sorted(child for child in path.iterdir() if (child / "episodes.jsonl").is_file())
+            )
+    return found
+
+
+class LiveCatalog:
+    """Live runs' episodes as one clip dataset, with the members the inspector reads.
+
+    ``paths`` are run directories or folders of them; runs and episodes that appear later are
+    picked up when the clips are next read, at most every ``refresh_seconds``. With a
+    ``trace_command`` (for example ``fly-brain trace-live``), an episode with recorded inputs but
+    no trace is traced when its trace is first asked for.
+    """
+
+    def __init__(
+        self,
+        paths: list[Path],
+        trace_command: list[str] | None = None,
+        refresh_seconds: float = 5.0,
+    ) -> None:
+        self.paths = paths
+        self.trace_command = trace_command
+        self.refresh_seconds = refresh_seconds
+        self.root = paths[0].resolve() if paths else Path()
+        self.dataset_id = LIVE_DATASET_ID
+        self.manifest_sha256 = ""
+        self.kind = "clips"
+        self.index_errors: list[str] = []
+        self.samples: list[Record] = []
+        self.by_sample: dict[str, Record] = {}
+        self.scene_samples: dict[str, list[Record]] = {}
+        self.validation = Validation()
+        self.validation.state = "done"
+        self._runs: dict[Path, _Run] = {}
+        self._clips: dict[str, Record] = {}
+        self._scenes: dict[str, Record] = {}
+        self._owner: dict[str, _Run] = {}
+        self._checked = -math.inf
+        self._decoded: OrderedDict[str, LiveFrames] = OrderedDict()
+        self._lock = threading.Lock()
+        self._tracing: dict[Path, threading.Lock] = {}
+        self.manifest: Record = {}
+        self._refresh(force=True)
+
+    def _refresh(self, force: bool = False) -> None:
+        with self._lock:
+            now = time.monotonic()
+            if not force and now - self._checked < self.refresh_seconds:
+                return
+            self._checked = now
+            changed = False
+            for path in _runs(self.paths):
+                run = self._runs.setdefault(path, _Run(path))
+                try:
+                    changed |= run.refresh()
+                except (OSError, ValueError) as error:
+                    self.index_errors.append(f"{path.name}: {error}")
+            if changed or force:
+                self._clips = {}
+                self._scenes = {}
+                self._owner = {}
+                for run in self._runs.values():
+                    self._clips.update(run.clips)
+                    self._scenes.update(run.scenes)
+                    self._owner.update(dict.fromkeys(run.clips, run))
+                runs = list(self._runs.values())
+                capture = runs[-1].capture if runs else DEFAULT_CAPTURE
+                levels = {run.level for run in runs if run.level is not None}
+                self.manifest = {
+                    # "complete" keeps the not-for-training banner off; these are evaluation runs.
+                    "lifecycle": "complete",
+                    "difficulty": levels.pop() if len(levels) == 1 else "live",
+                    "capture": {
+                        "mode": "PANORAMA_310",
+                        "width": capture["width"],
+                        "height": capture["height"],
+                        "projection": PROJECTION,
+                    },
+                    "target": {"block_id": "minecraft:honey_block"},
+                    "counts": {"clips": len(self._clips)},
+                    "splits": {},
+                    "software": {},
+                    "render_environment": {},
+                }
+
+    @property
+    def clips(self) -> dict[str, Record]:
+        self._refresh()
+        return self._clips
+
+    @property
+    def scenes(self) -> dict[str, Record]:
+        self._refresh()
+        return self._scenes
 
     def scene_ids(self) -> list[str]:
         return list(self.scenes)
@@ -358,17 +452,60 @@ class LiveCatalog:
         return list(self.clips)
 
     def frames(self, clip_id: str) -> list[Record]:
-        return self._frames[clip_id]
+        return self._owner[clip_id].frames[clip_id]
+
+    def _file(self, clip_id: str, folder: str, suffix: str) -> Path:
+        run = self._owner[clip_id]
+        return run.path / folder / f"{run.names[clip_id]}{suffix}"
+
+    def traceable(self) -> list[str]:
+        """Episodes with a trace, or with recorded inputs and a way to trace them."""
+        return [
+            clip_id
+            for clip_id in self.clips
+            if self._file(clip_id, "traces", ".trace.npz").is_file()
+            or (self.trace_command and self._file(clip_id, "inputs", ".npz").is_file())
+        ]
+
+    def trace_path(self, clip_id: str) -> Path | None:
+        """The episode's trace, made first if it has inputs and none yet; None if it cannot be."""
+        if clip_id not in self.clips:
+            return None
+        trace = self._file(clip_id, "traces", ".trace.npz")
+        if trace.is_file():
+            return trace
+        inputs = self._file(clip_id, "inputs", ".npz")
+        if not self.trace_command or not inputs.is_file():
+            return None
+        run = self._owner[clip_id]
+        with self._lock:
+            lock = self._tracing.setdefault(run.path, threading.Lock())
+        with lock:
+            if not trace.is_file():
+                done = subprocess.run(
+                    [*self.trace_command, str(run.path), "--episodes", run.names[clip_id]],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if done.returncode != 0 or not trace.is_file():
+                    raise BrainError(
+                        f"tracing {clip_id} failed: {(done.stderr or done.stdout).strip()[-800:]}"
+                    )
+        return trace
 
     def clip_frames(self, clip_id: str) -> LiveFrames:
         with self._lock:
             frames = self._decoded.get(clip_id)
             if frames is None:
-                video = self._videos.get(clip_id)
-                if video is None:
-                    raise FileNotFoundError(f"episode {clip_id} has no video")
-                files = self.clips[clip_id]["files"]["rgb"]
-                frames = LiveFrames(video, files["width"], files["height"])
+                video = self._file(clip_id, "videos", ".mp4")
+                files = self._clips[clip_id]["files"]["rgb"]
+                frames = LiveFrames(
+                    video if video.is_file() else None,
+                    files["width"],
+                    files["height"],
+                    self._clips[clip_id]["frame_count"],
+                )
                 self._decoded[clip_id] = frames
             self._decoded.move_to_end(clip_id)
             while (
@@ -384,7 +521,7 @@ class LiveCatalog:
 
 
 class LiveTraces(Traces):
-    """The episodes' ``trace-live`` files, by clip id."""
+    """The episodes' ``trace-live`` files, by clip id; traced on first request when possible."""
 
     def __init__(self, catalog: LiveCatalog) -> None:
         self.catalog = catalog
@@ -392,8 +529,14 @@ class LiveTraces(Traces):
         self._index = None
 
     def index(self) -> dict[tuple[str, str], Path]:
-        return {(LIVE_DATASET_ID, clip_id): path for clip_id, path in self.catalog.traces.items()}
+        return {
+            (LIVE_DATASET_ID, clip_id): self.catalog._file(clip_id, "traces", ".trace.npz")  # pyright: ignore[reportPrivateUsage]
+            for clip_id in self.catalog.traceable()
+        }
+
+    def clip_ids(self, dataset_id: str) -> list[str]:
+        return self.catalog.traceable() if dataset_id == LIVE_DATASET_ID else []
 
     def trace(self, dataset_id: str, clip_id: str) -> Record | None:
-        path = self.catalog.traces.get(clip_id) if dataset_id == LIVE_DATASET_ID else None
+        path = self.catalog.trace_path(clip_id) if dataset_id == LIVE_DATASET_ID else None
         return None if path is None else load_trace(path)

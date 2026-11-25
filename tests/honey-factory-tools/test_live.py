@@ -2,6 +2,7 @@ import io
 import json
 import shutil
 import subprocess
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -210,3 +211,45 @@ def test_a_run_without_videos_or_traces_still_lists_its_episodes(tmp_path: Path)
     assert list(catalog.clips) == [CLIP]
     assert catalog.clips[CLIP]["live"]["seed"] == 778
     assert LiveTraces(catalog).clip_ids(catalog.dataset_id) == []
+
+
+def test_a_runs_folder_finds_every_live_run_and_new_episodes(tmp_path: Path) -> None:
+    run = make_run(tmp_path / "runs")
+    (tmp_path / "runs" / "pf-p1v").mkdir()  # a model run: no episodes, not listed
+    catalog = LiveCatalog([tmp_path / "runs"], refresh_seconds=0)
+    assert list(catalog.clips) == [CLIP]
+    episode = json.loads((run / "episodes.jsonl").read_text())
+    episode["scene_index"] = 3
+    with (run / "episodes.jsonl").open("a") as stream:
+        stream.write(json.dumps(episode) + "\n")
+    assert list(catalog.clips) == [CLIP, CLIP.replace("scene2", "scene3")]
+
+
+def test_an_episode_without_a_trace_is_traced_when_its_brain_view_opens(tmp_path: Path) -> None:
+    run = make_run(tmp_path)
+    trace = run / "traces" / "s778-scene2.trace.npz"
+    saved = trace.read_bytes()
+    trace.unlink()
+    (run / "inputs").mkdir()
+    (run / "inputs" / "s778-scene2.npz").write_bytes(b"")
+    # A stand-in for fly-brain trace-live: writes the trace the run would get.
+    script = tmp_path / "trace.py"
+    script.write_text(
+        "import sys, pathlib\n"
+        f"pathlib.Path(sys.argv[1], 'traces', sys.argv[3] + '.trace.npz').write_bytes({saved!r})\n"
+    )
+    catalog = LiveCatalog([run], trace_command=[sys.executable, str(script)])
+    traces = LiveTraces(catalog)
+    assert traces.clip_ids(catalog.dataset_id) == [CLIP]  # traceable
+    result = traces.trace(catalog.dataset_id, CLIP)
+    assert result is not None
+    assert result["steps"] == 3
+    assert trace.is_file()
+
+
+def test_an_episode_without_a_video_shows_grey_frames(tmp_path: Path) -> None:
+    run = make_run(tmp_path)
+    (run / "videos" / "s778-scene2.mp4").unlink()
+    frames = LiveCatalog([run]).clip_frames(CLIP)
+    image = Image.open(io.BytesIO(frames.frame_png(1, 0.5)))
+    assert image.size == (64, 32)
