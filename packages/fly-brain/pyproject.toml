@@ -1,6 +1,6 @@
 [project]
 name = "fly-brain"
-version = "0.0.1"
+version = "0.1.0"
 description = "Learn from fly-vision observations with modular connectome-constrained models."
 readme = "README.md"
 requires-python = ">=3.13"

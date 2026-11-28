@@ -1,6 +1,6 @@
 {
-  "packages/fly-brain": "0.0.1",
-  "packages/fly-vision": "0.0.1",
-  "packages/honey-factory-tools": "0.0.0",
-  "packages/honey-factory": "0.0.1"
+  "packages/fly-brain": "0.1.0",
+  "packages/fly-vision": "0.1.0",
+  "packages/honey-factory-tools": "0.1.0",
+  "packages/honey-factory": "0.1.0"
 }
