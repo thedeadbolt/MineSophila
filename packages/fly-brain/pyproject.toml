@@ -1,0 +1,29 @@
+[project]
+name = "fly-brain"
+version = "0.0.1"
+description = "Learn from fly-vision observations with modular connectome-constrained models."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+authors = [{ name = "João Moutinho" }]
+dependencies = [
+    "fly-vision>=0.0.1",
+    "honey-factory-tools>=0.0.0",
+    "jax>=0.11.1",
+    "numpy>=2.5.4",
+    "pyarrow>=22.0.0",
+]
+
+[project.scripts]
+fly-brain = "fly_brain.cli:main"
+
+[dependency-groups]
+dev = [
+    "pyarrow-stubs>=20.0.0.20260819",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.4,<0.14"]
+build-backend = "uv_build"

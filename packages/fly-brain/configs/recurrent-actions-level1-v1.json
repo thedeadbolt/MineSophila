@@ -1,0 +1,15 @@
+{
+  "format": "fly-brain-recurrent-action-experiment-v1",
+  "model": {
+    "hidden_width": 64,
+    "include_context": true,
+    "action_scales": [1.0, 1.0, 9.0, 6.0, 1.0, 1.0]
+  },
+  "training": {
+    "steps": 2000,
+    "batch_size": 8,
+    "learning_rate": 0.001,
+    "truncation_steps": 32,
+    "seed": 0
+  }
+}

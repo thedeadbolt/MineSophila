@@ -74,6 +74,41 @@ class FlyEye:
     def reset(self) -> None:
         """Hook for temporal state (phase 4); v0 keeps no state between frames."""
 
+    def sample_arrays(
+        self,
+        panorama: NDArray[np.uint8] | NDArray[np.uint16],
+        mask: NDArray[np.floating[Any]],
+    ) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
+        """Return activations and mask coverage without provenance metadata.
+
+        This is the bulk-conversion path. It combines image and mask sampling in one
+        sparse matrix traversal and deliberately skips hashes and input diagnostics.
+        """
+        h, w = self.projection.height, self.projection.width
+        if panorama.shape != (h, w, 3):
+            raise ValueError(f"panorama shape {panorama.shape} != expected {(h, w, 3)}")
+        linear = linearise(panorama)
+        m = np.asarray(mask, dtype=np.float64)
+        if m.ndim != 2:
+            raise ValueError(f"mask must be 2-D (H, W), got {m.ndim}-D shape {m.shape}")
+        if m.shape != (h, w):
+            raise ValueError(f"mask shape {m.shape} != expected {(h, w)}")
+        if not np.isfinite(m).all():
+            raise ValueError("mask contains NaN or infinite values")
+        if m.min() < 0.0 or m.max() > 1.0:
+            raise ValueError(
+                "mask values must lie in [0, 1]; use load_mask to convert 0/255 mask files"
+            )
+
+        inputs = np.empty((h, w, 4), dtype=np.float64)
+        inputs[..., :3] = linear
+        inputs[..., 3] = m
+        sampled = apply_sampling(self.sm, inputs)
+        receptors = self.spectral.receptors(sampled[:, :3], self.lattice.subtype)
+        adapted = adapt(receptors, self.sm.valid, self.cfg.adaptation)
+        activations = np.where(self.sm.valid[:, None], adapted, 0.0).astype(np.float32)
+        return activations, sampled[:, 3].astype(np.float32)
+
     def sample(
         self,
         panorama: NDArray[np.uint8] | NDArray[np.uint16],

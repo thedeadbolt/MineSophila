@@ -4,6 +4,7 @@ Build and release each package with its own configuration and version.
 
 | Package | Toolchain | Planned purpose | Current state |
 |---|---|---|---|
+| [fly-brain](fly-brain/) | Python / uv | Learn honey localisation and movement with modular connectome-constrained models | Framework-independent observation contracts |
 | [fly-vision](fly-vision/) | Python / uv | Model fruit-fly vision from images and scene metadata | v0 virtual eye: image and honey mask to per-ommatidium R1_6/R7/R8 activations and labels (`fly-vision convert`) |
 | [honey-factory](honey-factory/) | Java / Gradle / Fabric | Generate and capture labelled Minecraft scenes | M0 rendering fixture; M1 configuration, data contract and ID/seed/split rules |
 | [honey-factory-tools](honey-factory-tools/) | Python / uv | Validate and inspect datasets outside Minecraft | Schema validation CLI and independent contract algorithms |
@@ -16,6 +17,7 @@ Gradle wrapper and build files under `honey-factory/`.
 Run these commands from the repository root:
 
 ```sh
+just test fly-brain
 just test fly-vision   # Python package tests
 just test honey-factory-tools
 just mod-test         # Java package tests

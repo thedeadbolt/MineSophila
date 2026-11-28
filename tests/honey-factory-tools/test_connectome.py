@@ -125,7 +125,8 @@ class TestBuild:
         report.write_text(json.dumps({"connectome": {"component_cell_types": {
             "descending_steering": {"DNp01": 1}, "compass": {"EPG": 2}}}}))  # fmt: skip
         assert connectome.report_components(report) == {
-            "descending_steering": ["DNp01"], "compass": ["EPG"]
+            "descending_steering": ["DNp01"],
+            "compass": ["EPG"],
         }
 
     def test_counts_synapses_by_cell_type_and_component(self, connectome_dir: Path) -> None:

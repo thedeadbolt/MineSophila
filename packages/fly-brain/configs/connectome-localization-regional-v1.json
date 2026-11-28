@@ -1,0 +1,34 @@
+{
+  "format": "fly-brain-connectome-experiment-v1",
+  "model": {
+    "minimum_synapse_count": 5,
+    "settling_steps": 1,
+    "time_constant": 2.0,
+    "dt": 1.0,
+    "activation": "relu",
+    "initial_edge_gain": 1.0,
+    "train_neuron_bias": false,
+    "edge_gain_mode": "global",
+    "maximum_edge_gain": null,
+    "use_neurotransmitter_signs": false,
+    "components": ["photoreceptors", "visual_projection"],
+    "readout_components": ["photoreceptors"],
+    "input_transform": "regional_mean",
+    "regional_azimuth_bins": 8,
+    "regional_elevation_bins": 4
+  },
+  "training": {
+    "steps": 1200,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "weight_decay": 0.00001,
+    "seed": 0,
+    "presence_loss_weight": 1.0,
+    "direction_loss_weight": 1.0,
+    "validation_interval": 100,
+    "early_stopping_patience": 6,
+    "threshold_search_steps": 181,
+    "threshold_search_min": 0.05,
+    "threshold_search_max": 0.95
+  }
+}

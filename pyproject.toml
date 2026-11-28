@@ -8,7 +8,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
 # List Python workspace members here so root `uv sync` installs them for integration tests.
-dependencies = ["fly-vision", "honey-factory-tools"]
+dependencies = ["fly-brain", "fly-vision", "honey-factory-tools"]
 
 [dependency-groups]
 dev = [
@@ -25,9 +25,10 @@ package = false
 
 [tool.uv.workspace]
 # Build honey-factory with Gradle outside this Python workspace.
-members = ["packages/fly-vision", "packages/honey-factory-tools"]
+members = ["packages/fly-brain", "packages/fly-vision", "packages/honey-factory-tools"]
 
 [tool.uv.sources]
+fly-brain = { workspace = true }
 fly-vision = { workspace = true }
 honey-factory-tools = { workspace = true }
 
@@ -52,11 +53,16 @@ extend-exclude = ["packages/honey-factory"]
 select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "PT", "N", "C4", "PTH"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["fly_vision", "honey_factory_tools"]
+known-first-party = ["fly_brain", "fly_vision", "honey_factory_tools"]
 
 # Pyright: strict type checking
 [tool.pyright]
-include = ["packages/fly-vision/src", "packages/honey-factory-tools/src", "tests"]
+include = [
+    "packages/fly-brain/src",
+    "packages/fly-vision/src",
+    "packages/honey-factory-tools/src",
+    "tests",
+]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
 venvPath = "."

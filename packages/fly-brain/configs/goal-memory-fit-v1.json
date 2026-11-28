@@ -1,0 +1,33 @@
+{
+  "format": "fly-brain-goal-memory-fit-v1",
+  "initial_harmonic_eigenvalue": null,
+  "hold": {
+    "steps": 1500,
+    "learning_rate": 0.01,
+    "frames": 120,
+    "kick_frames": 10,
+    "kick": 0.3,
+    "minimum_strength": 0.4,
+    "transitions_per_frame": 4,
+    "batch_size": 32,
+    "release_sharpness": 20.0,
+    "seed": 0
+  },
+  "pfl3": {
+    "threshold": 0.2,
+    "trials": 128
+  },
+  "write": {
+    "steps": 1500,
+    "learning_rate": 0.005,
+    "frames": 120,
+    "kick_frames": 10,
+    "kick": 0.3,
+    "transitions_per_frame": 4,
+    "batch_size": 16,
+    "release_sharpness": 20.0,
+    "initial_vector_threshold": 0.0,
+    "initial_egocentric_scale": 0.1,
+    "seed": 0
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "format": "fly-brain-compass-integrator-fit-v1",
+  "initial_harmonic_eigenvalue": 1.5,
+  "stages": [
+    {"steps": 2000, "learning_rate": 0.01, "bump_gain": 1.0, "real_yaw_fraction": 0.8},
+    {"steps": 2500, "learning_rate": 0.005, "bump_gain": 0.5, "real_yaw_fraction": 0.8}
+  ],
+  "transitions_per_frame": 4,
+  "batch_size": 32,
+  "frames": 120,
+  "kick_frames": 10,
+  "kick": 0.3,
+  "minimum_strength": 0.4,
+  "synthetic_yaw_mean": 3.7,
+  "initial_threshold": 0.3,
+  "initial_scale": 0.04,
+  "release_sharpness": 20.0,
+  "seed": 0
+}

@@ -44,6 +44,9 @@ agree on any extra capture requirements with the collaborator.
 
 ## Phase 2 — Dataset integration and network design
 
+The proposed package boundaries, major classes and implementation slices are in the
+[fly-brain foundation plan](superpowers/plans/2026-11-19-fly-brain-foundation.md).
+
 - Convert captures into a Minecraft fly-vision dataset, keeping labels aligned.
 - Agree on sensory channels, sampling rates and the adapter between packages.
 - Select a connectome and the visual, learning and output pathways to model.

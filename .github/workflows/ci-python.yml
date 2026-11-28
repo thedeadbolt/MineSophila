@@ -33,12 +33,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [fly-vision, honey-factory-tools]
+        package: [fly-brain, fly-vision, honey-factory-tools]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.0
         with:
           enable-cache: true
+      # The clip tests decode and probe videos with ffmpeg and ffprobe.
+      - if: matrix.package == 'honey-factory-tools'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       # Select the package and its declared runtime and development dependencies.
       - run: uv sync --locked --package ${{ matrix.package }}
       - run: uv run --no-sync pytest tests/${{ matrix.package }} --cov=packages/${{ matrix.package }}/src --cov-report=term-missing
