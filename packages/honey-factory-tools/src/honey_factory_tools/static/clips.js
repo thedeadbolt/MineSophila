@@ -19,7 +19,9 @@ const STATUS_COLOURS = {
 const MODE_COLOURS = { track: "#e0a100", reacquire: "#8e44ad", search: "#2980b9" };
 // Ticks the teacher did not drive alone are marked under the mode lane.
 const DRIVER_COLOURS = { script: "#555c63", teacher_drift: "#d35400" };
-const DRIVER_NAMES = { teacher: "teacher", teacher_drift: "teacher + drift", script: "script" };
+// Live episodes: the mode lane shows contact instead of a teacher mode.
+const CONTACT_COLOURS = { bumped: "#e74c3c", touching: "#e67e22" };
+const DRIVER_NAMES = { teacher: "teacher", teacher_drift: "teacher + drift", script: "script", fly: "the fly's brain" };
 const MASK_TINT = [24, 200, 240];
 const DETAILS = [0.25, 0.5, 1];
 const MIN_ZOOM = 0.05;
@@ -43,6 +45,9 @@ const clip = {
   load: 0,
 };
 
+// Other workspaces open clips through this, without going through the search box.
+window.viewerOpenClip = (id) => openClip(id).catch(report);
+
 async function startClips(dataset) {
   document.body.classList.add("clips");
   $("filter-panel").hidden = true;
@@ -50,7 +55,7 @@ async function startClips(dataset) {
   $("details").hidden = true;
   $("find-id").placeholder = "Go to s000123-c02";
   const form = $("clip-filters");
-  form.hidden = false;
+  $("clip-filter-panel").hidden = false;
   fill(form.split, dataset.options.splits);
   fill(form.type, ["approach", "pass_by", "scan", "occlusion", "detour", "search", "no_honey"]);
   $("timeline-legend").replaceChildren(
@@ -58,7 +63,10 @@ async function startClips(dataset) {
     ...Object.entries(MODE_COLOURS).map(([name, colour]) => legend(name, colour)),
     ...Object.entries(DRIVER_COLOURS).map(([name, colour]) => legend(`driven by ${DRIVER_NAMES[name]}`, colour)),
   );
-  await listClips(true);
+  // ?clip=s000123-c02 opens that clip first, so a link can point at one.
+  const wanted = new URLSearchParams(location.search).get("clip");
+  await listClips(!wanted);
+  if (wanted) await openClip(wanted).catch(() => listClips(true));
 }
 
 function legend(name, colour) {
@@ -70,6 +78,8 @@ function legend(name, colour) {
 async function listClips(openFirst) {
   const params = new URLSearchParams();
   for (const [name, value] of new FormData($("clip-filters"))) if (String(value).trim() !== "") params.set(name, value);
+  const active = [...params.entries()].map(([name, value]) => (name === "scene_id" ? value : humane(value)));
+  $("clip-filter-summary").textContent = active.length ? active.join(", ") : "all clips";
   const listing = await api(`/api/clips?${params}`);
   clip.list = listing.clips;
   $("result-count").textContent = `${listing.total} clips`;
@@ -94,6 +104,7 @@ async function openClip(id) {
   if (load !== clip.load) return;
   clip.id = id;
   clip.record = body.clip;
+  clip.scene = body.scene;
   clip.frames = body.frames;
   clip.rgb = [];
   clip.masks = [];
@@ -113,6 +124,24 @@ async function openClip(id) {
   $("clip-errors").replaceChildren(...errors.map((line) => element("div", line)));
   $("clip-errors").hidden = errors.length === 0;
   const record = body.clip;
+  if (record.live) {
+    const live = record.live;
+    const bumps = body.frames.filter((f) => f.tick_labels && f.tick_labels.senses.bumped).length;
+    facts($("clip-facts"), [
+      ["Run", record.split],
+      ["Model run", live.run_dir || "—"],
+      ["Policy", live.policy || "—"],
+      ["Seed, scene", `${live.seed}, ${live.scene_index}`],
+      ["Turned at the start", `${number(live.turned_deg ?? live.turn_before_deg ?? 0, 1)}°`],
+      ["Honey height", live.target_height && live.target_height !== "0" ? `${live.target_height} blocks up` : "on the floor"],
+      ["Outcome", live.reached ? `reached at step ${live.reach_step}` : humane(String(live.failure || "timed out"))],
+      ["Steps", record.frame_count],
+      ["Closest, final distance", `${number(live.min_distance, 2)}, ${number(live.final_distance, 2)} blocks`],
+      ["Ticks bumping, touching", `${bumps}, ${live.touch_ticks ?? "—"}`],
+      ["Turned toward the honey", live.turn_toward_fraction === null || live.turn_toward_fraction === undefined ? "—" : `${number(live.turn_toward_fraction * 100, 0)}% of ticks`],
+      ["Video", record.codec.name],
+    ]);
+  } else {
   const requested = record.requested_type === record.clip_type ? humane(record.clip_type) : `${humane(record.clip_type)} (asked for ${humane(record.requested_type)})`;
   facts($("clip-facts"), [
     ["Type", requested],
@@ -130,6 +159,7 @@ async function openClip(id) {
     ["Codec", record.codec.name + (record.codec.crf === undefined ? "" : ` crf ${record.codec.crf}`)],
     ["Attempt", record.attempt],
   ]);
+  }
   clip.detail = 0;
   clip.view.fit = true;
   fitView();
@@ -246,6 +276,96 @@ function show(index) {
   drawFrame();
   drawTimeline();
   describe(clip.frames[clip.index]);
+  drawMap();
+  document.dispatchEvent(new CustomEvent("viewer:frame", { detail: {
+    clipId: clip.id, index: clip.index, frame: clip.frames[clip.index], frames: clip.frames,
+    record: clip.record, scene: clip.scene, image: clip.rgb[clip.index] || null, playing: clip.playing,
+    mask: clip.masks[clip.index] || null, maskTinted: true,
+    box: clip.frames[clip.index] ? clip.frames[clip.index].target.visible_bbox_xywh : null,
+    size: [clip.record.files.rgb.width, clip.record.files.rgb.height],
+  } }));
+  if (clip.compose) clip.compose();
+}
+
+/** The clip seen from above, north up: the whole path, the path so far, the fly's 310°
+    view (the blind 50° behind it left open) and the honey block. */
+function drawMap() {
+  const canvas = $("clip-map");
+  if (!canvas || canvas.offsetParent === null) return;
+  const ratio = devicePixelRatio;
+  const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
+  const height = Math.max(1, Math.round(canvas.clientHeight * ratio));
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  const styles = getComputedStyle(document.documentElement);
+  const colour = (name) => styles.getPropertyValue(name).trim();
+  const points = clip.frames.map((frame) => [frame.pose.position[0], frame.pose.position[2]]);
+  const target = clip.scene && clip.scene.target && clip.scene.target.present ? clip.scene.target.position : null;
+  const honey = target ? [target[0] + 0.5, target[2] + 0.5] : null;
+  const all = honey ? [...points, honey] : points;
+  if (!all.length) return;
+  const xs = all.map((p) => p[0]);
+  const zs = all.map((p) => p[1]);
+  const pad = 3;
+  const [x0, x1, z0, z1] = [Math.min(...xs) - pad, Math.max(...xs) + pad, Math.min(...zs) - pad, Math.max(...zs) + pad];
+  const scale = Math.min(width / (x1 - x0), height / (z1 - z0));
+  const ox = (width - (x1 - x0) * scale) / 2;
+  const oy = (height - (z1 - z0) * scale) / 2;
+  const at = (p) => [ox + (p[0] - x0) * scale, oy + (p[1] - z0) * scale];
+  context.fillStyle = colour("--bg");
+  context.fillRect(0, 0, width, height);
+  // One-block grid where it stays readable.
+  if (scale >= 8 * ratio) {
+    context.globalAlpha = 0.6;
+    context.strokeStyle = colour("--rule");
+    context.lineWidth = 1;
+    context.beginPath();
+    for (let x = Math.ceil(x0); x <= x1; x++) { const px = Math.round(at([x, 0])[0]) + 0.5; context.moveTo(px, 0); context.lineTo(px, height); }
+    for (let z = Math.ceil(z0); z <= z1; z++) { const py = Math.round(at([0, z])[1]) + 0.5; context.moveTo(0, py); context.lineTo(width, py); }
+    context.stroke();
+    context.globalAlpha = 1;
+  }
+  const path = (list, style, lineWidth) => {
+    context.strokeStyle = style;
+    context.lineWidth = lineWidth * ratio;
+    context.beginPath();
+    list.forEach((p, k) => { const [px, py] = at(p); if (k) context.lineTo(px, py); else context.moveTo(px, py); });
+    context.stroke();
+  };
+  path(points, colour("--faint"), 1);
+  path(points.slice(0, clip.index + 1), colour("--ink"), 2);
+  const frame = clip.frames[clip.index];
+  const [fx, fy] = at(points[clip.index]);
+  // Minecraft yaw: 0 faces south (+z), 90 faces west (-x).
+  const yaw = (frame.pose.yaw_degrees * Math.PI) / 180;
+  const heading = Math.atan2(Math.cos(yaw), -Math.sin(yaw));
+  const reach = Math.min(width, height) * 0.22;
+  const blind = ((50 / 2) * Math.PI) / 180;
+  context.fillStyle = colour("--honey-wash");
+  context.beginPath();
+  context.moveTo(fx, fy);
+  context.arc(fx, fy, reach, heading + Math.PI + blind, heading + Math.PI - blind + 2 * Math.PI);
+  context.closePath();
+  context.fill();
+  if (honey) {
+    const [hx, hy] = at([honey[0] - 0.5, honey[1] - 0.5]);
+    context.fillStyle = colour("--honey");
+    context.fillRect(hx, hy, Math.max(4 * ratio, scale), Math.max(4 * ratio, scale));
+  }
+  context.save();
+  context.translate(fx, fy);
+  context.rotate(heading);
+  context.fillStyle = colour("--ink");
+  context.beginPath();
+  context.moveTo(8 * ratio, 0);
+  context.lineTo(-5 * ratio, 4.5 * ratio);
+  context.lineTo(-5 * ratio, -4.5 * ratio);
+  context.closePath();
+  context.fill();
+  context.restore();
+  const span = Math.max(x1 - x0, z1 - z0);
+  $("clip-map-note").textContent = `North is up. About ${Math.round(span)} blocks across${honey ? "; amber is the honey block." : "; no honey in this scene."}`;
 }
 
 /** Draws the frame where the view puts it, at the canvas's device resolution. */
@@ -299,8 +419,9 @@ function drawTimeline() {
   const canvas = $("clip-timeline");
   const width = Math.max(300, Math.round(canvas.clientWidth * devicePixelRatio));
   const height = Math.max(60, Math.round(canvas.clientHeight * devicePixelRatio));
-  const lane = Math.round(height * 0.16);
-  const bearing = height - 2 * lane - Math.round(6 * devicePixelRatio);
+  const lane = Math.round(height * 0.14);
+  const bearing = height - 3 * lane - Math.round(10 * devicePixelRatio);
+  const turnTop = lane + bearing + 4 + lane + Math.round(4 * devicePixelRatio);
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
@@ -308,6 +429,13 @@ function drawTimeline() {
   const frames = clip.frames;
   if (frames.length === 0) return;
   const step = width / frames.length;
+  // Lane bounds in device pixels, for reading the lane under the pointer.
+  clip.lanes = {
+    status: [0, lane],
+    bearing: [lane, lane + bearing + 4],
+    mode: [lane + bearing + 4, lane + bearing + 4 + lane],
+    turn: [turnTop - Math.round(4 * devicePixelRatio), turnTop + lane],
+  };
   frames.forEach((frame, n) => {
     const x = n * step;
     const labels = tickLabelsAt(n);
@@ -318,7 +446,8 @@ function drawTimeline() {
     context.fillStyle = STATUS_COLOURS[frame.target.target_status] || "#999";
     context.fillRect(x, 0, Math.ceil(step), lane - 2);
     const mode = labels && labels.teacher_mode;
-    context.fillStyle = mode ? MODE_COLOURS[mode] : "transparent";
+    const contact = labels && labels.live ? (labels.senses.bumped ? "bumped" : labels.senses.touch && labels.senses.touch.front ? "touching" : null) : null;
+    context.fillStyle = mode ? MODE_COLOURS[mode] : contact ? CONTACT_COLOURS[contact] : "transparent";
     context.fillRect(x, lane + bearing + 4, Math.ceil(step), lane - 2);
     const driver = labels && DRIVER_COLOURS[labels.driver];
     if (driver) {
@@ -327,6 +456,23 @@ function drawTimeline() {
       context.fillRect(x, lane + bearing + 4 + lane - 2 - mark, Math.ceil(step), mark);
     }
   });
+  // Teacher turn: one bar per frame, up for a right turn, down for a left one.
+  const turns = frames.map((_, n) => {
+    const labels = tickLabelsAt(n);
+    // The teacher's turn, or in a live episode the fly's own.
+    const command = labels ? labels.teacher || (labels.live ? labels.executed : null) : null;
+    return command ? command.turn_rate : null;
+  });
+  const turnPeak = Math.max(1e-6, ...turns.map((t) => Math.abs(t || 0)));
+  const middle = turnTop + (lane - 2) / 2;
+  context.fillStyle = "rgba(24, 200, 240, 0.85)";
+  turns.forEach((t, n) => {
+    if (!t) return;
+    const h = (t / turnPeak) * ((lane - 2) / 2);
+    context.fillRect(n * step, h > 0 ? middle - h : middle, Math.ceil(step), Math.max(1, Math.abs(h)));
+  });
+  context.fillStyle = "rgba(127, 127, 127, 0.4)";
+  context.fillRect(0, middle, width, 1);
   const top = lane;
   context.strokeStyle = "rgba(127, 127, 127, 0.5)";
   context.beginPath();
@@ -377,6 +523,22 @@ function describe(frame) {
   const labels = tickLabelsAt(frame.frame);
   const command = (value) => (value ? `forward ${number(value.forward, 2)}, turn ${number(value.turn_rate, 2)}°, look ${number(value.pitch_rate, 2)}°${value.jump ? ", jump" : ""}` : "—");
   const belief = labels && labels.belief;
+  if (labels && labels.live) {
+    const live = labels.live;
+    facts($("tick-facts"), [
+      ["Driven by", DRIVER_NAMES.fly],
+      ["Fly command", command(labels.executed)],
+      ["Head pitch", `${number(labels.senses.pitch, 1)}° down`],
+      ["Bumped", labels.senses.bumped ? "yes" : "no"],
+      ["Touching", labels.senses.touch.front ? "yes" : "no"],
+      ["Wall ahead", live.wall_ahead_blocks === null || live.wall_ahead_blocks === undefined ? "—" : `${number(live.wall_ahead_blocks, 2)} blocks`],
+      ["Model presence", live.presence === null || live.presence === undefined ? "—" : number(live.presence, 3)],
+      ["Distance", live.distance === null || live.distance === undefined ? "—" : `${number(live.distance, 2)} blocks`],
+      ["Honey off the heading", live.yaw_error_deg === null || live.yaw_error_deg === undefined ? "—" : `${number(live.yaw_error_deg, 1)}°`],
+    ]);
+    $("frame-record").textContent = JSON.stringify(frame, null, 2);
+    return;
+  }
   facts($("tick-facts"), labels ? [
     ["Teacher mode", labels.teacher_mode || "—"],
     ["Driven by", labels.driver ? DRIVER_NAMES[labels.driver] : "—"],
@@ -404,6 +566,7 @@ function play() {
 function pause() {
   clip.playing = false;
   $("clip-play").textContent = "Play";
+  if (clip.recording) finishRecording();
 }
 
 function advance(now) {
@@ -413,9 +576,50 @@ function advance(now) {
   if (clip.carry >= 1) {
     const steps = Math.floor(clip.carry);
     clip.carry -= steps;
+    if (clip.recording && clip.index + steps >= clip.record.frame_count - 1) {
+      show(clip.record.frame_count - 1);
+      finishRecording();
+      return;
+    }
     show(clip.index + steps);
   }
   requestAnimationFrame(advance);
+}
+
+/** Plays the clip once from the start while a canvas is recorded as WebM: the player by
+    default, or another workspace's canvas, redrawn by ``compose`` after every frame. */
+function startRecording(canvas = $("clip-canvas"), compose = null, name = `${clip.id}.webm`, button = $("clip-record")) {
+  if (!canvas.captureStream || typeof MediaRecorder === "undefined" || clip.rgb.length === 0) return;
+  pause();
+  clip.compose = compose;
+  show(0);
+  const type = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm";
+  const recorder = new MediaRecorder(canvas.captureStream(FPS), { mimeType: type, videoBitsPerSecond: 12_000_000 });
+  const chunks = [];
+  recorder.addEventListener("dataavailable", (event) => event.data.size && chunks.push(event.data));
+  recorder.addEventListener("stop", () => {
+    const link = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob(chunks, { type: "video/webm" })), download: name });
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+  });
+  clip.recording = recorder;
+  clip.recordButton = button;
+  clip.recordLabel = button.textContent;
+  button.textContent = "Recording…";
+  button.disabled = true;
+  recorder.start();
+  play();
+}
+
+function finishRecording() {
+  const recorder = clip.recording;
+  clip.recording = null;
+  clip.compose = null;
+  pause();
+  clip.recordButton.textContent = clip.recordLabel;
+  clip.recordButton.disabled = false;
+  // Hold the last frame briefly so it lands in the video.
+  setTimeout(() => recorder.state !== "inactive" && recorder.stop(), 200);
 }
 
 $("clip-play").addEventListener("click", () => (clip.playing ? pause() : play()));
@@ -423,6 +627,9 @@ $("clip-back").addEventListener("click", () => { pause(); show(clip.index - 1); 
 $("clip-forward").addEventListener("click", () => { pause(); show(clip.index + 1); });
 $("clip-scrub").addEventListener("input", (event) => { pause(); show(Number(event.target.value)); });
 $("clip-overlay").addEventListener("input", drawFrame);
+$("clip-record").addEventListener("click", () => startRecording());
+window.viewerRecord = startRecording;
+new ResizeObserver(() => clip.record && drawMap()).observe($("clip-map"));
 $("clip-box").addEventListener("input", drawFrame);
 $("clip-detail").addEventListener("input", refineDetail);
 function toggleWide() {
@@ -485,10 +692,76 @@ $("clip-zoom-actual").addEventListener("click", actualSize);
   });
   new ResizeObserver(() => (clip.view.fit ? fitView() : drawFrame())).observe(stage);
 }
+// Filters apply as they change; typing in the scene box waits until it pauses.
+{
+  let typing = null;
+  $("clip-filters").addEventListener("input", (event) => {
+    clearTimeout(typing);
+    typing = setTimeout(() => listClips(true).catch(report), event.target.tagName === "INPUT" ? 350 : 0);
+  });
+  $("clip-filters").addEventListener("reset", () => setTimeout(() => listClips(true).catch(report)));
+}
 $("clip-filters").addEventListener("submit", (event) => {
   event.preventDefault();
   listClips(true).catch(report);
 });
+/** What every lane says at one frame, for the timeline's hover tip. */
+function describeTimeline(n, laneName) {
+  const frame = clip.frames[n];
+  const labels = tickLabelsAt(n);
+  const swatch = (colour) => {
+    const dot = element("i", null, "swatch");
+    dot.style.background = colour;
+    return dot;
+  };
+  const row = (lane, colour, name, value) => {
+    const line = element("div", null, `tip-row${lane === laneName ? " here" : ""}`);
+    line.append(colour ? swatch(colour) : element("i", null, "swatch none"), element("span", name, "tip-name"), element("span", value, "tip-value"));
+    return line;
+  };
+  const target = frame.target;
+  const status = target.target_status;
+  const bearing = frame.bearing;
+  const mode = labels && labels.teacher_mode;
+  const driver = labels && labels.driver;
+  const turn = labels && labels.teacher ? labels.teacher.turn_rate : null;
+  const rows = [
+    element("div", `Frame ${frame.frame} · tick ${frame.tick}${frame.sub_frame ? `.${frame.sub_frame}` : ""}`, "tip-head"),
+    row("status", STATUS_COLOURS[status], "Honey", `${humane(status)}${target.visible_pixels ? `, ${number(target.visible_pixels)} px` : ""}`),
+    row("bearing", "#e0a100", "Bearing", bearing ? `${number(bearing.azimuth_degrees, 1)}° ${bearing.azimuth_degrees >= 0 ? "right" : "left"}, ${number(bearing.distance_blocks, 1)} blocks` : "not in view"),
+    row("mode", mode ? MODE_COLOURS[mode] : null, "Teacher", mode ? `${mode}${driver && driver !== "teacher" ? `, driven by ${DRIVER_NAMES[driver] || driver}` : ""}` : "no label"),
+    row("turn", turn ? "rgba(24, 200, 240, 0.85)" : null, "Teacher turn", turn === null ? "—" : turn === 0 ? "straight" : `${number(Math.abs(turn), 1)}°/tick ${turn > 0 ? "right" : "left"}`),
+  ];
+  if (labels && labels.drifting) rows.push(row("drift", "rgba(224, 161, 0, 0.45)", "Drifting", "the amber band: drift added to the teacher's command"));
+  return rows;
+}
+
+{
+  const canvas = $("clip-timeline");
+  const tip = $("timeline-tip");
+  canvas.addEventListener("pointermove", (event) => {
+    if (!clip.frames.length || !clip.lanes) return;
+    const box = canvas.getBoundingClientRect();
+    const fx = (event.clientX - box.left) / box.width;
+    const py = (event.clientY - box.top) * devicePixelRatio;
+    const n = Math.max(0, Math.min(clip.frames.length - 1, Math.floor(fx * clip.frames.length)));
+    const laneName = Object.entries(clip.lanes).find(([, [a, b]]) => py >= a && py < b)?.[0] ?? null;
+    tip.replaceChildren(...describeTimeline(n, laneName));
+    tip.hidden = false;
+    const wrap = canvas.parentElement.getBoundingClientRect();
+    const left = event.clientX - wrap.left;
+    tip.style.left = `${Math.min(wrap.width - tip.offsetWidth - 4, Math.max(4, left + 14))}px`;
+    tip.style.bottom = `${wrap.height + 6}px`;
+    canvas.style.setProperty("--hover", `${fx * 100}%`);
+    canvas.parentElement.classList.add("hovering");
+    canvas.parentElement.style.setProperty("--hover", `${left}px`);
+  });
+  canvas.addEventListener("pointerleave", () => {
+    tip.hidden = true;
+    canvas.parentElement.classList.remove("hovering");
+  });
+}
+
 $("clip-timeline").addEventListener("click", (event) => {
   const box = event.target.getBoundingClientRect();
   if (clip.frames.length === 0) return;

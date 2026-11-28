@@ -71,6 +71,81 @@ order, are absent, fully occluded, not visible, edge or panorama seam, low pixel
 mirror the page's: `--split`, `--status`, `--present`, `--scene-id`, `--sample-id`,
 `--viewpoint`, and `--min-`/`--max-` with `ratio`, `pixels` or `distance`.
 
+### Workspaces
+
+The rail on the left of the page switches between three workspaces ([ADR 0029](../../docs/adr/0029-viewer-workspaces.md)).
+All three follow the same sample, or the same clip and frame, so the clip's transport, scrub
+bar and timeline drive every view. `#eye`, `#brain`, `#brain-circuit` or `#brain-runs` in
+the URL opens a workspace, and for a clip dataset `?clip=s000123-c02` opens that clip.
+
+- **Scene**: the images and clips described above. A clip also shows a top-down map of the
+  fly's path, its 310° view and the honey, and **Record video** saves one play-through of
+  the player as WebM.
+- **Eye**: the frame sampled through fly-vision's default eye (310° panoramas only). It
+  shows the camera frame; the image decoded from the receptors, where each pixel takes its
+  nearest ommatidium; both eyes' ommatidia by viewing direction; and a globe you can turn.
+  Each view can show **Colour**, R1_6, R7, R8, a false-colour mix or honey coverage.
+  Colour is computed from the receptors: for each ommatidium, the linear R, G, B light that
+  would produce its R1_6, R7 and R8 catches under its subtype's rhodopsins (a regularised
+  inverse of fly-vision's spectral model, which is linear while adaptation is off).
+  Dorsal-rim ommatidia have Rh3 in both R7 and R8, so they cannot tell colours apart and
+  are drawn grey. **Compare with camera** puts a draggable wipe over the decoded image. Point at an
+  ommatidium to read its receptors and rhodopsins. The side panel plots the rhodopsin
+  curves on both pigment axes. `--no-eye` turns the workspace off.
+- **Brain**: fly-brain output, read from files. `--runs DIR` lists the `*.report.json`
+  files in a sortable table, and opening one shows its loss curve, scores by split and clip
+  type, and connectome components. **Circuit** is a wiring diagram of the selected run
+  (or the most complete one), drawn as connectome papers draw circuits. The neuropils are
+  columns in signal order: the visual system along the top, and the anterior visual pathway
+  into the central complex below. Each column holds its most connected cell types as nodes,
+  sized by neuron count and coloured by transmitter. Edges are MaleCNS synapse counts from
+  `--connectome`, as wide as their count, ending in an arrow when excitatory and a bar when
+  inhibitory. Recurrent connections arc beside their column. Columns the run leaves out are
+  faded, and its readout components feed a readout block. Pointing at a node isolates its
+  connections. `--traces DIR` adds
+  **Clip playback** for clips with a `fly-brain-clip-trace-v1` file: activity by cell type,
+  the compass ring with its bump against the fly's heading, and the readout against the
+  truth, next to the fly's own view of that frame. In Brain the clip list shows only clips
+  that have a trace. During playback the circuit's nodes also glow with each cell type's
+  activity.
+- **3D brain** (Brain): every model neuron at its soma in MaleCNS space, a sampled cloud
+  of the rest of the brain for its outline, and the 12,000 strongest connections, drawn
+  with WebGL. Drag to turn, scroll to zoom, point at a neuron for its cell type, and click
+  a component in the legend to hide it. Neurons without a recorded soma (most
+  photoreceptors and lamina cells) are placed among their partners. During playback,
+  neurons take a heat colour stretched to that frame's spread, active ones grow and light
+  their outgoing connections, and the side panel lists the most active cell types.
+- **Record video** (Brain playback): plays the clip once and saves the fly's view, compass,
+  activity map and readout as a 1920×1080 WebM.
+- **Network** (Brain): the connectome itself, from `--connectome FILE`. One node per cell
+  type, or every central-complex neuron with the compass neurons on a ring at their
+  bridge angle. Edges are synapse counts, coloured by the presynaptic transmitter. The
+  graph is laid out in the order signals flow. Point at a node to see its strongest inputs
+  and outputs. During playback, nodes glow with their cell type's activity. The same graph
+  gives the circuit real synapse counts between components.
+
+Build the graph once from the MaleCNS feather files (about 40 s). It uses fly-brain's
+component rules:
+
+```sh
+uv run honey-factory-tools connectome-graph /mnt/fastvault/minesophila/connectomes/male-cns-v1.0 \
+    --out connectome-graph.json
+```
+
+While anything loads, the masthead shows what it is waiting for, how many requests are
+done and the elapsed time. The masthead also hides the list, the details or the clip
+timeline (`[`, `]`, `t`); a hidden pane folds to a strip with a handle, and on windows
+narrower than 1300 px the details start folded. `?` lists every shortcut. Filters apply as
+you change them, and the list scrolls under them. Side-panel sections fold away
+when you click their headings. Any view can fill its panel with its ⤢ button. These
+choices are remembered in the browser.
+
+```sh
+uv run honey-factory-tools inspect <clip dataset> \
+    --runs /mnt/fastvault/minesophila/derived/brain-localization-v3 --traces <trace directory> \
+    --connectome connectome-graph.json
+```
+
 Reviews are appended to `<review root>/<dataset id>/<manifest hash prefix>.jsonl`, one
 JSON object per line in the format `honey-factory-review-v1`:
 

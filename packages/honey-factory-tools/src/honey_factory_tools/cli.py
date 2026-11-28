@@ -4,6 +4,7 @@
 
 import argparse
 import json
+import shlex
 import sys
 import webbrowser
 from collections.abc import Sequence
@@ -14,6 +15,7 @@ from typing import cast
 from honey_factory_tools import (
     __version__,
     clip_report,
+    connectome,
     control,
     dataset,
     inspector,
@@ -22,8 +24,11 @@ from honey_factory_tools import (
     report,
     selection,
 )
+from honey_factory_tools.brain import Runs, Traces
 from honey_factory_tools.canonical import Json, loads
 from honey_factory_tools.catalog import Catalog
+from honey_factory_tools.eye import EyeModel
+from honey_factory_tools.live import LiveCatalog, LiveTraces
 from honey_factory_tools.reviews import ReviewError, ReviewStore
 from honey_factory_tools.schemas import KINDS, Kind, Schemas, find_schema_directory
 
@@ -62,9 +67,64 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--reviews", type=Path, help="sidecar review root (reviews are off without it)"
     )
     inspect.add_argument("--reviewer", help="name recorded with each review")
+    inspect.add_argument(
+        "--runs", type=Path, help="directory of fly-brain *.report.json files (Brain workspace)"
+    )
+    inspect.add_argument(
+        "--traces", type=Path, help="directory of fly-brain clip traces (Brain workspace)"
+    )
+    inspect.add_argument(
+        "--no-eye", action="store_true", help="turn off the Eye workspace (fly-vision)"
+    )
+    inspect.add_argument(
+        "--connectome",
+        type=Path,
+        help="connectome graph JSON from connectome-graph (Brain network view)",
+    )
+    graph = commands.add_parser(
+        "connectome-graph", help="summarise the MaleCNS connectome for the Brain network view"
+    )
+    graph.add_argument("directory", type=Path, help="the male-cns-v1.0 feather directory")
+    graph.add_argument("--out", type=Path, required=True, help="the graph JSON to write")
+    graph.add_argument("--minimum-synapses", type=int, default=5, help="per neuron pair")
+    graph.add_argument(
+        "--components-from",
+        type=Path,
+        action="append",
+        default=[],
+        help="a fly-brain run report whose components (for example pathfinding pathways) to"
+        " add; repeatable",
+    )
     inspect.add_argument("--port", type=int, default=0, help="port on 127.0.0.1 (0: any free one)")
     inspect.add_argument("--no-browser", action="store_true", help="do not open a browser")
     inspect.add_argument("directory", type=Path, help="the dataset directory holding dataset.json")
+    live = commands.add_parser(
+        "inspect-live",
+        help="browse fly-brain live runs (run-live --out-dir): episodes, videos and brain traces",
+    )
+    live.add_argument(
+        "run_dirs",
+        nargs="+",
+        type=Path,
+        help="run-live output directories, or folders of them (new runs and episodes appear)",
+    )
+    live.add_argument(
+        "--include-unfilmed",
+        action="store_true",
+        help="also list episodes recorded before videos (grey frames)",
+    )
+    live.add_argument(
+        "--trace-command",
+        help="command that traces an episode on demand, given RUN_DIR --episodes NAME (for"
+        " example 'uv run --project ../MineSophila fly-brain trace-live'); off without it",
+    )
+    live.add_argument(
+        "--runs", type=Path, help="directory of fly-brain *.report.json files (Brain workspace)"
+    )
+    live.add_argument("--no-eye", action="store_true", help="turn off the Eye workspace")
+    live.add_argument("--connectome", type=Path, help="connectome graph JSON from connectome-graph")
+    live.add_argument("--port", type=int, default=0, help="port on 127.0.0.1 (0: any free one)")
+    live.add_argument("--no-browser", action="store_true", help="do not open a browser")
     choose = commands.add_parser("select", help="print a reproducible selection of samples")
     choose.add_argument("--schemas", type=Path, help="schema directory for one contract version")
     choose.add_argument("--mode", choices=selection.MODES, default="random")
@@ -146,6 +206,37 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "control-demo":
         return _control_demo(args)
+    if args.command == "inspect-live":
+        command = cast(str | None, args.trace_command)
+        catalog = LiveCatalog(
+            cast(list[Path], args.run_dirs),
+            shlex.split(command) if command else None,
+            include_unfilmed=cast(bool, args.include_unfilmed),
+        )
+        args.reviews = None
+        args.traces = None
+        return _inspect(cast(Catalog, catalog), args, LiveTraces(catalog))
+    if args.command == "connectome-graph":
+        try:
+            extra: dict[str, list[str]] = {}
+            for report in cast(list[Path], args.components_from):
+                for name, types in connectome.report_components(report).items():
+                    extra.setdefault(name, [])
+                    extra[name] += [t for t in types if t not in extra[name]]
+            built = connectome.build(
+                cast(Path, args.directory),
+                cast(int, args.minimum_synapses),
+                extra_components=extra or None,
+            )
+        except connectome.ConnectomeError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        connectome.write(built, cast(Path, args.out))
+        print(
+            f"{built['neuron_count']} neurons, {len(built['cell_types'])} cell types, "
+            f"{built['edge_count']} edges written to {args.out}"
+        )
+        return 0
 
     try:
         schemas = Schemas(find_schema_directory(cast(Path | None, args.schemas)))
@@ -245,10 +336,23 @@ def _validate_dataset(
     return 0 if report.passed else 1
 
 
-def _inspect(catalog: Catalog, args: argparse.Namespace) -> int:
+def _inspect(catalog: Catalog, args: argparse.Namespace, traces: Traces | None = None) -> int:
     root = cast(Path | None, args.reviews)
     reviews = None if root is None else ReviewStore(root, catalog, cast(str | None, args.reviewer))
-    app = inspector.Inspector(catalog, reviews)
+    runs_root = cast(Path | None, args.runs)
+    traces_root = cast(Path | None, args.traces)
+    app = inspector.Inspector(
+        catalog,
+        reviews,
+        eye=None if args.no_eye else EyeModel(),
+        runs=None if runs_root is None else Runs(runs_root),
+        traces=traces
+        if traces is not None
+        else None
+        if traces_root is None
+        else Traces(traces_root),
+        network=None if args.connectome is None else connectome.load(cast(Path, args.connectome)),
+    )
     catalog.start_validation()
     server = inspector.make_server(app, cast(int, args.port))
     address = inspector.url(server)

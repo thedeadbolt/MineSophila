@@ -8,10 +8,35 @@
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
+<div class="app">
+<nav class="rail" aria-label="Workspaces">
+  <span class="mark" title="MineSophila viewer" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 2.5 27.7 9.25v13.5L16 29.5 4.3 22.75V9.25z"/><path d="M16 9.5 21.6 12.75v6.5L16 22.5l-5.6-3.25v-6.5z"/></svg></span>
+  <a class="workspace-link" href="#" data-workspace="scene" aria-current="page" title="Scene: honey-factory images and clips">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5"/><path d="m3.5 15 5-4.5 4 3.5 3-2.5 5 4"/></svg>
+    <span>Scene</span>
+  </a>
+  <a class="workspace-link" href="#eye" data-workspace="eye" aria-disabled="true" title="Eye: the frame through fly-vision's compound eye">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 3.5 2v4L12 12 8.5 10V6zM8.5 10 12 12v4l-3.5 2L5 16v-4zM15.5 10 19 12v4l-3.5 2-3.5-2v-4z"/></svg>
+    <span>Eye</span>
+  </a>
+  <a class="workspace-link" href="#brain" data-workspace="brain" aria-disabled="true" title="Brain: fly-brain runs and clip traces">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.5"/><path d="M12 4.5v2M12 17.5v2M4.5 12h2M17.5 12h2"/></svg>
+    <span>Brain</span>
+  </a>
+</nav>
+
+<div class="shell">
 <header class="masthead">
   <div class="identity">
     <h1 id="dataset-id">Dataset inspector</h1>
     <p id="dataset-facts"></p>
+  </div>
+  <p id="activity" class="activity" role="status" aria-live="polite" hidden><span class="spinner" aria-hidden="true"></span><span id="activity-text"></span></p>
+  <div class="pane-toggles" role="group" aria-label="Panels">
+    <button type="button" id="toggle-list" aria-pressed="true" title="Show or hide the list ([)">List</button>
+    <button type="button" id="toggle-details" aria-pressed="true" title="Show or hide the details (])">Details</button>
+    <button type="button" id="toggle-timeline" aria-pressed="true" title="Show or hide the clip timeline (t)">Timeline</button>
+    <button type="button" id="toggle-help" aria-expanded="false" aria-controls="shortcuts" title="Keyboard shortcuts (?)">?</button>
   </div>
   <form id="find" role="search">
     <input id="find-id" placeholder="Go to s000123 or s000123-v04" aria-label="Scene or sample ID" autocomplete="off" spellcheck="false">
@@ -19,9 +44,25 @@
   </form>
 </header>
 <div id="banner" hidden></div>
+<div id="shortcuts" class="popover" hidden role="dialog" aria-label="Keyboard shortcuts">
+  <h2>Keyboard shortcuts</h2>
+  <dl>
+    <dt><kbd>Shift</kbd> <kbd>S</kbd> <kbd>E</kbd> <kbd>B</kbd></dt><dd>Scene, Eye or Brain</dd>
+    <dt><kbd>Space</kbd></dt><dd>Play or pause the clip</dd>
+    <dt><kbd>,</kbd> <kbd>.</kbd></dt><dd>Previous or next frame</dd>
+    <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous or next sample</dd>
+    <dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>RGB, mask or overlay (images)</dd>
+    <dt><kbd>o</kbd></dt><dd>Mask overlay on the clip</dd>
+    <dt><kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd></dt><dd>Zoom in, out, fit</dd>
+    <dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>Hide or show the list or details</dd>
+    <dt><kbd>w</kbd></dt><dd>Clip player wide</dd>
+    <dt><kbd>t</kbd></dt><dd>Hide or show the timeline</dd>
+    <dt><kbd>Esc</kbd></dt><dd>Close a maximised card or this sheet</dd>
+  </dl>
+</div>
 <div class="workspace">
   <aside class="results" aria-label="Samples">
-    <details id="filter-panel">
+    <details id="filter-panel" class="filter-panel">
       <summary><span>Filter and order</span> <span id="filter-summary"></span></summary>
       <form id="filters">
         <div class="field-grid">
@@ -47,56 +88,72 @@
         <div class="actions"><button class="primary">Apply</button><button type="reset">Clear</button></div>
       </form>
     </details>
-    <form id="clip-filters" hidden>
-      <div class="field-grid">
-        <label>Split <select name="split"><option value="">Any</option></select></label>
-        <label>Type <select name="type"><option value="">Any</option></select></label>
-        <label>Scene <input name="scene_id" placeholder="s000000" spellcheck="false"></label>
-      </div>
-      <div class="actions"><button class="primary">Apply</button></div>
-    </form>
+    <details id="clip-filter-panel" class="filter-panel" hidden>
+      <summary><span>Filter clips</span> <span id="clip-filter-summary">all clips</span></summary>
+      <form id="clip-filters">
+        <div class="field-grid">
+          <label>Split <select name="split"><option value="">Any</option></select></label>
+          <label>Type <select name="type"><option value="">Any</option></select></label>
+          <label class="span">Scene <input name="scene_id" placeholder="s000000" spellcheck="false"></label>
+        </div>
+        <div class="actions"><button type="reset">Clear</button></div>
+      </form>
+    </details>
     <p id="result-count"></p>
     <ol id="results"></ol>
   </aside>
 
   <main class="viewer" id="clip-view" hidden>
-    <nav class="viewer-bar" aria-label="Playback">
-      <div class="stepper">
-        <button id="prev-clip" title="Previous clip">⇤ Clip</button>
-        <button id="clip-back" title="Previous frame (,)">◀︎ Frame</button>
-        <button id="clip-play" class="primary" title="Play or pause (space)">Play</button>
-        <button id="clip-forward" title="Next frame (.)">Frame ▶︎</button>
-        <button id="next-clip" title="Next clip">Clip ⇥</button>
-        <button id="clip-wide" title="Hide the side panels so the player gets the whole window (w)" aria-pressed="false">Wide</button>
-        <strong id="clip-title"></strong>
+    <nav class="viewer-bar one-row" aria-label="Playback">
+      <strong id="clip-title"></strong>
+      <div class="toolbar">
+        <div class="group transport" role="group" aria-label="Playback">
+          <button id="prev-clip" title="Previous clip" aria-label="Previous clip">⇤</button>
+          <button id="clip-back" title="Previous frame (,)" aria-label="Previous frame">◀︎</button>
+          <button id="clip-play" class="primary" title="Play or pause (space)">Play</button>
+          <button id="clip-forward" title="Next frame (.)" aria-label="Next frame">▶︎</button>
+          <button id="next-clip" title="Next clip" aria-label="Next clip">⇥</button>
+        </div>
+        <label class="field">Speed <select id="clip-speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
+        <button type="button" id="clip-record" class="scene-only" title="Play the clip once from the start and save the player as a WebM video">Record video</button>
+        <button id="clip-wide" class="ghost" title="Hide the side panels so the player gets the whole window (w)" aria-pressed="false">Wide</button>
       </div>
-      <div class="display">
-        <label>Speed <select id="clip-speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
-        <div class="zoom" role="group" aria-label="Zoom">
+    </nav>
+    <div id="clip-errors" hidden></div>
+    <div class="stage clip-stage" id="clip-stage" title="Scroll to zoom, drag to pan, double-click to switch between fit and 1:1"><canvas id="clip-canvas"></canvas>
+      <div class="overlay-bar stage-tools" role="toolbar" aria-label="Display">
+        <div class="group zoom" role="group" aria-label="Zoom">
           <button type="button" id="clip-zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
           <output id="clip-zoom-level" aria-live="polite">100%</output>
           <button type="button" id="clip-zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
           <button type="button" id="clip-zoom-fit" title="Fit the frame to the player (0)">Fit</button>
           <button type="button" id="clip-zoom-actual" title="One frame pixel per screen pixel">1:1</button>
         </div>
-        <label title="Resolution frames are decoded at; Auto follows the zoom">Detail <select id="clip-detail"><option value="auto" selected>Auto</option><option value="0.25">¼</option><option value="0.5">½</option><option value="1">Full</option></select></label>
-        <label class="check"><input id="clip-overlay" type="checkbox" checked> Mask overlay (o)</label>
-        <label class="check"><input id="clip-box" type="checkbox" checked> Box</label>
+        <label class="field" title="Resolution frames are decoded at; Auto follows the zoom">Detail <select id="clip-detail"><option value="auto" selected>Auto</option><option value="0.25">¼</option><option value="0.5">½</option><option value="1">Full</option></select></label>
+        <span class="sep" aria-hidden="true"></span>
+        <label class="toggle" title="Mask overlay (o)"><input id="clip-overlay" type="checkbox" checked><span>Mask</span></label>
+        <label class="toggle" title="The honey's bounding box"><input id="clip-box" type="checkbox" checked><span>Box</span></label>
       </div>
-    </nav>
-    <div id="clip-errors" hidden></div>
-    <div class="stage clip-stage" id="clip-stage" title="Scroll to zoom, drag to pan, double-click to switch between fit and 1:1"><canvas id="clip-canvas"></canvas><p id="clip-loading" hidden>Decoding frames…</p></div>
+      <p id="clip-loading" hidden>Decoding frames…</p></div>
     <div class="scrub">
       <input id="clip-scrub" type="range" min="0" value="0" aria-label="Frame">
       <output id="clip-frame-label"></output>
     </div>
     <section class="timeline" aria-labelledby="timeline-title">
-      <h2 id="timeline-title">Across the clip <span class="legend" id="timeline-legend"></span></h2>
-      <canvas id="clip-timeline" title="Click to jump to a frame"></canvas>
+      <div class="timeline-wrap">
+        <canvas id="clip-timeline" aria-label="Clip timeline: point at it to read a frame, click to jump there"></canvas>
+        <div class="tip timeline-tip" id="timeline-tip" hidden></div>
+      </div>
+      <h2 id="timeline-title"><span class="lanes">Top to bottom: honey status, bearing, teacher mode, teacher turn (up is right)</span> <span class="legend" id="timeline-legend"></span></h2>
     </section>
   </main>
 
   <aside class="inspector" id="clip-details" hidden aria-label="Frame details">
+    <section>
+      <h2>Where the fly is</h2>
+      <canvas id="clip-map" class="map" title="Seen from above: the path so far, the fly's 310° view and the honey"></canvas>
+      <p class="hint" id="clip-map-note"></p>
+    </section>
     <section>
       <h2>This frame</h2>
       <dl id="frame-facts"></dl>
@@ -116,38 +173,154 @@
   </aside>
 
   <main class="viewer" id="view" hidden>
-    <nav class="viewer-bar" aria-label="Navigation and display">
-      <div class="stepper">
+    <nav class="viewer-bar one-row" aria-label="Navigation">
+      <div class="group" role="group" aria-label="Previous">
         <button id="prev-scene" title="Previous scene">⇤ Scene</button>
         <button id="prev-sample" title="Previous sample (←)">← Sample</button>
-        <strong id="view-title"></strong>
+      </div>
+      <strong id="view-title"></strong>
+      <div class="group" role="group" aria-label="Next">
         <button id="next-sample" title="Next sample (→)">Sample →</button>
         <button id="next-scene" title="Next scene">Scene ⇥</button>
       </div>
-      <div class="display">
+    </nav>
+    <div id="errors" hidden></div>
+    <div class="stage" id="canvas-frame" title="Scroll to zoom, drag to pan, double-click to switch between fit and 1:1"><canvas id="canvas"></canvas>
+      <div class="overlay-bar stage-tools" role="toolbar" aria-label="Display">
         <div class="segmented" role="radiogroup" aria-label="Layer">
           <label title="1"><input type="radio" name="layer" value="rgb" checked><span>RGB</span></label>
           <label title="2"><input type="radio" name="layer" value="mask"><span>Mask</span></label>
           <label title="3"><input type="radio" name="layer" value="overlay"><span>Overlay</span></label>
         </div>
-        <label class="slider">Opacity <input id="opacity" type="range" min="0" max="100" value="55"></label>
-        <div class="zoom" role="group" aria-label="Zoom">
+        <label class="field slider" title="Mask opacity in the overlay">Opacity <input id="opacity" type="range" min="0" max="100" value="55"></label>
+        <span class="sep" aria-hidden="true"></span>
+        <div class="group zoom" role="group" aria-label="Zoom">
           <button type="button" id="zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
           <output id="zoom-level" aria-live="polite">Fit</output>
           <button type="button" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
           <button type="button" id="zoom-fit" title="Fit the image to the window (0)">Fit</button>
           <button type="button" id="zoom-actual" title="One image pixel per screen pixel">1:1</button>
         </div>
-        <label class="check"><input id="show-box" type="checkbox"> Box and centroid</label>
+        <span class="sep" aria-hidden="true"></span>
+        <label class="toggle"><input id="show-box" type="checkbox"><span>Box and centroid</span></label>
       </div>
-    </nav>
-    <div id="errors" hidden></div>
-    <div class="stage" id="canvas-frame" title="Scroll to zoom, drag to pan, double-click to switch between fit and 1:1"><canvas id="canvas"></canvas></div>
-    <section class="strip" aria-labelledby="strip-title">
+    </div>
+    <section class="strip scene-only" aria-labelledby="strip-title">
       <h2 id="strip-title">Viewpoints in this scene</h2>
       <ol id="scene-grid"></ol>
     </section>
   </main>
+
+
+  <section id="eye-panel" class="workspace-panel" hidden aria-label="Eye">
+    <div class="panel-bar">
+      <div class="segmented" role="radiogroup" aria-label="Signal">
+        <label title="The colour these receptor responses imply: the R, G, B light that would give each ommatidium's R1_6, R7 and R8 catches under its rhodopsins"><input type="radio" name="eye-channel" value="colour" checked><span>Colour</span></label>
+        <label title="R1-6: brightness and motion, Rh1"><input type="radio" name="eye-channel" value="R1_6"><span>R1_6</span></label>
+        <label title="R7: Rh3 or Rh4"><input type="radio" name="eye-channel" value="R7"><span>R7</span></label>
+        <label title="R8: Rh5 or Rh6"><input type="radio" name="eye-channel" value="R8"><span>R8</span></label>
+        <label title="False colour: red from R8, green from R1_6, blue from R7"><input type="radio" name="eye-channel" value="fly"><span>Fly colour</span></label>
+        <label title="How much of each ommatidium's view is honey"><input type="radio" name="eye-channel" value="honey"><span>Honey</span></label>
+      </div>
+      <label class="toggle" title="Drag the line on the decoded image to compare it with the camera frame"><input id="eye-compare" type="checkbox"><span>Compare with camera</span></label>
+      <label class="toggle" title="The honey's visible mask over the camera frame and the decoded image"><input id="eye-mask" type="checkbox" checked><span>Mask</span></label>
+      <label class="toggle" title="The honey's bounding box"><input id="eye-box" type="checkbox" checked><span>Box</span></label>
+      <label class="field">Gain <select id="eye-gain"><option value="auto" selected>Each frame's peak</option><option value="fixed">Fixed, 0 to 0.75</option></select></label>
+      <span id="eye-status" class="status"></span>
+    </div>
+    <div class="eye-grid">
+      <figure class="card"><figcaption>Camera frame</figcaption><canvas id="eye-camera"></canvas></figure>
+      <figure class="card"><figcaption>Decoded from the receptors <span>each pixel shows its nearest ommatidium</span></figcaption><canvas id="eye-decoded"></canvas></figure>
+      <figure class="card"><figcaption>Ommatidia by viewing direction</figcaption><canvas id="eye-hex"></canvas></figure>
+      <figure class="card"><figcaption>Compound eye <span>drag to turn; amber marks straight ahead</span></figcaption><canvas id="eye-globe"></canvas></figure>
+    </div>
+  </section>
+
+  <section id="brain-panel" class="workspace-panel" hidden aria-label="Brain">
+    <div class="panel-bar tab-bar">
+      <div class="tabs" role="radiogroup" aria-label="Brain view">
+        <label><input type="radio" name="brain-view" value="playback"><span>Clip playback</span></label>
+        <label><input type="radio" name="brain-view" value="circuit"><span>Circuit</span></label>
+        <label><input type="radio" name="brain-view" value="brain3d"><span>3D brain</span></label>
+        <label><input type="radio" name="brain-view" value="network"><span>Network</span></label>
+        <label><input type="radio" name="brain-view" value="runs" checked><span>Runs</span></label>
+      </div>
+      <span class="status" id="brain-circuit-run"></span>
+      <button type="button" id="brain-record" title="Play the clip once and save the fly's view, compass, activity and readout as a WebM video">Record video</button>
+    </div>
+    <div id="brain-3d" hidden>
+      <p class="status" id="brain3d-status"></p>
+      <div class="viewport3d">
+        <div class="overlay-bar" role="toolbar" aria-label="3D view">
+          <div class="group" role="group" aria-label="Viewpoint">
+            <button type="button" id="brain3d-front" title="Look at the brain from the front">Front</button>
+            <button type="button" id="brain3d-top" title="Look down from above">Top</button>
+            <button type="button" id="brain3d-side" title="Look from the side">Side</button>
+          </div>
+          <span class="sep" aria-hidden="true"></span>
+          <label class="toggle" title="Colour neurons by their cell type's activity at this frame (needs a trace for the clip)"><input id="brain3d-activity" type="checkbox" checked><span>Activity</span></label>
+          <label class="toggle"><input id="brain3d-edges" type="checkbox" checked><span>Connections</span></label>
+          <label class="toggle"><input id="brain3d-background" type="checkbox" checked><span>Outline</span></label>
+          <label class="toggle"><input id="brain3d-rotate" type="checkbox" checked><span>Turn</span></label>
+        </div>
+        <canvas id="brain3d-canvas" title="Drag to turn, scroll to zoom, double-click to reset"></canvas>
+        <div class="stat stat-left" id="brain3d-neurons"></div>
+        <div class="stat stat-right" id="brain3d-connections"></div>
+        <div class="tip" id="brain3d-tip" hidden></div>
+        <div class="stat stat-top" id="brain3d-activity-label" hidden></div>
+        <div class="heat-scale" id="brain3d-scale" hidden><span>quiet</span><i></i><span>active</span></div>
+      </div>
+      <div class="filter-chips" id="brain3d-legend" role="group" aria-label="Components shown"></div>
+      <p class="hint" id="brain3d-note"></p>
+    </div>
+    <div id="brain-network" hidden>
+      <div class="panel-bar">
+        <div class="segmented small" role="radiogroup" aria-label="Network level">
+          <label title="One node per cell type across the whole model"><input type="radio" name="network-level" value="types" checked><span>Cell types</span></label>
+          <label title="Every neuron of the central complex: tubercle-bulb, ring neurons, compass and steering"><input type="radio" name="network-level" value="neurons"><span>Central complex neurons</span></label>
+        </div>
+        <input id="network-search" type="search" placeholder="Find a cell type: EPG, Tm3, MeTu1…" aria-label="Find a cell type" spellcheck="false">
+        <label class="field">Edges <select id="network-edges"><option value="800">Strongest 800</option><option value="2500" selected>Strongest 2,500</option><option value="8000">Strongest 8,000</option></select></label>
+        <span class="status" id="network-status"></span>
+      </div>
+      <div class="viewport2d">
+        <canvas id="network-canvas" title="Scroll to zoom, drag to pan, point at a node to see its connections"></canvas>
+        <div class="tip" id="network-tip" hidden></div>
+      </div>
+      <p class="legend" id="network-legend"></p>
+      <p class="hint" id="network-note"></p>
+    </div>
+    <div id="brain-circuit" hidden>
+      <div class="circuit-view">
+        <svg id="brain-circuit-svg" role="img" aria-label="Wiring diagram of the model: neuropils in signal order, cell types as nodes, synapses as edges"></svg>
+        <div class="overlay-bar" role="toolbar" aria-label="Circuit">
+          <label class="field">Connections <select id="circuit-edges"><option value="40">40 strongest</option><option value="80" selected>80 strongest</option><option value="200">200 strongest</option><option value="500">500 strongest</option></select></label>
+          <label class="toggle" title="Connections between cell types of the same neuropil"><input id="circuit-recurrent" type="checkbox"><span>Recurrent</span></label>
+          <label class="toggle" title="Glow with each cell type's activity during clip playback"><input id="circuit-activity" type="checkbox" checked><span>Activity</span></label>
+        </div>
+      </div>
+      <p class="legend" id="circuit-legend"></p>
+      <p class="hint" id="brain-circuit-note"></p>
+    </div>
+    <div id="brain-playback" hidden>
+      <div id="brain-empty" class="empty"></div>
+      <div id="brain-trace" class="brain-grid" hidden>
+        <figure class="card view"><figcaption>What the fly sees <span>the clip frame this step was taken from</span></figcaption><canvas id="brain-view"></canvas></figure>
+        <figure class="card compass"><figcaption>Compass ring <span>dots: compass neurons at their bridge angle; amber: bump; dashed: heading</span></figcaption><canvas id="brain-compass"></canvas></figure>
+        <figure class="card heat"><figcaption>Activity by cell type <span class="legend" id="brain-stage-legend"></span></figcaption><canvas id="brain-heatmap"></canvas><p class="hint" id="brain-heat-scale"></p></figure>
+        <figure class="card decisions"><figcaption>Readout and teacher</figcaption><canvas id="brain-decisions"></canvas></figure>
+      </div>
+    </div>
+    <div id="brain-runs">
+      <div class="panel-bar">
+        <input id="brain-run-filter" type="search" placeholder="Filter runs: compass, level3, occ-b…" aria-label="Filter runs" spellcheck="false">
+        <label class="field">Model <select id="brain-run-family"><option value="">All</option></select></label>
+        <span class="status" id="brain-runs-directory"></span>
+      </div>
+      <p class="hint" id="brain-run-count"></p>
+      <div class="table-scroll"><table id="brain-run-table" class="data"></table></div>
+    </div>
+  </section>
 
   <aside class="inspector" id="details" hidden aria-label="Sample details">
     <section class="verdict">
@@ -186,8 +359,106 @@
       <pre id="raw-record"></pre>
     </details>
   </aside>
+
+  <aside class="inspector side-panel" id="eye-details" hidden aria-label="Eye details">
+    <section>
+      <h2>Receptors in this frame</h2>
+      <div id="eye-means" class="bars"></div>
+    </section>
+    <section>
+      <h2>Ommatidium</h2>
+      <p class="hint" id="eye-hover-hint">Point at an ommatidium in any view to read it here.</p>
+      <dl id="eye-ommatidium"></dl>
+    </section>
+    <section>
+      <div class="section-head">
+        <h2>Rhodopsins</h2>
+        <div class="segmented small" role="radiogroup" aria-label="Pigment axis">
+          <label title="ADR 0021: curves warped onto 420 to 650 nm"><input type="radio" name="eye-pigments" value="remapped" checked><span>Remapped</span></label>
+          <label title="ADR 0019: measured peaks"><input type="radio" name="eye-pigments" value="physical"><span>Physical</span></label>
+        </div>
+      </div>
+      <canvas id="eye-spectra" class="chart"></canvas>
+      <p class="legend" id="eye-spectra-legend"></p>
+      <p class="hint" id="eye-spectra-note"></p>
+    </section>
+    <section>
+      <h2>Model</h2>
+      <dl id="eye-model"></dl>
+      <p class="hint">Colour is the light each ommatidium's three receptors imply. Dorsal-rim ommatidia (the top band) have Rh3 in both R7 and R8, so they are colour-blind and shown grey.</p>
+      <p class="hint">Frames come from the lossy clip video at half size, so values can differ slightly from fly-vision convert on the original capture.</p>
+    </section>
+  </aside>
+
+  <aside class="inspector side-panel" id="brain-details" hidden aria-label="Brain details">
+    <div id="brain-trace-details">
+      <section>
+        <h2>This step</h2>
+        <dl id="brain-step-facts"></dl>
+      </section>
+      <section>
+        <h2>Cell type</h2>
+        <p class="hint">Point at a row of the activity map.</p>
+        <dl id="brain-cell-facts"></dl>
+      </section>
+      <section>
+        <h2>Trace</h2>
+        <dl id="brain-trace-facts"></dl>
+      </section>
+    </div>
+    <div id="brain-network-details" hidden>
+      <section id="network-active-section" hidden>
+        <h2>Most active now</h2>
+        <div id="network-active" class="bars"></div>
+      </section>
+      <section>
+        <h2 id="network-node-title">Point at a node</h2>
+        <dl id="network-node-facts"></dl>
+      </section>
+      <section>
+        <h2>Strongest inputs</h2>
+        <div id="network-inputs" class="bars"></div>
+      </section>
+      <section>
+        <h2>Strongest outputs</h2>
+        <div id="network-outputs" class="bars"></div>
+      </section>
+      <section>
+        <h2>Graph</h2>
+        <dl id="network-facts"></dl>
+      </section>
+    </div>
+    <div id="brain-run-details" hidden>
+      <section>
+        <h2 id="brain-run-title">Pick a run</h2>
+        <dl id="brain-run-facts"></dl>
+      </section>
+      <section id="brain-loss-section" hidden>
+        <div class="section-head"><h2>Training loss</h2><span class="num" id="brain-loss-range"></span></div>
+        <canvas id="brain-loss" class="chart short"></canvas>
+      </section>
+      <section>
+        <h2>Scores</h2>
+        <table id="brain-split-table" class="data compact"></table>
+      </section>
+      <section id="brain-components-section" hidden>
+        <h2>Connectome components</h2>
+        <div id="brain-components" class="bars"></div>
+      </section>
+      <details class="raw">
+        <summary>Full report</summary>
+        <pre id="brain-raw"></pre>
+      </details>
+    </div>
+  </aside>
+</div>
+</div>
 </div>
 <script src="/static/app.js"></script>
 <script src="/static/clips.js"></script>
+<script src="/static/workspaces.js"></script>
+<script src="/static/eye.js"></script>
+<script src="/static/brain.js"></script>
+<script src="/static/brain3d.js"></script>
 </body>
 </html>

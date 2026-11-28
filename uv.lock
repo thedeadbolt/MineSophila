@@ -314,8 +314,11 @@ name = "honey-factory-tools"
 version = "0.0.0"
 source = { editable = "packages/honey-factory-tools" }
 dependencies = [
+    { name = "fly-vision" },
     { name = "jsonschema" },
+    { name = "numpy" },
     { name = "pillow" },
+    { name = "pyarrow" },
 ]
 
 [package.dev-dependencies]
@@ -326,8 +329,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fly-vision", editable = "packages/fly-vision" },
     { name = "jsonschema", specifier = ">=4.23" },
-    { name = "pillow", specifier = ">=11.3" },
+    { name = "numpy", specifier = ">=2.5.4" },
+    { name = "pillow", specifier = ">=13.0.0" },
+    { name = "pyarrow", specifier = ">=20" },
 ]
 
 [package.metadata.requires-dev]
@@ -576,6 +582,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "pyarrow-stubs" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -592,6 +599,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "pyarrow-stubs", specifier = ">=20.0.0.20260819" },
     { name = "pyright", specifier = ">=1.1.414" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
